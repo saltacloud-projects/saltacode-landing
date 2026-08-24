@@ -1,0 +1,110 @@
+---
+import { Picture } from "astro:assets";
+import consultingImage from "../assets/services/consulting.webp";
+import outsourcingImage from "../assets/services/outsourcing.webp";
+import saasImage from "../assets/services/saas.webp";
+import softwareImage from "../assets/services/software-factory.webp";
+
+const services = [
+  {
+    id: "software-factory",
+    title: "Software Factory",
+    description:
+      "Desarrollamos soluciones a medida que ayudan a las empresas a optimizar sus procesos y alcanzar sus objetivos mediante el uso de la tecnología.",
+    image: softwareImage,
+    imageAlt: "Tarjeta de presentación de SaltaCode",
+    features: [
+      ["Transformación digital", "Impulsamos el cambio hacia un entorno digital eficiente y ágil."],
+      ["Servicios de analítica", "Generamos información clave para tomar decisiones basadas en datos."],
+      ["Marketing y ventas", "Implementamos estrategias que potencian la visibilidad y el crecimiento comercial."],
+      ["Ciberseguridad", "Protegemos los activos digitales con soluciones robustas y seguras."],
+    ],
+  },
+  {
+    id: "outsourcing",
+    title: "Outsourcing",
+    description:
+      "Proveemos equipos de desarrollo especializados para empresas que buscan externalizar proyectos o complementar sus equipos internos.",
+    image: outsourcingImage,
+    imageAlt: "Taza de SaltaCode en una oficina",
+    features: [
+      ["Equipos dedicados", "Equipos completos enfocados exclusivamente en tus proyectos."],
+      ["Escalabilidad", "Aumentá o reducí tu equipo según las necesidades del negocio."],
+      ["Expertise especializado", "Profesionales con experiencia en tecnologías clave."],
+      ["Reducción de costos", "Optimizá costos operativos sin comprometer la calidad."],
+    ],
+  },
+  {
+    id: "consultoria-it",
+    title: "Consultoría IT",
+    description:
+      "Ofrecemos asesoramiento estratégico en arquitectura de software, selección tecnológica, implementación de sistemas y gestión eficiente de proyectos.",
+    image: consultingImage,
+    imageAlt: "Saludo profesional de un integrante de SaltaCode",
+    features: [
+      ["Activos tecnológicos", "Optimización y gestión eficiente de los activos de tu empresa."],
+      ["Operaciones y tecnología", "Mejor integración entre operaciones y tecnología."],
+      ["Finanzas corporativas", "Soluciones que optimizan la gestión financiera."],
+      ["Auditoría IT", "Auditorías tecnológicas para asegurar el cumplimiento."],
+    ],
+  },
+  {
+    id: "soluciones-saas",
+    title: "Soluciones SaaS",
+    description:
+      "Desarrollamos soluciones SaaS escalables y flexibles, listas para usar y con mantenimiento continuo para garantizar su eficiencia.",
+    image: saasImage,
+    imageAlt: "Equipo de SaltaCode colaborando frente a una computadora",
+    features: [
+      ["Implementación rápida", "Empezá a utilizar la solución sin demoras."],
+      ["Escalabilidad sin límites", "Soluciones que crecen con tu negocio."],
+      ["Soporte continuo", "Soporte técnico y actualizaciones automáticas."],
+      ["Seguridad y cumplimiento", "Altos estándares de seguridad y normativa."],
+    ],
+  },
+];
+---
+
+<section class="section services" id="servicios" aria-labelledby="services-title">
+  <div class="container section-heading centered">
+    <p class="eyebrow">Servicios y productos</p>
+    <h2 id="services-title">Soluciones tecnológicas integrales</h2>
+    <p>
+      Desarrollo de software, outsourcing especializado, consultoría IT y soluciones SaaS pensadas
+      para mejorar la eficiencia y potenciar el crecimiento de cada empresa.
+    </p>
+  </div>
+
+  <div class="container service-list">
+    {services.map((service, index) => (
+      <article class:list={["service", { reverse: index % 2 === 1 }]} id={service.id}>
+        <div class="service-media">
+          <Picture
+            src={service.image}
+            formats={["avif"]}
+            fallbackFormat="webp"
+            widths={[480, 720, 960]}
+            sizes="(min-width: 960px) 560px, calc(100vw - 40px)"
+            alt={service.imageAlt}
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+
+        <div class="service-content">
+          <h3>{service.title}</h3>
+          <p>{service.description}</p>
+          <ul class="feature-grid">
+            {service.features.map(([title, copy]) => (
+              <li>
+                <span class="feature-mark" aria-hidden="true"></span>
+                <h4>{title}</h4>
+                <p>{copy}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </article>
+    ))}
+  </div>
+</section>

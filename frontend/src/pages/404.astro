@@ -1,0 +1,23 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Página no encontrada | SaltaCode"
+  description="La página que buscás no está disponible. Volvé al inicio de SaltaCode."
+  indexable={false}
+>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido" class="not-found">
+    <div class="container centered">
+      <p class="eyebrow">Error 404</p>
+      <h1>Página no encontrada</h1>
+      <p>La dirección puede haber cambiado o ya no estar disponible.</p>
+      <a class="button" href="/">Volver al inicio</a>
+    </div>
+  </main>
+  <Footer />
+</BaseLayout>

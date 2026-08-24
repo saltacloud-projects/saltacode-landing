@@ -1,0 +1,60 @@
+---
+import { Image } from "astro:assets";
+import logo from "../assets/brand/mark.png";
+---
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="container hero-inner">
+    <Image class="hero-mark" src={logo} width={58} alt="" loading="eager" decoding="sync" />
+    <h1 id="hero-title">
+      <span>Tecnología que impulsa</span>
+      <span>tu crecimiento</span>
+    </h1>
+    <p class="hero-copy">
+      Desarrollo de software, consultoría IT, outsourcing de equipos y soluciones SaaS para
+      empresas que quieren ir más lejos.
+    </p>
+
+    <div class="agent-preview" aria-label="Vista previa del futuro asistente con inteligencia artificial">
+      <div>
+        <span class="eyebrow">Asistente con IA · Próximamente</span>
+        <p>¿Qué necesitás saber sobre SaltaCode o nuestros servicios?</p>
+      </div>
+      <a class="button" href="#contacto">Consultar</a>
+    </div>
+
+    <nav class="quick-links" aria-label="Accesos rápidos a servicios">
+      <a href="#software-factory">Software a medida</a>
+      <a href="#consultoria-it">Consultoría IT</a>
+      <a href="#soluciones-saas">Soluciones SaaS</a>
+      <a href="#outsourcing">Equipos IT</a>
+    </nav>
+
+    <ul class="service-summary" aria-label="Principales servicios">
+      <li>
+        <span aria-hidden="true">01</span>
+        <strong>Software a medida</strong>
+        <p>Web, mobile y sistemas escalables.</p>
+        <a href="#software-factory" aria-label="Conocer Software a medida">Conocer más</a>
+      </li>
+      <li>
+        <span aria-hidden="true">02</span>
+        <strong>Consultoría IT</strong>
+        <p>Arquitectura, estrategia y buenas prácticas.</p>
+        <a href="#consultoria-it" aria-label="Conocer Consultoría IT">Conocer más</a>
+      </li>
+      <li>
+        <span aria-hidden="true">03</span>
+        <strong>Soluciones SaaS</strong>
+        <p>Productos digitales listos para crecer.</p>
+        <a href="#soluciones-saas" aria-label="Conocer Soluciones SaaS">Conocer más</a>
+      </li>
+      <li>
+        <span aria-hidden="true">04</span>
+        <strong>Equipos IT</strong>
+        <p>Talento técnico para proyectos de alto impacto.</p>
+        <a href="#outsourcing" aria-label="Conocer Equipos IT">Conocer más</a>
+      </li>
+    </ul>
+  </div>
+</section>

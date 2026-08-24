@@ -1,0 +1,27 @@
+---
+import About from "../components/About.astro";
+import Clients from "../components/Clients.astro";
+import Contact from "../components/Contact.astro";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Hero from "../components/Hero.astro";
+import Services from "../components/Services.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const title = "SaltaCode | Desarrollo de software y consultoría IT en Salta";
+const description =
+  "SaltaCode desarrolla software a medida y ofrece consultoría IT, outsourcing de equipos y soluciones SaaS para empresas en Salta, Argentina.";
+---
+
+<BaseLayout title={title} description={description}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <Hero />
+    <Clients />
+    <Services />
+    <About />
+    <Contact />
+  </main>
+  <Footer />
+</BaseLayout>

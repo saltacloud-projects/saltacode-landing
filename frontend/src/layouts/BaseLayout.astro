@@ -1,0 +1,88 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  indexable?: boolean;
+}
+
+const { title, description, indexable = true } = Astro.props;
+
+if (!Astro.site) {
+  throw new Error("Astro site must be configured to generate canonical metadata.");
+}
+
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const socialImageUrl = new URL("/images/social/saltacode-social.webp", Astro.site);
+const organizationId = new URL("/#organization", Astro.site);
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": ["Organization", "ProfessionalService"],
+  "@id": organizationId.href,
+  name: "SaltaCode",
+  url: Astro.site.href,
+  logo: new URL("/favicon.png", Astro.site).href,
+  email: "saltacodear@gmail.com",
+  telephone: "+54 9 387 529-6587",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "Zuviría 333, Oficina 4C",
+    addressLocality: "Salta",
+    addressRegion: "Salta",
+    addressCountry: "AR",
+  },
+  sameAs: [
+    "https://www.linkedin.com/company/saltacode/",
+    "https://www.facebook.com/saltacode.ar",
+    "https://www.instagram.com/saltacode.ar/",
+  ],
+};
+---
+
+<!doctype html>
+<html lang="es-AR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta
+      name="robots"
+      content={indexable
+        ? "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        : "noindex, follow"}
+    />
+    {indexable && <link rel="canonical" href={canonicalUrl} />}
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SaltaCode" />
+    <meta property="og:locale" content="es_AR" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    {indexable && <meta property="og:url" content={canonicalUrl} />}
+    <meta property="og:image" content={socialImageUrl} />
+    <meta property="og:image:type" content="image/webp" />
+    <meta property="og:image:width" content="7000" />
+    <meta property="og:image:height" content="7000" />
+    <meta property="og:image:alt" content="Tarjeta de SaltaCode Innovación y Desarrollo" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageUrl} />
+    <meta name="twitter:image:alt" content="Tarjeta de SaltaCode Innovación y Desarrollo" />
+
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#ffffff" />
+    {indexable && (
+      <script type="application/ld+json" is:inline set:html={JSON.stringify(structuredData)} />
+    )}
+  </head>
+  <body>
+    <a class="skip-link" href="#contenido">Saltar al contenido principal</a>
+    <slot />
+  </body>
+</html>

@@ -1,0 +1,39 @@
+---
+import { Image } from "astro:assets";
+import balanceLogo from "../assets/clients/balance.png";
+import kamalLogo from "../assets/clients/kamal.png";
+import ko27Logo from "../assets/clients/ko27.png";
+import opticaTotalLogo from "../assets/clients/optica-total.png";
+import punaLogo from "../assets/clients/puna.png";
+import v8Logo from "../assets/clients/v8.png";
+
+const clients = [
+  { name: "KO-27", logo: ko27Logo },
+  { name: "Balance", logo: balanceLogo },
+  { name: "V8", logo: v8Logo },
+  { name: "Grupo Kamal", logo: kamalLogo },
+  { name: "Planeta Puna", logo: punaLogo },
+  { name: "Óptica Total", logo: opticaTotalLogo },
+];
+---
+
+<section class="section clients" id="clientes" aria-labelledby="clients-title">
+  <div class="container section-heading centered">
+    <p class="eyebrow">Nuestros clientes</p>
+    <h2 id="clients-title">Empresas que confían en nosotros</h2>
+  </div>
+
+  <ul class="container client-list" aria-label="Clientes de SaltaCode">
+    {clients.map((client) => (
+      <li>
+        <Image
+          src={client.logo}
+          width={180}
+          alt={`Logo de ${client.name}`}
+          loading="lazy"
+          decoding="async"
+        />
+      </li>
+    ))}
+  </ul>
+</section>

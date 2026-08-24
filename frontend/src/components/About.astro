@@ -1,0 +1,44 @@
+---
+import { Picture } from "astro:assets";
+import officeImage from "../assets/about/office.webp";
+---
+
+<section class="section about" id="nosotros" aria-labelledby="about-title">
+  <div class="container about-grid">
+    <div class="about-content">
+      <p class="eyebrow">Nosotros</p>
+      <h2 id="about-title">Impulsamos la transformación digital de las empresas</h2>
+      <p>
+        En SaltaCode desarrollamos soluciones a medida y ofrecemos servicios de software,
+        consultoría, outsourcing y SaaS, garantizando eficiencia y escalabilidad en cada proyecto.
+      </p>
+      <ul class="about-points">
+        <li>
+          <strong>Tu socio tecnológico</strong>
+          <span>Acompañamos cada proyecto de punta a punta.</span>
+        </li>
+        <li>
+          <strong>Foco en resultados</strong>
+          <span>Soluciones orientadas a eficiencia, escalabilidad y retorno.</span>
+        </li>
+        <li>
+          <strong>Presencia local</strong>
+          <span>Zuviría 333, Oficina 4C — Salta, Argentina.</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="about-media">
+      <Picture
+        src={officeImage}
+        formats={["avif"]}
+        fallbackFormat="webp"
+        widths={[480, 720, 960]}
+        sizes="(min-width: 960px) 560px, calc(100vw - 40px)"
+        alt="Sala de reuniones de la oficina de SaltaCode en Salta"
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  </div>
+</section>

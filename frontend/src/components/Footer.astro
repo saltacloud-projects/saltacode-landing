@@ -1,0 +1,37 @@
+---
+import { Image } from "astro:assets";
+import logo from "../assets/brand/mark.png";
+
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div>
+      <a class="brand" href="#top" aria-label="SaltaCode, volver al inicio">
+        <Image src={logo} width={34} alt="" loading="lazy" decoding="async" />
+        <span>SaltaCode</span>
+      </a>
+      <p>
+        Empresa tecnológica integral: desarrollo de software, consultoría IT, outsourcing de equipos
+        y soluciones bajo el modelo SaaS.
+      </p>
+    </div>
+
+    <nav aria-label="Navegación del pie">
+      <ul>
+        <li><a href="#clientes">Nuestros clientes</a></li>
+        <li><a href="#servicios">Servicios y productos</a></li>
+        <li><a href="#nosotros">Nosotros</a></li>
+        <li><a href="#contacto">Contactanos</a></li>
+      </ul>
+    </nav>
+
+    <div>
+      <strong>Contacto</strong>
+      <a href="mailto:saltacodear@gmail.com">saltacodear@gmail.com</a>
+      <span>Zuviría 333, Oficina 4C</span>
+      <small>© {year} SaltaCode</small>
+    </div>
+  </div>
+</footer>
