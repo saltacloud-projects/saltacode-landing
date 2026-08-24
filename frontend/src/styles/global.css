@@ -303,32 +303,96 @@ ul {
   position: relative;
   overflow: hidden;
   border-bottom: 1px solid var(--line);
-  background-color: #fbfbfd;
+  background-color: #fcfcff;
   background-image:
-    linear-gradient(to right, rgb(222 221 230 / 54%) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(222 221 230 / 54%) 1px, transparent 1px);
-  background-size: 64px 64px;
+    linear-gradient(to right, rgb(222 221 230 / 42%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(222 221 230 / 42%) 1px, transparent 1px);
+  background-size: 56px 56px;
 }
 
 .hero::before {
   position: absolute;
+  z-index: 0;
   inset: 0;
-  background: radial-gradient(circle at center, rgb(251 251 253 / 18%) 0, #fbfbfd 76%);
+  background:
+    radial-gradient(circle at 50% 44%, rgb(255 255 255 / 2%) 0, rgb(252 252 255 / 50%) 58%),
+    linear-gradient(to bottom, rgb(252 252 255 / 18%), rgb(252 252 255 / 74%) 92%);
   content: "";
   pointer-events: none;
 }
 
+.hero-network {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 50%;
+  width: 1600px;
+  height: 760px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.hero-network svg {
+  display: block;
+  overflow: visible;
+}
+
+.hero-orbit-path {
+  fill: none;
+  opacity: 0.34;
+  stroke: rgb(105 67 244 / 36%);
+  stroke-width: 1.15;
+  vector-effect: non-scaling-stroke;
+}
+
+.hero-orbit-node {
+  position: absolute;
+  top: var(--node-top, 38%);
+  left: var(--node-left, 18%);
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgb(255 255 255 / 88%);
+  border-radius: 50%;
+  background: var(--purple);
+  box-shadow:
+    0 0 8px 3px rgb(103 65 245 / 58%),
+    0 0 22px 7px rgb(103 65 245 / 20%);
+  opacity: 0.8;
+  transform: translate(-50%, -50%);
+}
+
+.hero-orbit-node:nth-of-type(2) {
+  --node-top: 29%;
+  --node-left: 84%;
+}
+
+.hero-orbit-node:nth-of-type(3) {
+  --node-top: 61%;
+  --node-left: 28%;
+}
+
+.hero-orbit-node:nth-of-type(4) {
+  --node-top: 72%;
+  --node-left: 79%;
+}
+
+.hero-network[data-motion-active="true"] .hero-orbit-node {
+  top: 0;
+  left: 0;
+}
+
 .hero-inner {
   position: relative;
-  z-index: 1;
-  padding-block: clamp(5rem, 10vw, 8rem) clamp(4rem, 8vw, 7rem);
+  z-index: 2;
+  padding-block: clamp(4.25rem, 8vw, 6.75rem) clamp(3.25rem, 6vw, 5.25rem);
   text-align: center;
 }
 
 .hero-mark {
   width: 58px;
-  height: auto;
-  margin: 0 auto 1.5rem;
+  height: 58px;
+  margin: 0 auto 1.25rem;
+  object-fit: contain;
 }
 
 .hero h1 span {
@@ -337,36 +401,86 @@ ul {
 
 .hero-copy {
   max-width: 690px;
-  margin: 0 auto 2.25rem;
+  margin: 0 auto 1.8rem;
   color: var(--muted);
   font-size: clamp(1.05rem, 2vw, 1.25rem);
 }
 
 .agent-preview {
-  display: flex;
+  display: grid;
   width: min(100%, 720px);
-  min-height: 82px;
+  min-height: 74px;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin: 0 auto 1rem;
-  padding: 0.75rem 0.75rem 0.75rem 1.35rem;
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  background: #fff;
-  box-shadow: var(--shadow);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  margin: 0 auto;
+  padding: 0.65rem 0.7rem 0.65rem 0.85rem;
+  border: 1px solid rgb(103 65 245 / 42%);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 95%);
+  box-shadow:
+    0 18px 46px rgb(53 35 120 / 14%),
+    0 0 0 5px rgb(103 65 245 / 5%),
+    0 0 26px rgb(103 65 245 / 14%);
   text-align: left;
 }
 
-.agent-preview .eyebrow {
-  display: block;
-  margin-bottom: 0.15rem;
-  font-size: 0.65rem;
+.agent-symbol {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--purple);
+  background: #fff;
+  place-items: center;
 }
 
-.agent-preview p {
-  margin: 0;
+.agent-symbol path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.agent-placeholder {
+  overflow: hidden;
   color: var(--muted);
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-send {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(145deg, #7b4dff, #5631e8);
+  box-shadow: 0 10px 22px rgb(89 50 224 / 28%);
+  place-items: center;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.agent-send:hover {
+  box-shadow: 0 13px 26px rgb(89 50 224 / 36%);
+  transform: translateY(-1px);
+}
+
+.agent-send path {
+  fill: currentColor;
+}
+
+.agent-helper {
+  max-width: 590px;
+  margin: 1.05rem auto 1.4rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .quick-links {
@@ -374,10 +488,13 @@ ul {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.55rem;
-  margin-bottom: clamp(3rem, 6vw, 5.5rem);
+  margin-bottom: clamp(2.3rem, 4vw, 3.75rem);
 }
 
 .quick-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   padding: 0.48rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -386,6 +503,16 @@ ul {
   font-size: 0.78rem;
   font-weight: 700;
   text-decoration: none;
+}
+
+.quick-links svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: var(--purple);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .quick-links a:hover {
@@ -821,14 +948,29 @@ ul {
   }
 
   .agent-preview {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 1.1rem;
-    border-radius: 18px;
+    min-height: 68px;
+    gap: 0.6rem;
+    padding: 0.55rem 0.6rem;
+    border-radius: 20px;
   }
 
-  .agent-preview .button {
-    width: 100%;
+  .agent-symbol {
+    width: 40px;
+    height: 40px;
+  }
+
+  .agent-placeholder {
+    font-size: 0.86rem;
+  }
+
+  .agent-send {
+    width: 46px;
+    height: 46px;
+  }
+
+  .hero-network {
+    width: 1200px;
+    transform: translateX(-50%) scaleX(0.84);
   }
 
   .service-summary,
@@ -910,6 +1052,25 @@ ul {
   .contact-actions .button {
     width: 100%;
   }
+
+  .hero-mark {
+    width: 52px;
+    height: 52px;
+  }
+
+  .agent-symbol {
+    width: 36px;
+    height: 36px;
+  }
+
+  .agent-placeholder {
+    font-size: 0.8rem;
+  }
+
+  .agent-send {
+    width: 43px;
+    height: 43px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -923,11 +1084,17 @@ ul {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+
+  .hero-orbit-node {
+    box-shadow: 0 0 10px 2px rgb(103 65 245 / 28%);
+  }
 }
 
 @media print {
   .site-header,
+  .hero-network,
   .agent-preview,
+  .agent-helper,
   .quick-links {
     display: none;
   }

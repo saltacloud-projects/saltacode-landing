@@ -12,9 +12,10 @@ const assetManifest = JSON.parse(
 );
 
 const BUILD_BUDGETS = Object.freeze({
-  indexHtmlBytes: 20 * 1024,
+  indexHtmlBytes: 22 * 1024,
   cssBytes: 15 * 1024,
-  executableJavaScriptBytes: 1024,
+  initialExecutableJavaScriptBytes: 2.5 * 1024,
+  totalExecutableJavaScriptBytes: 12 * 1024,
   socialImageBytes: 100 * 1024,
   webfontBytes: 0,
 });
@@ -139,11 +140,22 @@ const inlineExecutableJavaScriptBytes = homeExecutableScripts.reduce(
   (total, script) => total + Buffer.byteLength(script[2]),
   0,
 );
+const initialExternalJavaScriptBytes = homeExecutableScripts.reduce((total, script) => {
+  const source = attributeValue(script[1], "src");
+  if (!source) return total;
+
+  const emittedPath = source.replace(/^\//, "");
+  const emittedScript = buildFiles.find((file) => file.path === emittedPath);
+  if (!emittedScript) throw new Error(`Homepage script ${source} is missing from the build.`);
+  return total + emittedScript.bytes;
+}, 0);
 
 const measuredBuild = Object.freeze({
   indexHtmlBytes: indexBuffer.byteLength,
   cssBytes: totalBytesForExtensions(new Set([".css"])),
-  executableJavaScriptBytes:
+  initialExecutableJavaScriptBytes:
+    initialExternalJavaScriptBytes + inlineExecutableJavaScriptBytes,
+  totalExecutableJavaScriptBytes:
     totalBytesForExtensions(EXECUTABLE_JAVASCRIPT_EXTENSIONS) + inlineExecutableJavaScriptBytes,
   socialImageBytes: socialImage.bytes,
   webfontBytes: totalBytesForExtensions(WEBFONT_EXTENSIONS),
@@ -153,9 +165,14 @@ const budgetResults = [
   ["generated index HTML", measuredBuild.indexHtmlBytes, BUILD_BUDGETS.indexHtmlBytes],
   ["total emitted CSS", measuredBuild.cssBytes, BUILD_BUDGETS.cssBytes],
   [
+    "initial executable JavaScript",
+    measuredBuild.initialExecutableJavaScriptBytes,
+    BUILD_BUDGETS.initialExecutableJavaScriptBytes,
+  ],
+  [
     "total executable JavaScript",
-    measuredBuild.executableJavaScriptBytes,
-    BUILD_BUDGETS.executableJavaScriptBytes,
+    measuredBuild.totalExecutableJavaScriptBytes,
+    BUILD_BUDGETS.totalExecutableJavaScriptBytes,
   ],
   ["social preview image", measuredBuild.socialImageBytes, BUILD_BUDGETS.socialImageBytes],
   ["emitted webfonts", measuredBuild.webfontBytes, BUILD_BUDGETS.webfontBytes],
@@ -182,6 +199,9 @@ const assertions = [
   [/<meta property="og:image:height" content="630">/, "OpenGraph image height"],
   [/<meta name="twitter:card" content="summary_large_image">/, "Twitter card"],
   [/<script type="application\/ld\+json">\{/, "JSON-LD"],
+  [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
+  [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
+  [/Nuestro agente IA responderá al instante/, "agent assistance explanation"],
   [/href="mailto:saltacodear@gmail\.com"/, "email contact path"],
   [/href="https:\/\/wa\.me\/5493875296587/, "WhatsApp contact path"],
 ];
@@ -330,11 +350,26 @@ if (!sitemap.includes("<loc>https://saltacode.com.ar/</loc>")) {
   throw new Error("sitemap.xml does not contain the canonical home URL.");
 }
 
-if (homeExecutableScripts.length !== 1) {
-  throw new Error("The homepage must ship exactly one executable script for scroll navigation.");
+if (homeExecutableScripts.length !== 2) {
+  throw new Error("The homepage must ship only the deferred hero loader and scroll navigation scripts.");
 }
 
-const [, navigationScriptAttributes, navigationScriptSource] = homeExecutableScripts[0];
+const externalModuleScripts = homeExecutableScripts.filter((script) => /\bsrc=/.test(script[1]));
+const inlineModuleScripts = homeExecutableScripts.filter((script) => !/\bsrc=/.test(script[1]));
+if (externalModuleScripts.length !== 1 || inlineModuleScripts.length !== 1) {
+  throw new Error("The homepage script split must remain one external hero loader plus one inline controller.");
+}
+
+const [, heroScriptAttributes, heroScriptSource] = externalModuleScripts[0];
+if (
+  !/\btype="module"/.test(heroScriptAttributes) ||
+  !/\bsrc="\/_astro\/[^\"]+\.js"/.test(heroScriptAttributes) ||
+  heroScriptSource.trim() !== ""
+) {
+  throw new Error("The hero animation loader must remain one fingerprinted ES module.");
+}
+
+const [, navigationScriptAttributes, navigationScriptSource] = inlineModuleScripts[0];
 if (
   !/\btype="module"/.test(navigationScriptAttributes) ||
   /\bsrc=/.test(navigationScriptAttributes) ||

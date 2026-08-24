@@ -4,6 +4,50 @@ import { brandImages } from "../data/image-assets";
 ---
 
 <section class="hero" aria-labelledby="hero-title">
+  <div class="hero-network" data-hero-motion aria-hidden="true">
+    <svg viewBox="0 0 1600 760" width="1600" height="760" focusable="false">
+      <path
+        data-orbit-path="wide"
+        class="hero-orbit-path"
+        d="M 120 110 C 310 650 580 650 800 580 C 1020 650 1290 650 1480 110"
+      ></path>
+      <path
+        data-orbit-path="middle"
+        class="hero-orbit-path"
+        d="M 275 145 C 430 500 620 525 800 500 C 980 525 1170 500 1325 145"
+      ></path>
+      <path
+        data-orbit-path="lower"
+        class="hero-orbit-path"
+        d="M 160 660 C 450 435 640 425 800 455 C 960 425 1150 435 1440 660"
+      ></path>
+    </svg>
+    <span
+      class="hero-orbit-node"
+      data-orbit-node="wide"
+      data-duration="20"
+      data-delay="-3"
+    ></span>
+    <span
+      class="hero-orbit-node"
+      data-orbit-node="wide"
+      data-duration="20"
+      data-delay="-13"
+    ></span>
+    <span
+      class="hero-orbit-node"
+      data-orbit-node="middle"
+      data-duration="16"
+      data-delay="-7"
+    ></span>
+    <span
+      class="hero-orbit-node"
+      data-orbit-node="lower"
+      data-duration="22"
+      data-delay="-5"
+    ></span>
+  </div>
+
   <div class="container hero-inner">
     <Image
       class="hero-mark"
@@ -22,19 +66,55 @@ import { brandImages } from "../data/image-assets";
       empresas que quieren ir más lejos.
     </p>
 
-    <div class="agent-preview" aria-label="Vista previa del futuro asistente con inteligencia artificial">
-      <div>
-        <span class="eyebrow">Asistente con IA · Próximamente</span>
-        <p>¿Qué necesitás saber sobre SaltaCode o nuestros servicios?</p>
-      </div>
-      <a class="button" href="#contacto">Consultar</a>
+    <div
+      class="agent-preview"
+      role="group"
+      aria-label="Acceso a consultas para el futuro asistente con inteligencia artificial"
+      aria-describedby="agent-helper"
+    >
+      <span class="agent-symbol" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
+          <path d="M12 3.5c.7 4.4 2.1 5.8 6.5 6.5-4.4.7-5.8 2.1-6.5 6.5-.7-4.4-2.1-5.8-6.5-6.5 4.4-.7 5.8-2.1 6.5-6.5Z"></path>
+          <path d="M18.4 15.8c.3 1.8.9 2.4 2.6 2.7-1.7.3-2.3.9-2.6 2.5-.3-1.6-.9-2.2-2.6-2.5 1.7-.3 2.3-.9 2.6-2.7Z"></path>
+        </svg>
+      </span>
+      <span class="agent-placeholder">Escribí tu consulta para nuestro agente...</span>
+      <a class="agent-send" href="#contacto" aria-label="Consultar con un experto de SaltaCode">
+        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" focusable="false">
+          <path d="m4 5 16-2-6.8 17-2.4-6.8L4 10.5 4 5Zm7.2 6.3 5-5.1-8.8 2 4 1.6-.2 1.5Z"></path>
+        </svg>
+      </a>
     </div>
+    <p class="agent-helper" id="agent-helper">
+      Nuestro agente IA responderá al instante sobre servicios, procesos, tecnologías y cómo
+      podemos ayudarte.
+    </p>
 
     <nav class="quick-links" aria-label="Accesos rápidos a servicios">
-      <a href="#software-factory">Software a medida</a>
-      <a href="#consultoria-it">Consultoría IT</a>
-      <a href="#soluciones-saas">Soluciones SaaS</a>
-      <a href="#outsourcing">Equipos IT</a>
+      <a href="#software-factory">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"></path>
+        </svg>
+        Software a medida
+      </a>
+      <a href="#consultoria-it">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M16 8h6M19 5v6M17 14h3a3 3 0 0 1 3 3v4"></path>
+        </svg>
+        Consultoría IT
+      </a>
+      <a href="#soluciones-saas">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M7 18H5a4 4 0 0 1-.4-8A7 7 0 0 1 18 8.5 4.8 4.8 0 0 1 1 9.5A4.3 4.3 0 0 1 18.5 18H7Z"></path>
+        </svg>
+        Soluciones SaaS
+      </a>
+      <a href="#outsourcing">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h8M8 16.5h8"></path>
+        </svg>
+        Equipos IT
+      </a>
     </nav>
 
     <ul class="service-summary" aria-label="Principales servicios">
@@ -65,3 +145,22 @@ import { brandImages } from "../data/image-assets";
     </ul>
   </div>
 </section>
+
+<script>
+  const motionRoot = document.querySelector<HTMLElement>("[data-hero-motion]");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  if (motionRoot && !reducedMotion.matches) {
+    const startMotion = async () => {
+      if (!motionRoot.isConnected || reducedMotion.matches) return;
+      const { startHeroMotion } = await import("../scripts/hero-motion");
+      if (!reducedMotion.matches) startHeroMotion(motionRoot);
+    };
+
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(startMotion, { timeout: 1_200 });
+    } else {
+      globalThis.setTimeout(startMotion, 0);
+    }
+  }
+</script>

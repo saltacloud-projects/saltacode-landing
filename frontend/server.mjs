@@ -52,7 +52,7 @@ const securityHeaders = {
     "frame-ancestors 'none'",
     "img-src 'self' data:",
     "object-src 'none'",
-    `script-src 'sha256-${inlineScriptHash}'`,
+    `script-src 'self' 'sha256-${inlineScriptHash}'`,
     "style-src 'self'",
     "upgrade-insecure-requests",
   ].join("; "),

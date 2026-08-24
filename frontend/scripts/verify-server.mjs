@@ -65,13 +65,27 @@ try {
     throw new Error("The home page does not contain its scroll navigation controller.");
   }
   const expectedScriptHash = createHash("sha256").update(inlineModuleScript).digest("base64");
+  const externalModuleSource = homeMarkup.match(
+    /<script\b(?=[^>]*type="module")(?=[^>]*\bsrc="([^"]+)")[^>]*><\/script>/,
+  )?.[1];
+  if (!externalModuleSource) {
+    throw new Error("The home page does not contain its deferred hero animation loader.");
+  }
   if (
     !contentSecurityPolicy.includes("frame-ancestors 'none'") ||
-    !contentSecurityPolicy.includes(`script-src 'sha256-${expectedScriptHash}'`) ||
+    !contentSecurityPolicy.includes(`script-src 'self' 'sha256-${expectedScriptHash}'`) ||
     contentSecurityPolicy.includes("'unsafe-inline'") ||
     contentSecurityPolicy.includes("'unsafe-eval'")
   ) {
     throw new Error("Security headers are missing from the home page.");
+  }
+
+  const externalModule = await fetch(`${baseUrl}${externalModuleSource}`);
+  if (
+    externalModule.status !== 200 ||
+    !externalModule.headers.get("content-type")?.startsWith("text/javascript")
+  ) {
+    throw new Error("The fingerprinted hero animation loader is not served as JavaScript.");
   }
 
   const legacyQuery = "utm_source=legacy&encoded=%2B%2F%3F&space=one+two&empty=&repeat=one&repeat=two";

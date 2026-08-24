@@ -39,13 +39,14 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 1 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 2 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline plus isolated attribution of the agent-first hero animation. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
-| Resource or scenario | Version 1 limit | Gate |
+| Resource or scenario | Version 2 limit | Gate |
 |---|---:|---|
-| Generated home HTML | <= 20 KiB raw | Deterministic build assertion |
+| Generated home HTML | <= 22 KiB raw | Deterministic build assertion |
 | Total emitted CSS | <= 15 KiB raw | Deterministic build assertion |
-| Total executable JavaScript | <= 1 KiB raw | Deterministic build assertion |
+| Initial executable JavaScript | <= 2.5 KiB raw | Deterministic build assertion |
+| Total executable JavaScript | <= 12 KiB raw | Deterministic build assertion |
 | Emitted webfonts | 0 bytes | Deterministic build assertion |
 | Social preview image | <= 100 KiB raw | Deterministic build assertion |
 | Cold initial-page transfer | <= 125 KiB encoded | Repeatable browser lab |
@@ -53,7 +54,7 @@ Version 1 of the provisional local budgets is based on the repeatable 2026-08-24
 
 The browser-lab gates require consistent viewport, network, CPU, cache state, route, and run count. Record the median and raw runs. Lighthouse scores, public-origin compression and cache behavior, and 75th-percentile field data are separate evidence and must still be verified.
 
-The JavaScript allowance is reserved for the accessible homepage navigation reveal controller. It must remain a single CSP-hashed ES module; `unsafe-inline`, `unsafe-eval`, and executable scripts on the 404 route remain prohibited.
+The initial JavaScript allowance covers the CSP-hashed navigation controller and the fingerprinted hero loader. Motion mini and the orbit controller stay in one separate dynamic chunk requested after browser idle and are not requested when reduced motion is preferred. `unsafe-inline`, `unsafe-eval`, and executable scripts on the 404 route remain prohibited.
 
 Budget changes require measured evidence and review. Never raise a limit only to make CI pass; first attribute the regression and either remove it or document the reviewed tradeoff.
 
