@@ -1,6 +1,6 @@
 ---
-import { Image } from "astro:assets";
 import { brandImages } from "../data/image-assets";
+import ThemeImage from "./ThemeImage.astro";
 
 interface Props {
   homePath?: "" | "/";
@@ -15,8 +15,8 @@ const year = new Date().getFullYear();
   <div class="container footer-grid">
     <div>
       <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, volver al inicio">
-        <Image
-          src={brandImages.mark.onLight}
+        <ThemeImage
+          variants={brandImages.mark}
           width={34}
           alt=""
           loading="lazy"

@@ -39,14 +39,14 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 2 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline plus isolated attribution of the agent-first hero animation. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 3 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline plus isolated attribution of the agent-first hero animation and the complete light/dark/system theme system. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
-| Resource or scenario | Version 2 limit | Gate |
+| Resource or scenario | Version 3 limit | Gate |
 |---|---:|---|
-| Generated home HTML | <= 22 KiB raw | Deterministic build assertion |
-| Total emitted CSS | <= 15 KiB raw | Deterministic build assertion |
-| Initial executable JavaScript | <= 2.5 KiB raw | Deterministic build assertion |
-| Total executable JavaScript | <= 12 KiB raw | Deterministic build assertion |
+| Generated home HTML | <= 27 KiB raw | Deterministic build assertion |
+| Total emitted CSS | <= 18 KiB raw | Deterministic build assertion |
+| Initial executable JavaScript | <= 5 KiB raw | Deterministic build assertion |
+| Total executable JavaScript | <= 14 KiB raw | Deterministic build assertion |
 | Emitted webfonts | 0 bytes | Deterministic build assertion |
 | Social preview image | <= 100 KiB raw | Deterministic build assertion |
 | Cold initial-page transfer | <= 125 KiB encoded | Repeatable browser lab |
@@ -54,7 +54,11 @@ Version 2 of the provisional local budgets is based on the repeatable 2026-08-24
 
 The browser-lab gates require consistent viewport, network, CPU, cache state, route, and run count. Record the median and raw runs. Lighthouse scores, public-origin compression and cache behavior, and 75th-percentile field data are separate evidence and must still be verified.
 
-The initial JavaScript allowance covers the CSP-hashed navigation controller and the fingerprinted hero loader. Motion mini and the orbit controller stay in one separate dynamic chunk requested after browser idle and are not requested when reduced motion is preferred. `unsafe-inline`, `unsafe-eval`, and executable scripts on the 404 route remain prohibited.
+The reviewed theme delta is +4,681 bytes of raw home HTML, +2,834 bytes of emitted CSS, and +1,927 bytes of initial and total executable JavaScript versus the circuit-hero baseline. It covers three explicit accessible theme choices, the pre-paint system/saved-preference bootstrap, duplicate-download prevention for theme images, optimized light/dark image source metadata, cross-tab/system synchronization, and the shared page-shell controller. The limits retain 1,747 bytes of HTML, 466 bytes of CSS, 1,167 bytes of initial JavaScript, and 2,082 bytes of total JavaScript headroom over the measured build.
+
+The 2026-08-24 post-theme mobile browser lab used Chrome 150 at 390x844, 150 ms latency, 1.6 Mbps download, 750 Kbps upload, 4x CPU throttling, disabled cache, and three cold runs per explicit theme. Light mode recorded 127,857 bytes in every run, 588/596/604 ms LCP, 33/35/44 ms TBT, and 0 CLS; dark mode recorded 125,289 bytes in every run, 596/600/608 ms LCP, 29/33/39 ms TBT, and 0 CLS. Every run used only the selected image variants, had no horizontal overflow or runtime exceptions, and passed the provisional cold initial-transfer gate. Production compression, field data, and Lighthouse remain separate release evidence.
+
+The initial JavaScript allowance covers the CSP-hashed pre-paint theme bootstrap, shared theme/navigation controller, and fingerprinted hero loader. Motion mini and the circuit controller stay in one separate dynamic chunk requested after browser idle and are not requested when reduced motion is preferred. The 404 route may execute only the same CSP-hashed theme bootstrap and shared controller required to honor the persisted preference; `unsafe-inline` and `unsafe-eval` remain prohibited everywhere.
 
 Budget changes require measured evidence and review. Never raise a limit only to make CI pass; first attribute the regression and either remove it or document the reviewed tradeoff.
 

@@ -1,6 +1,6 @@
 ---
-import { Image } from "astro:assets";
 import { clients } from "../data/image-assets";
+import ThemeImage from "./ThemeImage.astro";
 ---
 
 <section class="section clients legacy-fragment-target" id="clientes" aria-labelledby="clients-title">
@@ -13,8 +13,8 @@ import { clients } from "../data/image-assets";
   <ul class="container client-list" aria-label="Clientes de SaltaCode">
     {clients.map((client) => (
       <li>
-        <Image
-          src={client.logo.onLight}
+        <ThemeImage
+          variants={client.logo}
           width={180}
           height={80}
           alt={`Logo de ${client.name}`}

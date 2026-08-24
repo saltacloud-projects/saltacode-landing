@@ -77,6 +77,9 @@ const structuredData = {
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#ffffff" />
+    <script is:inline data-theme-bootstrap>
+      (()=>{let p="system";try{const s=localStorage.getItem("saltacode-theme");if(s==="light"||s==="dark")p=s}catch{}const t=p==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p,r=document.documentElement;r.dataset.theme=t;r.dataset.themePreference=p;r.style.colorScheme=t;document.querySelector('meta[name="theme-color"]')?.setAttribute("content",t==="dark"?"#111016":"#ffffff");const i=e=>{const s=t==="dark"?e.dataset.themeSrcDark:e.dataset.themeSrcLight;if(s)e.src=s},a=n=>{if(n.nodeType!==1)return;if(n.matches("[data-theme-image]"))i(n);n.querySelectorAll("[data-theme-image]").forEach(i)},o=new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(a)));o.observe(r,{childList:true,subtree:true});addEventListener("DOMContentLoaded",()=>o.disconnect(),{once:true})})();
+    </script>
     {indexable && (
       <script type="application/ld+json" is:inline set:html={JSON.stringify(structuredData)} />
     )}
@@ -84,5 +87,8 @@ const structuredData = {
   <body>
     <a class="skip-link" href="#contenido">Saltar al contenido principal</a>
     <slot />
+    <script>
+      import "../scripts/theme-controller";
+    </script>
   </body>
 </html>

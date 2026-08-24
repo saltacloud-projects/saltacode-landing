@@ -1,0 +1,41 @@
+---
+import { getImage } from "astro:assets";
+import type { SurfaceImageVariants } from "../data/image-assets";
+
+interface Props {
+  variants: SurfaceImageVariants;
+  width: number;
+  height?: number;
+  alt: string;
+  class?: string;
+  loading?: "eager" | "lazy";
+  decoding?: "sync" | "async" | "auto";
+}
+
+const {
+  variants,
+  width,
+  height,
+  alt,
+  class: className,
+  loading = "lazy",
+  decoding = "async",
+} = Astro.props;
+const transform = height === undefined ? { width } : { width, height };
+const [lightImage, darkImage] = await Promise.all([
+  getImage({ src: variants.onLight, ...transform }),
+  getImage({ src: variants.onDark, ...transform }),
+]);
+---
+
+<img
+  data-theme-image
+  data-theme-src-light={lightImage.src}
+  data-theme-src-dark={darkImage.src}
+  width={lightImage.attributes.width}
+  height={lightImage.attributes.height}
+  class={className}
+  alt={alt}
+  loading={loading}
+  decoding={decoding}
+/>

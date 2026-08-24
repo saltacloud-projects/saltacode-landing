@@ -1,0 +1,42 @@
+<fieldset class="theme-switcher" data-theme-switcher>
+  <legend class="visually-hidden">Tema de color</legend>
+
+  <label class="theme-choice" title="Tema claro">
+    <input type="radio" name="theme" value="light" data-theme-choice autocomplete="off" />
+    <span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="3.5"></circle>
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+      </svg>
+      <span class="visually-hidden">Claro</span>
+    </span>
+  </label>
+
+  <label class="theme-choice" title="Tema oscuro">
+    <input type="radio" name="theme" value="dark" data-theme-choice autocomplete="off" />
+    <span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M20.2 15.2A8.5 8.5 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z"></path>
+      </svg>
+      <span class="visually-hidden">Oscuro</span>
+    </span>
+  </label>
+
+  <label class="theme-choice" title="Usar tema del sistema">
+    <input
+      type="radio"
+      name="theme"
+      value="system"
+      data-theme-choice
+      autocomplete="off"
+      checked
+    />
+    <span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="3" y="4" width="18" height="13" rx="2"></rect>
+        <path d="M8 21h8M12 17v4"></path>
+      </svg>
+      <span class="visually-hidden">Sistema</span>
+    </span>
+  </label>
+</fieldset>

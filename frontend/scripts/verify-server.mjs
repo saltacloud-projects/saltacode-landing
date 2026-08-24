@@ -58,34 +58,39 @@ try {
   }
   const contentSecurityPolicy = home.headers.get("content-security-policy") ?? "";
   const homeMarkup = await home.text();
-  const inlineModuleScript = homeMarkup.match(
-    /<script\b(?=[^>]*type="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/,
-  )?.[1];
-  if (!inlineModuleScript) {
-    throw new Error("The home page does not contain its scroll navigation controller.");
+  const executableScripts = [
+    ...homeMarkup.matchAll(/<script\b(?![^>]*type="application\/ld\+json")([^>]*)>([\s\S]*?)<\/script>/g),
+  ];
+  const inlineScripts = executableScripts.filter((script) => !/\bsrc=/.test(script[1]));
+  if (inlineScripts.length === 0 || !homeMarkup.includes("data-theme-bootstrap")) {
+    throw new Error("The home page does not contain its pre-paint theme bootstrap.");
   }
-  const expectedScriptHash = createHash("sha256").update(inlineModuleScript).digest("base64");
-  const externalModuleSource = homeMarkup.match(
-    /<script\b(?=[^>]*type="module")(?=[^>]*\bsrc="([^"]+)")[^>]*><\/script>/,
-  )?.[1];
-  if (!externalModuleSource) {
-    throw new Error("The home page does not contain its deferred hero animation loader.");
+  const expectedScriptHashes = inlineScripts.map((script) => {
+    return createHash("sha256").update(script[2]).digest("base64");
+  });
+  const externalModuleSources = executableScripts
+    .map((script) => script[1].match(/\bsrc="([^"]+)"/)?.[1])
+    .filter(Boolean);
+  if (externalModuleSources.length === 0) {
+    throw new Error("The home page does not contain its interactive module controllers.");
   }
   if (
     !contentSecurityPolicy.includes("frame-ancestors 'none'") ||
-    !contentSecurityPolicy.includes(`script-src 'self' 'sha256-${expectedScriptHash}'`) ||
+    !expectedScriptHashes.every((hash) => contentSecurityPolicy.includes(`'sha256-${hash}'`)) ||
     contentSecurityPolicy.includes("'unsafe-inline'") ||
     contentSecurityPolicy.includes("'unsafe-eval'")
   ) {
     throw new Error("Security headers are missing from the home page.");
   }
 
-  const externalModule = await fetch(`${baseUrl}${externalModuleSource}`);
-  if (
-    externalModule.status !== 200 ||
-    !externalModule.headers.get("content-type")?.startsWith("text/javascript")
-  ) {
-    throw new Error("The fingerprinted hero animation loader is not served as JavaScript.");
+  for (const externalModuleSource of externalModuleSources) {
+    const externalModule = await fetch(`${baseUrl}${externalModuleSource}`);
+    if (
+      externalModule.status !== 200 ||
+      !externalModule.headers.get("content-type")?.startsWith("text/javascript")
+    ) {
+      throw new Error(`The fingerprinted controller ${externalModuleSource} is not served as JavaScript.`);
+    }
   }
 
   const legacyQuery = "utm_source=legacy&encoded=%2B%2F%3F&space=one+two&empty=&repeat=one&repeat=two";
@@ -103,8 +108,24 @@ try {
   }
 
   const missing = await fetch(`${baseUrl}/definitely-missing`);
-  if (missing.status !== 404 || !(await missing.text()).includes("Página no encontrada")) {
+  const missingMarkup = await missing.text();
+  if (missing.status !== 404 || !missingMarkup.includes("Página no encontrada")) {
     throw new Error("Unknown routes must return the branded 404 page with status 404.");
+  }
+  const missingCsp = missing.headers.get("content-security-policy") ?? "";
+  const missingInlineScripts = [
+    ...missingMarkup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g),
+  ].filter((script) => {
+    return !/\bsrc=/.test(script[1]) && !/\btype="application\/ld\+json"/.test(script[1]);
+  });
+  if (
+    missingInlineScripts.length === 0 ||
+    !missingInlineScripts.every((script) => {
+      const hash = createHash("sha256").update(script[2]).digest("base64");
+      return missingCsp.includes(`'sha256-${hash}'`);
+    })
+  ) {
+    throw new Error("The branded 404 theme bootstrap is not covered by CSP hashes.");
   }
 
   const api = await fetch(`${baseUrl}/api/chat`);

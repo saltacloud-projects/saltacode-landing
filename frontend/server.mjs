@@ -10,16 +10,27 @@ const host = process.env.HOST ?? "0.0.0.0";
 const moduleDirectory = fileURLToPath(new URL(".", import.meta.url));
 const staticRoot = resolve(process.env.STATIC_ROOT ?? resolve(moduleDirectory, "dist"));
 
-const indexMarkup = await readFile(resolve(staticRoot, "index.html"), "utf8");
-const inlineModuleScripts = [
-  ...indexMarkup.matchAll(
-    /<script\b(?=[^>]*type="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g,
+function inlineExecutableSources(markup) {
+  return [...markup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+    .filter(([, attributes]) => {
+      return !/\bsrc=/.test(attributes) && !/\btype="application\/ld\+json"/.test(attributes);
+    })
+    .map((match) => match[2]);
+}
+
+const staticPageMarkup = await Promise.all(
+  ["index.html", "404.html"].map((file) => readFile(resolve(staticRoot, file), "utf8")),
+);
+const inlineScriptHashes = [
+  ...new Set(
+    staticPageMarkup
+      .flatMap(inlineExecutableSources)
+      .map((source) => createHash("sha256").update(source).digest("base64")),
   ),
 ];
-if (inlineModuleScripts.length !== 1) {
-  throw new Error("The static homepage must contain exactly one inline module script.");
+if (inlineScriptHashes.length === 0) {
+  throw new Error("Static pages must contain a CSP-hashed theme bootstrap.");
 }
-const inlineScriptHash = createHash("sha256").update(inlineModuleScripts[0][1]).digest("base64");
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error("PORT must be an integer between 1 and 65535.");
@@ -52,7 +63,7 @@ const securityHeaders = {
     "frame-ancestors 'none'",
     "img-src 'self' data:",
     "object-src 'none'",
-    `script-src 'self' 'sha256-${inlineScriptHash}'`,
+    `script-src 'self' ${inlineScriptHashes.map((hash) => `'sha256-${hash}'`).join(" ")}`,
     "style-src 'self'",
     "upgrade-insecure-requests",
   ].join("; "),

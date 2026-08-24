@@ -12,10 +12,10 @@ const assetManifest = JSON.parse(
 );
 
 const BUILD_BUDGETS = Object.freeze({
-  indexHtmlBytes: 22 * 1024,
-  cssBytes: 15 * 1024,
-  initialExecutableJavaScriptBytes: 2.5 * 1024,
-  totalExecutableJavaScriptBytes: 12 * 1024,
+  indexHtmlBytes: 27 * 1024,
+  cssBytes: 18 * 1024,
+  initialExecutableJavaScriptBytes: 5 * 1024,
+  totalExecutableJavaScriptBytes: 14 * 1024,
   socialImageBytes: 100 * 1024,
   webfontBytes: 0,
 });
@@ -199,6 +199,10 @@ const assertions = [
   [/<meta property="og:image:height" content="630">/, "OpenGraph image height"],
   [/<meta name="twitter:card" content="summary_large_image">/, "Twitter card"],
   [/<script type="application\/ld\+json">\{/, "JSON-LD"],
+  [/data-theme-bootstrap/, "pre-paint theme bootstrap"],
+  [/value="light" data-theme-choice/, "light theme choice"],
+  [/value="dark" data-theme-choice/, "dark theme choice"],
+  [/value="system" data-theme-choice/, "system theme choice"],
   [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
   [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
   [/Nuestro agente IA responderá al instante/, "agent assistance explanation"],
@@ -209,6 +213,17 @@ const assertions = [
 for (const [pattern, label] of assertions) {
   if (!pattern.test(index)) {
     throw new Error(`Missing required build output: ${label}`);
+  }
+}
+
+const themeImages = [...index.matchAll(/<img\b(?=[^>]*\bdata-theme-image\b)[^>]*>/g)];
+if (themeImages.length !== EXPECTED_CLIENTS.length + 3) {
+  throw new Error("Homepage theme images must include every client logo and the three brand marks.");
+}
+for (const [image] of themeImages) {
+  if (!/\bdata-theme-src-light="\/_astro\/[^"]+"/.test(image) ||
+      !/\bdata-theme-src-dark="\/_astro\/[^"]+"/.test(image)) {
+    throw new Error("Every theme image must provide optimized light and dark sources.");
   }
 }
 
@@ -350,14 +365,14 @@ if (!sitemap.includes("<loc>https://saltacode.com.ar/</loc>")) {
   throw new Error("sitemap.xml does not contain the canonical home URL.");
 }
 
-if (homeExecutableScripts.length !== 2) {
-  throw new Error("The homepage must ship only the deferred hero loader and scroll navigation scripts.");
+if (homeExecutableScripts.length !== 3) {
+  throw new Error("The homepage must ship only the theme bootstrap, page shell, and deferred hero loader.");
 }
 
 const externalModuleScripts = homeExecutableScripts.filter((script) => /\bsrc=/.test(script[1]));
-const inlineModuleScripts = homeExecutableScripts.filter((script) => !/\bsrc=/.test(script[1]));
-if (externalModuleScripts.length !== 1 || inlineModuleScripts.length !== 1) {
-  throw new Error("The homepage script split must remain one external hero loader plus one inline controller.");
+const inlineScripts = homeExecutableScripts.filter((script) => !/\bsrc=/.test(script[1]));
+if (externalModuleScripts.length !== 1 || inlineScripts.length !== 2) {
+  throw new Error("The homepage script split must remain one external hero loader plus two CSP-hashed controllers.");
 }
 
 const [, heroScriptAttributes, heroScriptSource] = externalModuleScripts[0];
@@ -369,18 +384,29 @@ if (
   throw new Error("The hero animation loader must remain one fingerprinted ES module.");
 }
 
-const [, navigationScriptAttributes, navigationScriptSource] = inlineModuleScripts[0];
+const themeBootstrap = inlineScripts.find((script) => /\bdata-theme-bootstrap\b/.test(script[1]));
+const pageShell = inlineScripts.find((script) => /\btype="module"/.test(script[1]));
+if (!themeBootstrap || !pageShell || themeBootstrap[2].trim() === "") {
+  throw new Error("The theme bootstrap and shared page shell must both remain inline.");
+}
+
+const [, pageShellAttributes, pageShellSource] = pageShell;
 if (
-  !/\btype="module"/.test(navigationScriptAttributes) ||
-  /\bsrc=/.test(navigationScriptAttributes) ||
-  navigationScriptSource.trim() === ""
+  !/\btype="module"/.test(pageShellAttributes) ||
+  /\bsrc=/.test(pageShellAttributes) ||
+  pageShellSource.trim() === ""
 ) {
-  throw new Error("The scroll navigation controller must be one inline ES module.");
+  throw new Error("The theme and scroll controller must be one inline ES module.");
 }
 
 const notFoundExecutableScripts = extractExecutableScripts(notFound);
-if (notFoundExecutableScripts.length !== 0) {
-  throw new Error("The 404 route must not ship the homepage scroll navigation controller.");
+if (
+  notFoundExecutableScripts.length !== 2 ||
+  !notFoundExecutableScripts.some((script) => /\bdata-theme-bootstrap\b/.test(script[1])) ||
+  !notFoundExecutableScripts.some((script) => /\btype="module"/.test(script[1])) ||
+  notFoundExecutableScripts.some((script) => /\bsrc=/.test(script[1]))
+) {
+  throw new Error("The 404 route must ship only the CSP-hashed theme bootstrap and page shell.");
 }
 
 console.log(

@@ -1,6 +1,6 @@
 ---
-import { Image } from "astro:assets";
 import { brandImages } from "../data/image-assets";
+import ThemeImage from "./ThemeImage.astro";
 ---
 
 <section class="hero" aria-labelledby="hero-title">
@@ -60,9 +60,9 @@ import { brandImages } from "../data/image-assets";
   </div>
 
   <div class="container hero-inner">
-    <Image
+    <ThemeImage
       class="hero-mark"
-      src={brandImages.mark.onLight}
+      variants={brandImages.mark}
       width={116}
       alt=""
       loading="eager"
