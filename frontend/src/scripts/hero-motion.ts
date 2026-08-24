@@ -8,12 +8,12 @@ interface PlaybackControl {
 export function startHeroMotion(motionRoot: HTMLElement): void {
   const controls: PlaybackControl[] = [];
 
-  motionRoot.querySelectorAll<HTMLElement>("[data-orbit-node]").forEach((node) => {
-    const orbitName = node.dataset.orbitNode;
-    const orbitPath = motionRoot.querySelector<SVGPathElement>(
-      `[data-orbit-path="${orbitName}"]`,
+  motionRoot.querySelectorAll<HTMLElement>("[data-circuit-node]").forEach((node) => {
+    const circuitName = node.dataset.circuitNode;
+    const circuitPath = motionRoot.querySelector<SVGPathElement>(
+      `[data-circuit-path="${circuitName}"]`,
     );
-    const pathData = orbitPath?.getAttribute("d");
+    const pathData = circuitPath?.getAttribute("d");
     if (!pathData) return;
 
     node.style.offsetPath = `path("${pathData}")`;
@@ -31,7 +31,7 @@ export function startHeroMotion(motionRoot: HTMLElement): void {
     );
   });
 
-  motionRoot.querySelectorAll<SVGPathElement>(".hero-orbit-path").forEach((path, index) => {
+  motionRoot.querySelectorAll<SVGPathElement>(".hero-circuit-path").forEach((path, index) => {
     controls.push(
       animate(
         path,

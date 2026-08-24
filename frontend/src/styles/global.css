@@ -321,6 +321,30 @@ ul {
   pointer-events: none;
 }
 
+.hero::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 46% 54% at 50% 42%,
+      #fcfcff 0 46%,
+      rgb(252 252 255 / 94%) 61%,
+      rgb(252 252 255 / 42%) 80%,
+      transparent 100%
+    ),
+    linear-gradient(
+      90deg,
+      #fcfcff 0,
+      rgb(252 252 255 / 88%) 5%,
+      transparent 14% 86%,
+      rgb(252 252 255 / 88%) 95%,
+      #fcfcff 100%
+    );
+  content: "";
+  pointer-events: none;
+}
+
 .hero-network {
   position: absolute;
   z-index: 1;
@@ -337,18 +361,20 @@ ul {
   overflow: visible;
 }
 
-.hero-orbit-path {
+.hero-circuit-path {
   fill: none;
   opacity: 0.34;
   stroke: rgb(105 67 244 / 36%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
   stroke-width: 1.15;
   vector-effect: non-scaling-stroke;
 }
 
-.hero-orbit-node {
+.hero-circuit-node {
   position: absolute;
-  top: var(--node-top, 38%);
-  left: var(--node-left, 18%);
+  top: var(--node-top, 20.4%);
+  left: var(--node-left, 14.4%);
   width: 9px;
   height: 9px;
   border: 2px solid rgb(255 255 255 / 88%);
@@ -358,27 +384,35 @@ ul {
     0 0 8px 3px rgb(103 65 245 / 58%),
     0 0 22px 7px rgb(103 65 245 / 20%);
   opacity: 0.8;
+  offset-anchor: center;
+  offset-rotate: 0deg;
   transform: translate(-50%, -50%);
 }
 
-.hero-orbit-node:nth-of-type(2) {
-  --node-top: 29%;
-  --node-left: 84%;
+.hero-circuit-node:nth-of-type(2) {
+  --node-top: 20.4%;
+  --node-left: 85.6%;
 }
 
-.hero-orbit-node:nth-of-type(3) {
-  --node-top: 61%;
-  --node-left: 28%;
+.hero-circuit-node:nth-of-type(3) {
+  --node-top: 67.1%;
+  --node-left: 22.5%;
 }
 
-.hero-orbit-node:nth-of-type(4) {
-  --node-top: 72%;
-  --node-left: 79%;
+.hero-circuit-node:nth-of-type(4) {
+  --node-top: 94.7%;
+  --node-left: 82.5%;
 }
 
-.hero-network[data-motion-active="true"] .hero-orbit-node {
+.hero-circuit-node:nth-of-type(5) {
+  --node-top: 32.9%;
+  --node-left: 30%;
+}
+
+.hero-network[data-motion-active="true"] .hero-circuit-node {
   top: 0;
   left: 0;
+  transform: none;
 }
 
 .hero-inner {
@@ -1085,7 +1119,7 @@ ul {
     transition-duration: 0.01ms !important;
   }
 
-  .hero-orbit-node {
+  .hero-circuit-node {
     box-shadow: 0 0 10px 2px rgb(103 65 245 / 28%);
   }
 }
