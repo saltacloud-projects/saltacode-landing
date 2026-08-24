@@ -8,6 +8,7 @@ import softwareImage from "../assets/services/software-factory.webp";
 const services = [
   {
     id: "software-factory",
+    legacyAlias: null,
     title: "Software Factory",
     description:
       "Desarrollamos soluciones a medida que ayudan a las empresas a optimizar sus procesos y alcanzar sus objetivos mediante el uso de la tecnología.",
@@ -22,6 +23,7 @@ const services = [
   },
   {
     id: "outsourcing",
+    legacyAlias: null,
     title: "Outsourcing",
     description:
       "Proveemos equipos de desarrollo especializados para empresas que buscan externalizar proyectos o complementar sus equipos internos.",
@@ -36,6 +38,7 @@ const services = [
   },
   {
     id: "consultoria-it",
+    legacyAlias: "it-consulting",
     title: "Consultoría IT",
     description:
       "Ofrecemos asesoramiento estratégico en arquitectura de software, selección tecnológica, implementación de sistemas y gestión eficiente de proyectos.",
@@ -50,6 +53,7 @@ const services = [
   },
   {
     id: "soluciones-saas",
+    legacyAlias: "saas-solutions",
     title: "Soluciones SaaS",
     description:
       "Desarrollamos soluciones SaaS escalables y flexibles, listas para usar y con mantenimiento continuo para garantizar su eficiencia.",
@@ -65,7 +69,8 @@ const services = [
 ];
 ---
 
-<section class="section services" id="servicios" aria-labelledby="services-title">
+<section class="section services legacy-fragment-target" id="servicios" aria-labelledby="services-title">
+  <span id="productsAndServices" class="legacy-fragment-alias" aria-hidden="true"></span>
   <div class="container section-heading centered">
     <p class="eyebrow">Servicios y productos</p>
     <h2 id="services-title">Soluciones tecnológicas integrales</h2>
@@ -77,7 +82,13 @@ const services = [
 
   <div class="container service-list">
     {services.map((service, index) => (
-      <article class:list={["service", { reverse: index % 2 === 1 }]} id={service.id}>
+      <article
+        class:list={["service", { reverse: index % 2 === 1, "legacy-fragment-target": service.legacyAlias }]}
+        id={service.id}
+      >
+        {service.legacyAlias && (
+          <span id={service.legacyAlias} class="legacy-fragment-alias" aria-hidden="true"></span>
+        )}
         <div class="service-media">
           <Picture
             src={service.image}

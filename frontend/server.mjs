@@ -127,13 +127,23 @@ async function handleRequest(request, response) {
     return;
   }
 
+  let requestUrl;
   let pathname;
   try {
-    pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+    requestUrl = new URL(request.url ?? "/", "http://localhost");
+    pathname = decodeURIComponent(requestUrl.pathname);
   } catch {
     response.statusCode = 400;
     response.setHeader("Content-Type", "text/plain; charset=utf-8");
     sendBody(request, response, "Bad Request\n");
+    return;
+  }
+
+  if (pathname === "/index.html") {
+    response.statusCode = 301;
+    response.setHeader("Cache-Control", "public, max-age=3600");
+    response.setHeader("Location", `/${requestUrl.search}`);
+    response.end();
     return;
   }
 

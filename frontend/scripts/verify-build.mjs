@@ -37,6 +37,41 @@ if ((index.match(/<h1(?:\s|>)/g) ?? []).length !== 1) {
   throw new Error("The landing page must render exactly one h1.");
 }
 
+const legacyFragmentAliases = [
+  ["productsAndServices", "servicios", "section"],
+  ["it-consulting", "consultoria-it", "article"],
+  ["saas-solutions", "soluciones-saas", "article"],
+  ["ourCustomers", "clientes", "section"],
+  ["aboutUs", "nosotros", "section"],
+  ["footer", "contacto", "section"],
+];
+
+for (const [alias, target, element] of legacyFragmentAliases) {
+  const aliasTags = index.match(new RegExp(`<span\\b[^>]*\\bid="${alias}"[^>]*>\\s*</span>`, "g")) ?? [];
+  if (aliasTags.length !== 1) {
+    throw new Error(`Legacy fragment #${alias} must have exactly one neutral alias target.`);
+  }
+
+  const aliasTag = aliasTags[0];
+  if (!/class="legacy-fragment-alias"/.test(aliasTag) || !/aria-hidden="true"/.test(aliasTag)) {
+    throw new Error(`Legacy fragment #${alias} must be hidden from assistive technology.`);
+  }
+  if (/\b(?:href|tabindex)=/.test(aliasTag)) {
+    throw new Error(`Legacy fragment #${alias} must not be interactive or focusable.`);
+  }
+
+  const mappedTarget = new RegExp(
+    `<${element}\\b[^>]*\\bid="${target}"[^>]*>\\s*<span\\b[^>]*\\bid="${alias}"`,
+  );
+  if (!mappedTarget.test(index)) {
+    throw new Error(`Legacy fragment #${alias} is not mapped to #${target}.`);
+  }
+}
+
+if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) {
+  throw new Error("The clients heading must use the conservative historical wording.");
+}
+
 if (!robots.includes("Allow: /") || !robots.includes("https://saltacode.com.ar/sitemap.xml")) {
   throw new Error("robots.txt does not expose the production sitemap.");
 }

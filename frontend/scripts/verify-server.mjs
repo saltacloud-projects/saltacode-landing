@@ -59,6 +59,20 @@ try {
     throw new Error("Security headers are missing from the home page.");
   }
 
+  const legacyQuery = "utm_source=legacy&encoded=%2B%2F%3F&space=one+two&empty=&repeat=one&repeat=two";
+  for (const method of ["GET", "HEAD"]) {
+    const legacyIndex = await fetch(`${baseUrl}/index.html?${legacyQuery}`, {
+      method,
+      redirect: "manual",
+    });
+    if (legacyIndex.status !== 301 || legacyIndex.headers.get("location") !== `/?${legacyQuery}`) {
+      throw new Error(`${method} /index.html must permanently redirect to / and preserve its query string.`);
+    }
+    if ((await legacyIndex.text()) !== "") {
+      throw new Error(`${method} /index.html redirect must not return a response body.`);
+    }
+  }
+
   const missing = await fetch(`${baseUrl}/definitely-missing`);
   if (missing.status !== 404 || !(await missing.text()).includes("Página no encontrada")) {
     throw new Error("Unknown routes must return the branded 404 page with status 404.");
@@ -89,7 +103,7 @@ try {
     throw new Error("HEAD requests must return headers without a body.");
   }
 
-  console.log("Verified health, real 404s, no API fallback, cache policy, security headers, and HEAD support.");
+  console.log("Verified health, index redirect, real 404s, no API fallback, cache policy, security headers, and HEAD support.");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolveExit) => {
