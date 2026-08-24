@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "assets:generate": "node scripts/generate-theme-assets.mjs",
+    "assets:check": "node scripts/generate-theme-assets.mjs --check",
     "dev": "astro dev",
     "build": "astro build",
     "check": "astro check",
-    "test": "pnpm run build && node scripts/verify-build.mjs && node scripts/verify-server.mjs",
+    "test": "pnpm run assets:check && pnpm run build && node scripts/verify-build.mjs && node scripts/verify-server.mjs",
     "preview": "astro preview"
   },
   "dependencies": {

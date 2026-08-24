@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 1,
+  "generator": "frontend/scripts/generate-theme-assets.mjs",
+  "themeContract": {
+    "onLight": "Use when the logo is rendered on a light surface.",
+    "onDark": "Use when the logo is rendered on a dark surface.",
+    "runtimeThemeSwitching": "Prepared but intentionally not implemented."
+  },
+  "assets": [
+    {
+      "id": "brand-mark",
+      "kind": "brand",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/brand/logo_nav_light.png",
+            "bytes": 108143,
+            "sha256": "e3e7202d53260694b2bf1f69cbefec34659f7fc8fd77151e8127f464744e926a",
+            "width": 1452,
+            "height": 1610
+          },
+          "output": {
+            "path": "src/assets/optimized/brand/mark-onLight.webp",
+            "bytes": 14308,
+            "sha256": "9196e358615e7e446095b85872d1f12153a57abfe1497e0cebdfec5f322d6d12",
+            "width": 256,
+            "height": 256
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/brand/logo_nav_dark.png",
+            "bytes": 108957,
+            "sha256": "49647fb421edcd9613df28bb0de91b74f5f5b5b5e0295341602a6c958661dd1e",
+            "width": 1452,
+            "height": 1610
+          },
+          "output": {
+            "path": "src/assets/optimized/brand/mark-onDark.webp",
+            "bytes": 14384,
+            "sha256": "6648b9edff5012f7f867585838c0b7786f4ae612ee8561f529729af26391b3fa",
+            "width": 256,
+            "height": 256
+          }
+        }
+      }
+    },
+    {
+      "id": "brand-lockup",
+      "kind": "brand",
+      "canvas": {
+        "width": 720,
+        "height": 288
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/brand/imagotipo_light.png",
+            "bytes": 62171,
+            "sha256": "12c184b1133105ae0d9d3d09900b2a21d66fe188dfe8b25caac2f0cb3856d478",
+            "width": 1496,
+            "height": 576
+          },
+          "output": {
+            "path": "src/assets/optimized/brand/lockup-onLight.webp",
+            "bytes": 26498,
+            "sha256": "d402d2d9589cd22673ee94ef0f8ee00adb7ad18d1b61cb9e8c4191512d1765dc",
+            "width": 720,
+            "height": 288
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/brand/imagotipo_dark.png",
+            "bytes": 61296,
+            "sha256": "4c7b13ed038c9a5233c3bea0f7351d8a479a52e775de806e7e598e462789146f",
+            "width": 1496,
+            "height": 576
+          },
+          "output": {
+            "path": "src/assets/optimized/brand/lockup-onDark.webp",
+            "bytes": 23264,
+            "sha256": "dc7e010f251f98719311a28fabd2ae7248f53068f76c82fd44e8a406921b1bbd",
+            "width": 720,
+            "height": 288
+          }
+        }
+      }
+    },
+    {
+      "id": "client-ko27",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/ko27.png",
+            "bytes": 12701,
+            "sha256": "e687cd3e267309353a9414644539a0705e26849e1bd6e9553e639af923c41a3f",
+            "width": 944,
+            "height": 181
+          },
+          "output": {
+            "path": "src/assets/optimized/client/ko27-onLight.webp",
+            "bytes": 2714,
+            "sha256": "1f6ff9aa0ceffbad5bb2e5413113e532e45744a897fd6ecd9907a1a7062e5cfa",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/ko27.png",
+            "bytes": 12701,
+            "sha256": "e687cd3e267309353a9414644539a0705e26849e1bd6e9553e639af923c41a3f",
+            "width": 944,
+            "height": 181
+          },
+          "output": {
+            "path": "src/assets/optimized/client/ko27-onDark.webp",
+            "bytes": 2706,
+            "sha256": "9a22544e7d122fe34543b93563626d5d1d8bc1f7f97a547ffa7df0ae1f9b0799",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-balance",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/balance.png",
+            "bytes": 39261,
+            "sha256": "bf4fa59cd7e42a61e143bc1b6b9a8c2c8acf6240743c6a4efba91294b3ba57cd",
+            "width": 1126,
+            "height": 307
+          },
+          "output": {
+            "path": "src/assets/optimized/client/balance-onLight.webp",
+            "bytes": 5712,
+            "sha256": "45582bda8ef836e60ecf821af520896208166028670f799dc4baa5d58ae305af",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/balance.png",
+            "bytes": 39261,
+            "sha256": "bf4fa59cd7e42a61e143bc1b6b9a8c2c8acf6240743c6a4efba91294b3ba57cd",
+            "width": 1126,
+            "height": 307
+          },
+          "output": {
+            "path": "src/assets/optimized/client/balance-onDark.webp",
+            "bytes": 5702,
+            "sha256": "07c574d8bea5f7e362b305a538ef7ae746e885bed34ae2e1794123b76ea66699",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-v8",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/v8.png",
+            "bytes": 20557,
+            "sha256": "da00b96b1d12ee9b7506322d00db43e89cb7f3a5330cab02a072f36e2a5c9f1d",
+            "width": 754,
+            "height": 395
+          },
+          "output": {
+            "path": "src/assets/optimized/client/v8-onLight.webp",
+            "bytes": 2122,
+            "sha256": "38552a77f5a28a2d275841281e0c7a3c2b875da1169703c00a89d4232a07a8f1",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/v8.png",
+            "bytes": 20557,
+            "sha256": "da00b96b1d12ee9b7506322d00db43e89cb7f3a5330cab02a072f36e2a5c9f1d",
+            "width": 754,
+            "height": 395
+          },
+          "output": {
+            "path": "src/assets/optimized/client/v8-onDark.webp",
+            "bytes": 2110,
+            "sha256": "d254b6a6b4a11a414c1b249256a9645a7ee403b45cfb6887adf4e2b28ae007b3",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-grupo-kamal",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/kamal.png",
+            "bytes": 34667,
+            "sha256": "8afbbd7e331671775c60d093381c1fb2e0462a07bc7ba4454b399c055492b591",
+            "width": 700,
+            "height": 271
+          },
+          "output": {
+            "path": "src/assets/optimized/client/grupo-kamal-onLight.webp",
+            "bytes": 8520,
+            "sha256": "bf50c906437b70f13f0b9316871a3d5e98c21eb6f86c99c8bc7ca53241a33442",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/kamal.png",
+            "bytes": 34667,
+            "sha256": "8afbbd7e331671775c60d093381c1fb2e0462a07bc7ba4454b399c055492b591",
+            "width": 700,
+            "height": 271
+          },
+          "output": {
+            "path": "src/assets/optimized/client/grupo-kamal-onDark.webp",
+            "bytes": 8510,
+            "sha256": "e14875d7f1488888a81202494b0b70e76788c3093ad4448c5f66d28fef0de45a",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-planeta-puna",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/puna.png",
+            "bytes": 36372,
+            "sha256": "b69557cddff4aca64a79ebed8429f47eb2fff0ed3a28ff0f33cfd6f612b57673",
+            "width": 573,
+            "height": 343
+          },
+          "output": {
+            "path": "src/assets/optimized/client/planeta-puna-onLight.webp",
+            "bytes": 6592,
+            "sha256": "913e5bc919a1c9864f062ae4842f9135b1e12852c7197e750fc4de01e3381021",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/puna.png",
+            "bytes": 36372,
+            "sha256": "b69557cddff4aca64a79ebed8429f47eb2fff0ed3a28ff0f33cfd6f612b57673",
+            "width": 573,
+            "height": 343
+          },
+          "output": {
+            "path": "src/assets/optimized/client/planeta-puna-onDark.webp",
+            "bytes": 6584,
+            "sha256": "0ba5be2d07fbaed97a09f284b8628849a0eae6f524fe08e02796fb85228d8bb9",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-optica-total",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/optica-total.png",
+            "bytes": 37062,
+            "sha256": "ee56011f7ce08bc2933aef43eba71d12cefbc8d36addb6a012b470f7c8cea65b",
+            "width": 876,
+            "height": 281
+          },
+          "output": {
+            "path": "src/assets/optimized/client/optica-total-onLight.webp",
+            "bytes": 6230,
+            "sha256": "80a78a17b6ed9099312a92c66b4fdb7a2dd0e19a6f259f9250bc0a5042d8d09e",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/optica-total.png",
+            "bytes": 37062,
+            "sha256": "ee56011f7ce08bc2933aef43eba71d12cefbc8d36addb6a012b470f7c8cea65b",
+            "width": 876,
+            "height": 281
+          },
+          "output": {
+            "path": "src/assets/optimized/client/optica-total-onDark.webp",
+            "bytes": 6218,
+            "sha256": "85cdbf0fd6659fd3693c836976ddf297fa192ded20137f8268fb2856e4eec5e2",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-metalnor",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/metalnor-on-light.png",
+            "bytes": 447694,
+            "sha256": "d2a906e52d97f38cd255db4a96c41593cf620c2b95b980622642777572926c7c",
+            "width": 4055,
+            "height": 1111
+          },
+          "output": {
+            "path": "src/assets/optimized/client/metalnor-onLight.webp",
+            "bytes": 20920,
+            "sha256": "0348821c3675c7b9615474cae466e3901a5f9de920bdf95e8bbdab76818a5ec7",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/metalnor-on-dark.webp",
+            "bytes": 93998,
+            "sha256": "aa31c74dc92eac67fb9ed138b9e59f4ca59f2b8c174a8f808845a40a77fce9a7",
+            "width": 1378,
+            "height": 482
+          },
+          "output": {
+            "path": "src/assets/optimized/client/metalnor-onDark.webp",
+            "bytes": 29520,
+            "sha256": "e3d6dbd6e11f6723870030a52fc5988e825059b8f3df843ac737264af2544560",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-cocel",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/cocel-on-light.png",
+            "bytes": 5030,
+            "sha256": "2041f91788df4541b6ddd3cc4f70b16743544d4451ec02f16497a0524e6808de",
+            "width": 297,
+            "height": 68
+          },
+          "output": {
+            "path": "src/assets/optimized/client/cocel-onLight.webp",
+            "bytes": 6680,
+            "sha256": "fac92bb2213c05ca9401b2fa5e81a7c258548e485660bc757c1844647433096f",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/cocel-on-dark.png",
+            "bytes": 4798,
+            "sha256": "09ff17690984d5873e8c36a6eb2ca7fdacf52483951ae8fd2321fa5862b57d0a",
+            "width": 298,
+            "height": 68
+          },
+          "output": {
+            "path": "src/assets/optimized/client/cocel-onDark.webp",
+            "bytes": 4022,
+            "sha256": "8a57d4f20948c4a40d5c085544b6d0e7a43637d6e6b16776c69d8ca8b3754e9e",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    }
+  ]
+}
