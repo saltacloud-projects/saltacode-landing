@@ -1,6 +1,6 @@
 ---
 import { Image } from "astro:assets";
-import logo from "../assets/brand/mark.png";
+import { brandImages } from "../data/image-assets";
 
 interface Props {
   homePath?: "" | "/";
@@ -13,7 +13,7 @@ const homeFragment = (id: string) => `${homePath}#${id}`;
 <header class="site-header">
   <div class="container header-inner">
     <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, inicio">
-      <Image src={logo} width={68} alt="" loading="eager" decoding="sync" />
+      <Image src={brandImages.mark.onLight} width={68} alt="" loading="eager" decoding="sync" />
       <span>SaltaCode</span>
     </a>
 

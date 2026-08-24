@@ -1,11 +1,18 @@
 ---
 import { Image } from "astro:assets";
-import logo from "../assets/brand/mark.png";
+import { brandImages } from "../data/image-assets";
 ---
 
 <section class="hero" aria-labelledby="hero-title">
   <div class="container hero-inner">
-    <Image class="hero-mark" src={logo} width={116} alt="" loading="eager" decoding="sync" />
+    <Image
+      class="hero-mark"
+      src={brandImages.mark.onLight}
+      width={116}
+      alt=""
+      loading="eager"
+      decoding="sync"
+    />
     <h1 id="hero-title">
       <span>Tecnología que impulsa</span>
       <span>tu crecimiento</span>

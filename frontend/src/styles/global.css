@@ -421,7 +421,7 @@ ul {
 
 .client-list {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   border-block: 1px solid var(--line);
 }
 
@@ -430,20 +430,26 @@ ul {
   min-height: 130px;
   place-items: center;
   padding: 1.35rem;
-  border-right: 1px solid var(--line);
+  border-inline-end: 1px solid var(--line);
+  border-block-end: 1px solid var(--line);
 }
 
-.client-list li:last-child {
-  border-right: 0;
+.client-list li:nth-child(4n) {
+  border-inline-end: 0;
+}
+
+.client-list li:nth-last-child(-n + 4) {
+  border-block-end: 0;
 }
 
 .client-list img {
-  width: auto;
+  width: min(100%, 180px);
+  height: auto;
   max-width: 100%;
-  max-height: 56px;
+  aspect-ratio: 9 / 4;
   object-fit: contain;
   filter: grayscale(1);
-  opacity: 0.56;
+  opacity: 0.72;
 }
 
 .services {
@@ -738,18 +744,6 @@ ul {
     border-bottom: 1px solid var(--line);
   }
 
-  .client-list {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .client-list li:nth-child(3) {
-    border-right: 0;
-  }
-
-  .client-list li:nth-child(-n + 3) {
-    border-bottom: 1px solid var(--line);
-  }
-
   .service,
   .about-grid {
     gap: 2.5rem;
@@ -819,6 +813,26 @@ ul {
     grid-template-columns: 1fr;
   }
 
+  .client-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .client-list li,
+  .client-list li:nth-child(4n),
+  .client-list li:nth-last-child(-n + 4) {
+    min-height: 108px;
+    border-inline-end: 1px solid var(--line);
+    border-block-end: 1px solid var(--line);
+  }
+
+  .client-list li:nth-child(2n) {
+    border-inline-end: 0;
+  }
+
+  .client-list li:nth-last-child(-n + 2) {
+    border-block-end: 0;
+  }
+
   .service-summary li,
   .service-summary li:nth-child(2) {
     min-height: auto;
@@ -865,25 +879,6 @@ ul {
 @media (max-width: 520px) {
   .container {
     width: min(calc(100% - 1.5rem), var(--container));
-  }
-
-  .client-list {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .client-list li,
-  .client-list li:nth-child(3) {
-    min-height: 108px;
-    border-right: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-  }
-
-  .client-list li:nth-child(2n) {
-    border-right: 0;
-  }
-
-  .client-list li:nth-last-child(-n + 2) {
-    border-bottom: 0;
   }
 
   .contact-actions .button {

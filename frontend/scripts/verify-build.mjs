@@ -7,6 +7,9 @@ const index = indexBuffer.toString("utf8");
 const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
+const assetManifest = JSON.parse(
+  await readFile(resolve(import.meta.dirname, "../src/assets/optimized/manifest.json"), "utf8"),
+);
 
 const BUILD_BUDGETS = Object.freeze({
   indexHtmlBytes: 20 * 1024,
@@ -19,6 +22,20 @@ const BUILD_BUDGETS = Object.freeze({
 const EXECUTABLE_JAVASCRIPT_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
 const SOCIAL_IMAGE_PATH = "images/social/saltacode-social.webp";
 const WEBFONT_EXTENSIONS = new Set([".eot", ".otf", ".ttf", ".woff", ".woff2"]);
+const EXPECTED_CLIENTS = [
+  "KO-27",
+  "Balance",
+  "V8",
+  "Grupo Kamal",
+  "Planeta Puna",
+  "Óptica Total",
+  "Metalnor",
+  "Cocel",
+];
+const ASSET_LIBRARY_BUDGETS = Object.freeze({
+  maximumVariantBytes: 32 * 1024,
+  totalVariantBytes: 220 * 1024,
+});
 
 async function listBuildFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -68,6 +85,10 @@ function extractAnchorHrefs(markup) {
 
 function hasId(markup, id) {
   return new RegExp(`\\bid="${id}"`).test(markup);
+}
+
+function attributeValue(tag, name) {
+  return tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
 }
 
 const homeNavigationFragments = new Set(["top", "clientes", "servicios", "nosotros", "contacto"]);
@@ -212,6 +233,66 @@ for (const [alias, target, element] of legacyFragmentAliases) {
 
 if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) {
   throw new Error("The clients heading must use the conservative historical wording.");
+}
+
+const clientList = index.match(/<ul class="container client-list"[^>]*>([\s\S]*?)<\/ul>/)?.[1];
+if (!clientList) {
+  throw new Error("The rendered client list is missing.");
+}
+
+const clientImageTags = [...clientList.matchAll(/<img\b[^>]*>/g)].map((match) => match[0]);
+const renderedClientNames = clientImageTags.map((tag) =>
+  (attributeValue(tag, "alt") ?? "").replace(/^Logo de /, ""),
+);
+if (JSON.stringify(renderedClientNames) !== JSON.stringify(EXPECTED_CLIENTS)) {
+  throw new Error(`Unexpected client set or order: ${renderedClientNames.join(", ")}.`);
+}
+
+for (const tag of clientImageTags) {
+  if (
+    attributeValue(tag, "loading") !== "lazy" ||
+    attributeValue(tag, "decoding") !== "async" ||
+    attributeValue(tag, "width") !== "180" ||
+    attributeValue(tag, "height") !== "80"
+  ) {
+    throw new Error(`Client logo does not preserve lazy-loading and intrinsic dimensions: ${tag}`);
+  }
+}
+
+if (assetManifest.schemaVersion !== 1 || assetManifest.assets?.length !== 10) {
+  throw new Error("The theme-ready image manifest must contain the two brand and eight client assets.");
+}
+
+let totalAssetVariantBytes = 0;
+for (const asset of assetManifest.assets) {
+  const expectedCanvas = asset.kind === "client"
+    ? { width: 360, height: 160 }
+    : asset.id === "brand-mark"
+      ? { width: 256, height: 256 }
+      : { width: 720, height: 288 };
+
+  if (
+    asset.canvas?.width !== expectedCanvas.width ||
+    asset.canvas?.height !== expectedCanvas.height ||
+    !asset.variants?.onLight ||
+    !asset.variants?.onDark
+  ) {
+    throw new Error(`Asset ${asset.id} does not satisfy the theme surface contract.`);
+  }
+
+  for (const variant of Object.values(asset.variants)) {
+    totalAssetVariantBytes += variant.output.bytes;
+    if (variant.output.bytes > ASSET_LIBRARY_BUDGETS.maximumVariantBytes) {
+      throw new Error(`Asset ${variant.output.path} exceeds the per-variant image budget.`);
+    }
+  }
+}
+
+console.log(
+  `Asset budget: ${totalAssetVariantBytes} bytes / ${ASSET_LIBRARY_BUDGETS.totalVariantBytes} bytes maximum for 20 variants.`,
+);
+if (totalAssetVariantBytes > ASSET_LIBRARY_BUDGETS.totalVariantBytes) {
+  throw new Error("The complete theme-ready image library exceeds its performance budget.");
 }
 
 if (!robots.includes("Allow: /") || !robots.includes("https://saltacode.com.ar/sitemap.xml")) {

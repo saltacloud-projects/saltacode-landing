@@ -1,20 +1,6 @@
 ---
 import { Image } from "astro:assets";
-import balanceLogo from "../assets/clients/balance.png";
-import kamalLogo from "../assets/clients/kamal.png";
-import ko27Logo from "../assets/clients/ko27.png";
-import opticaTotalLogo from "../assets/clients/optica-total.png";
-import punaLogo from "../assets/clients/puna.png";
-import v8Logo from "../assets/clients/v8.png";
-
-const clients = [
-  { name: "KO-27", logo: ko27Logo },
-  { name: "Balance", logo: balanceLogo },
-  { name: "V8", logo: v8Logo },
-  { name: "Grupo Kamal", logo: kamalLogo },
-  { name: "Planeta Puna", logo: punaLogo },
-  { name: "Óptica Total", logo: opticaTotalLogo },
-];
+import { clients } from "../data/image-assets";
 ---
 
 <section class="section clients legacy-fragment-target" id="clientes" aria-labelledby="clients-title">
@@ -28,8 +14,9 @@ const clients = [
     {clients.map((client) => (
       <li>
         <Image
-          src={client.logo}
+          src={client.logo.onLight}
           width={180}
+          height={80}
           alt={`Logo de ${client.name}`}
           loading="lazy"
           decoding="async"
