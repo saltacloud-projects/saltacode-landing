@@ -21,6 +21,14 @@ dist/
 .wrangler/
 coverage/
 
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
 # Test and audit output
 playwright-report/
 test-results/
