@@ -1,0 +1,15 @@
+# Copy to an operator-owned path such as /etc/cloudflared/saltacode.yml.
+# Replace both placeholders. Never commit the credentials JSON file.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+originRequest:
+  connectTimeout: 10s
+
+ingress:
+  - hostname: saltacode.com.ar
+    path: ^/api(?:/.*)?$
+    service: http://127.0.0.1:18081
+  - hostname: saltacode.com.ar
+    service: http://127.0.0.1:18080
+  - service: http_status:404

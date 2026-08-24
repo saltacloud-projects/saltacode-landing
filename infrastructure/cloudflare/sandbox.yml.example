@@ -1,0 +1,15 @@
+# Copy to an operator-owned path such as /etc/cloudflared/saltacode-sandbox.yml.
+# Replace the tunnel, credentials, and hostname placeholders before validation.
+tunnel: REPLACE_WITH_SANDBOX_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_SANDBOX_TUNNEL_UUID.json
+
+originRequest:
+  connectTimeout: 10s
+
+ingress:
+  - hostname: REPLACE_WITH_SANDBOX_HOSTNAME
+    path: ^/api(?:/.*)?$
+    service: http://127.0.0.1:28081
+  - hostname: REPLACE_WITH_SANDBOX_HOSTNAME
+    service: http://127.0.0.1:28080
+  - service: http_status:404
