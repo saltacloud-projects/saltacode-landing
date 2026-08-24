@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
@@ -55,7 +56,21 @@ try {
   if (home.headers.get("cache-control") !== "public, max-age=0, must-revalidate") {
     throw new Error("HTML revalidation policy is missing.");
   }
-  if (!home.headers.get("content-security-policy")?.includes("frame-ancestors 'none'")) {
+  const contentSecurityPolicy = home.headers.get("content-security-policy") ?? "";
+  const homeMarkup = await home.text();
+  const inlineModuleScript = homeMarkup.match(
+    /<script\b(?=[^>]*type="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/,
+  )?.[1];
+  if (!inlineModuleScript) {
+    throw new Error("The home page does not contain its scroll navigation controller.");
+  }
+  const expectedScriptHash = createHash("sha256").update(inlineModuleScript).digest("base64");
+  if (
+    !contentSecurityPolicy.includes("frame-ancestors 'none'") ||
+    !contentSecurityPolicy.includes(`script-src 'sha256-${expectedScriptHash}'`) ||
+    contentSecurityPolicy.includes("'unsafe-inline'") ||
+    contentSecurityPolicy.includes("'unsafe-eval'")
+  ) {
     throw new Error("Security headers are missing from the home page.");
   }
 

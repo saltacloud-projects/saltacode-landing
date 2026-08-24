@@ -15,7 +15,7 @@ const description =
 
 <BaseLayout title={title} description={description}>
   <div id="top"></div>
-  <Header />
+  <Header revealOnScroll />
   <main id="contenido">
     <Hero />
     <Clients />
@@ -25,3 +25,7 @@ const description =
   </main>
   <Footer />
 </BaseLayout>
+
+<script>
+  import "../scripts/reveal-header";
+</script>

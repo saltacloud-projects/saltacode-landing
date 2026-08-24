@@ -14,7 +14,7 @@ const assetManifest = JSON.parse(
 const BUILD_BUDGETS = Object.freeze({
   indexHtmlBytes: 20 * 1024,
   cssBytes: 15 * 1024,
-  executableJavaScriptBytes: 0,
+  executableJavaScriptBytes: 1024,
   socialImageBytes: 100 * 1024,
   webfontBytes: 0,
 });
@@ -91,6 +91,14 @@ function attributeValue(tag, name) {
   return tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
 }
 
+function extractExecutableScripts(markup) {
+  return [
+    ...markup.matchAll(
+      /<script\b(?![^>]*type="application\/ld\+json")([^>]*)>([\s\S]*?)<\/script>/g,
+    ),
+  ];
+}
+
 const homeNavigationFragments = new Set(["top", "clientes", "servicios", "nosotros", "contacto"]);
 
 function verifySharedNavigation(markup, prefix, routeLabel) {
@@ -123,10 +131,17 @@ function verifySharedNavigation(markup, prefix, routeLabel) {
   }
 }
 
+const homeExecutableScripts = extractExecutableScripts(index);
+const inlineExecutableJavaScriptBytes = homeExecutableScripts.reduce(
+  (total, script) => total + Buffer.byteLength(script[2]),
+  0,
+);
+
 const measuredBuild = Object.freeze({
   indexHtmlBytes: indexBuffer.byteLength,
   cssBytes: totalBytesForExtensions(new Set([".css"])),
-  executableJavaScriptBytes: totalBytesForExtensions(EXECUTABLE_JAVASCRIPT_EXTENSIONS),
+  executableJavaScriptBytes:
+    totalBytesForExtensions(EXECUTABLE_JAVASCRIPT_EXTENSIONS) + inlineExecutableJavaScriptBytes,
   socialImageBytes: socialImage.bytes,
   webfontBytes: totalBytesForExtensions(WEBFONT_EXTENSIONS),
 });
@@ -135,7 +150,7 @@ const budgetResults = [
   ["generated index HTML", measuredBuild.indexHtmlBytes, BUILD_BUDGETS.indexHtmlBytes],
   ["total emitted CSS", measuredBuild.cssBytes, BUILD_BUDGETS.cssBytes],
   [
-    "emitted executable JavaScript",
+    "total executable JavaScript",
     measuredBuild.executableJavaScriptBytes,
     BUILD_BUDGETS.executableJavaScriptBytes,
   ],
@@ -176,6 +191,15 @@ for (const [pattern, label] of assertions) {
 
 verifySharedNavigation(index, "", "Homepage");
 verifySharedNavigation(notFound, "/", "404 page");
+
+const homeHeader = extractLandmark(index, "header");
+const notFoundHeader = extractLandmark(notFound, "header");
+if (!/<header\b[^>]*\bdata-scroll-header(?:\s|>)/.test(homeHeader)) {
+  throw new Error("The homepage header must opt into scroll reveal behavior.");
+}
+if (/\bdata-scroll-header(?:\s|>)/.test(notFoundHeader)) {
+  throw new Error("The 404 recovery header must remain visible without scroll reveal behavior.");
+}
 
 const notFoundLocalFragmentLinks = extractAnchorHrefs(notFound).filter((href) => href.startsWith("#"));
 if (
@@ -303,9 +327,22 @@ if (!sitemap.includes("<loc>https://saltacode.com.ar/</loc>")) {
   throw new Error("sitemap.xml does not contain the canonical home URL.");
 }
 
-const executableScripts = [...index.matchAll(/<script\b(?![^>]*type="application\/ld\+json")[^>]*>/g)];
-if (executableScripts.length !== 0) {
-  throw new Error("The static landing page unexpectedly ships executable JavaScript.");
+if (homeExecutableScripts.length !== 1) {
+  throw new Error("The homepage must ship exactly one executable script for scroll navigation.");
+}
+
+const [, navigationScriptAttributes, navigationScriptSource] = homeExecutableScripts[0];
+if (
+  !/\btype="module"/.test(navigationScriptAttributes) ||
+  /\bsrc=/.test(navigationScriptAttributes) ||
+  navigationScriptSource.trim() === ""
+) {
+  throw new Error("The scroll navigation controller must be one inline ES module.");
+}
+
+const notFoundExecutableScripts = extractExecutableScripts(notFound);
+if (notFoundExecutableScripts.length !== 0) {
+  throw new Error("The 404 route must not ship the homepage scroll navigation controller.");
 }
 
 console.log(

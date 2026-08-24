@@ -45,13 +45,15 @@ Version 1 of the provisional local budgets is based on the repeatable 2026-08-24
 |---|---:|---|
 | Generated home HTML | <= 20 KiB raw | Deterministic build assertion |
 | Total emitted CSS | <= 15 KiB raw | Deterministic build assertion |
-| Emitted executable JavaScript | 0 bytes | Deterministic build assertion |
+| Total executable JavaScript | <= 1 KiB raw | Deterministic build assertion |
 | Emitted webfonts | 0 bytes | Deterministic build assertion |
 | Social preview image | <= 100 KiB raw | Deterministic build assertion |
 | Cold initial-page transfer | <= 125 KiB encoded | Repeatable browser lab |
 | Cold full-scroll transfer | <= 175 KiB encoded | Repeatable browser lab |
 
 The browser-lab gates require consistent viewport, network, CPU, cache state, route, and run count. Record the median and raw runs. Lighthouse scores, public-origin compression and cache behavior, and 75th-percentile field data are separate evidence and must still be verified.
+
+The JavaScript allowance is reserved for the accessible homepage navigation reveal controller. It must remain a single CSP-hashed ES module; `unsafe-inline`, `unsafe-eval`, and executable scripts on the 404 route remain prohibited.
 
 Budget changes require measured evidence and review. Never raise a limit only to make CI pass; first attribute the regression and either remove it or document the reviewed tradeoff.
 

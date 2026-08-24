@@ -4,13 +4,14 @@ import { brandImages } from "../data/image-assets";
 
 interface Props {
   homePath?: "" | "/";
+  revealOnScroll?: boolean;
 }
 
-const { homePath = "" } = Astro.props;
+const { homePath = "", revealOnScroll = false } = Astro.props;
 const homeFragment = (id: string) => `${homePath}#${id}`;
 ---
 
-<header class="site-header">
+<header class="site-header" data-scroll-header={revealOnScroll ? "" : undefined}>
   <div class="container header-inner">
     <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, inicio">
       <Image src={brandImages.mark.onLight} width={68} alt="" loading="eager" decoding="sync" />

@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,17 @@ const port = Number.parseInt(process.env.PORT ?? "8080", 10);
 const host = process.env.HOST ?? "0.0.0.0";
 const moduleDirectory = fileURLToPath(new URL(".", import.meta.url));
 const staticRoot = resolve(process.env.STATIC_ROOT ?? resolve(moduleDirectory, "dist"));
+
+const indexMarkup = await readFile(resolve(staticRoot, "index.html"), "utf8");
+const inlineModuleScripts = [
+  ...indexMarkup.matchAll(
+    /<script\b(?=[^>]*type="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g,
+  ),
+];
+if (inlineModuleScripts.length !== 1) {
+  throw new Error("The static homepage must contain exactly one inline module script.");
+}
+const inlineScriptHash = createHash("sha256").update(inlineModuleScripts[0][1]).digest("base64");
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error("PORT must be an integer between 1 and 65535.");
@@ -40,7 +52,7 @@ const securityHeaders = {
     "frame-ancestors 'none'",
     "img-src 'self' data:",
     "object-src 'none'",
-    "script-src 'none'",
+    `script-src 'sha256-${inlineScriptHash}'`,
     "style-src 'self'",
     "upgrade-insecure-requests",
   ].join("; "),

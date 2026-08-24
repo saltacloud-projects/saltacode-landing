@@ -231,6 +231,24 @@ ul {
   backdrop-filter: blur(14px);
 }
 
+.site-header[data-scroll-header] {
+  position: fixed;
+  inset-inline: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(-100% - 1px));
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.site-header[data-scroll-header].is-visible,
+.site-header[data-scroll-header]:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .header-inner {
   display: grid;
   min-height: 76px;
