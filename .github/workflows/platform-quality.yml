@@ -134,8 +134,9 @@ jobs:
           token_file="${RUNNER_TEMP}/agent-internal-token"
           env_file="${RUNNER_TEMP}/platform.env"
 
-          install -m 0600 /dev/null "${token_file}"
+          install -m 0640 /dev/null "${token_file}"
           printf '%s\n' 'ci-placeholder-token-not-a-secret-000000000000' >"${token_file}"
+          token_gid="$(stat -c '%g' "${token_file}")"
           cat >"${env_file}" <<EOF
           SALTACODE_RELEASE=ci-validation
           SALTACODE_FRONTEND_PORT=18080
@@ -143,6 +144,7 @@ jobs:
           SALTACODE_APP_ENV=production
           SALTACODE_ALLOWED_ORIGINS=https://saltacode.com.ar
           SALTACODE_AGENT_INTERNAL_TOKEN_SOURCE_FILE=${token_file}
+          SALTACODE_AGENT_INTERNAL_TOKEN_GID=${token_gid}
           SALTACODE_AGENT_ENVIRONMENT=production
           SALTACODE_RATE_LIMIT_BACKEND=redis
           SALTACODE_REDIS_URL=redis://redis:6379/0

@@ -82,10 +82,13 @@ services:
           memory: 512M
           pids: 192
     networks:
+      - backend_origin
       - backend_agent
       - rate_limit
     secrets:
       - agent_internal_token
+    group_add:
+      - "${SALTACODE_AGENT_INTERNAL_TOKEN_GID:?set SALTACODE_AGENT_INTERNAL_TOKEN_GID}"
     labels:
       com.saltacode.component: backend
 
@@ -172,17 +175,34 @@ services:
       - agent_egress
     secrets:
       - agent_internal_token
+    group_add:
+      - "${SALTACODE_AGENT_INTERNAL_TOKEN_GID:?set SALTACODE_AGENT_INTERNAL_TOKEN_GID}"
     labels:
       com.saltacode.component: agent-ai
 
 networks:
   frontend_origin:
-    internal: true
+    ipam:
+      config:
+        - subnet: ${SALTACODE_FRONTEND_ORIGIN_SUBNET:-10.248.241.0/28}
+  backend_origin:
+    ipam:
+      config:
+        - subnet: ${SALTACODE_BACKEND_ORIGIN_SUBNET:-10.248.241.16/28}
   backend_agent:
     internal: true
+    ipam:
+      config:
+        - subnet: ${SALTACODE_BACKEND_AGENT_SUBNET:-10.248.241.32/28}
   rate_limit:
     internal: true
-  agent_egress: {}
+    ipam:
+      config:
+        - subnet: ${SALTACODE_RATE_LIMIT_SUBNET:-10.248.241.48/28}
+  agent_egress:
+    ipam:
+      config:
+        - subnet: ${SALTACODE_AGENT_EGRESS_SUBNET:-10.248.241.64/28}
 
 secrets:
   agent_internal_token:

@@ -10,10 +10,17 @@ Cloudflare
                                    BFF -> redis:6379
 ```
 
-The public BFF and static origin bind to loopback only. `agent-ai` has no host port and is reachable
-only from the BFF over the private Compose network. The agent receives a separate egress network for
-provider calls. Redis has no host port, joins only the BFF rate-limit network, and stores no durable
-data. There is no Nginx, Caddy, database, or cloudflared sidecar in this initial topology.
+The public BFF and static origin bind to loopback only. Each uses a dedicated origin bridge because
+Docker port publishing requires north-south connectivity; those bridges do not expose any address
+beyond the explicit `127.0.0.1` bindings. `agent-ai` has no host port and is reachable only from the
+BFF over the private Compose network. The agent receives a separate egress network for provider
+calls. Redis has no host port, joins only the BFF rate-limit network, and stores no durable data.
+There is no Nginx, Caddy, database, or cloudflared sidecar in this initial topology.
+
+All five networks use small, environment-configurable `/28` subnets. This avoids consuming Docker's
+large automatic address pools on a host that runs many Compose projects. The production and sandbox
+examples use distinct ranges; verify them against host routes and override them before startup if
+the host or a VPN already routes `10.248.240.0/23`.
 
 ## Safety boundary
 
@@ -69,10 +76,13 @@ Replace `SALTACODE_REDIS_IMAGE` with the inspected official-image reference incl
 runtime contract and must be verified again when the digest changes. Preflight rejects a tag-only
 or placeholder Redis reference.
 
-Create one 32+ character bearer token file for BFF-to-agent authentication. The environment example
-contains only its host path. Compose mounts the same file read-only into both services as
-`/run/secrets/agent_internal_token`; neither service receives the value through Compose YAML or a
-repository environment file. `preflight.sh` rejects a missing, short, or broadly readable file.
+Create one 32+ character bearer token file for BFF-to-agent authentication. Own it with a dedicated
+host group, set mode `0640`, and put that group's numeric GID in
+`SALTACODE_AGENT_INTERNAL_TOKEN_GID`. Compose mounts the same file read-only into both services and
+adds only that supplemental group to their non-root processes, so the secret remains unreadable to
+other host and container users. Neither service receives the value through Compose YAML or a
+repository environment file. `preflight.sh` rejects a missing, short, incorrectly grouped, or
+broadly readable file.
 
 Sandbox uses both Compose files and its own project name and ports:
 
@@ -81,6 +91,10 @@ docker compose \
   --env-file infrastructure/env/sandbox.env.example \
   -f compose.yml -f compose.sandbox.yml config --quiet
 ```
+
+The sandbox agent healthcheck uses `/health/live` because the sanitized seed deliberately returns
+`503 not_ready` until real provider, knowledge, and tool adapters are configured. Production keeps
+the stricter `/health/ready` gate; agent execution remains fail-closed in both environments.
 
 ## Tunnel preparation
 

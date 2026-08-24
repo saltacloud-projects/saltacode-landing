@@ -39,9 +39,9 @@ if command -v ss >/dev/null 2>&1; then
   for port in "${FRONTEND_PORT}" "${BACKEND_PORT}"; do
     listeners="$(ss -H -ltn "sport = :${port}" || true)"
     [[ -n "${listeners}" ]] || die "no local listener found on port ${port}"
-    if grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\*|\[::\]):' <<<"${listeners}"; then
-      die "origin port ${port} is exposed beyond loopback"
-    fi
+    unexpected="$(awk -v expected="127.0.0.1:${port}" '$4 != expected { print $4 }' <<<"${listeners}")"
+    [[ -z "${unexpected}" ]] ||
+      die "origin port ${port} is exposed beyond loopback: ${unexpected}"
   done
 fi
 

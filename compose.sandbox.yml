@@ -21,5 +21,13 @@ services:
 
   agent-ai:
     restart: "no"
+    # The seed intentionally reports not-ready until real provider/RAG/tool adapters exist.
+    # Sandbox startup validates process liveness while preserving fail-closed execution behavior.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/live', timeout=2)"
     labels:
       com.saltacode.environment: sandbox

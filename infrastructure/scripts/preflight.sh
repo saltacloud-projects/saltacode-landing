@@ -50,8 +50,14 @@ token_content="${token_content%$'\r'}"
   die "the external agent token must contain between 32 and 4096 characters"
 unset token_content
 token_mode="$(stat -c '%a' "${token_file}")"
-[[ "${token_mode}" == "400" || "${token_mode}" == "600" ]] ||
-  die "the external agent token file mode must be 0400 or 0600"
+[[ "${token_mode}" == "440" || "${token_mode}" == "640" ]] ||
+  die "the external agent token file mode must be 0440 or 0640"
+token_gid="${SALTACODE_AGENT_INTERNAL_TOKEN_GID:-$(env_value SALTACODE_AGENT_INTERNAL_TOKEN_GID "${ENV_FILE}")}"
+[[ "${token_gid}" =~ ^[1-9][0-9]*$ ]] ||
+  die "SALTACODE_AGENT_INTERNAL_TOKEN_GID must be a positive numeric group ID"
+actual_token_gid="$(stat -c '%g' "${token_file}")"
+[[ "${actual_token_gid}" == "${token_gid}" ]] ||
+  die "the external agent token file group ${actual_token_gid} does not match configured group ${token_gid}"
 
 app_env="${SALTACODE_APP_ENV:-$(env_value SALTACODE_APP_ENV "${ENV_FILE}")}"
 limiter="${SALTACODE_RATE_LIMIT_BACKEND:-$(env_value SALTACODE_RATE_LIMIT_BACKEND "${ENV_FILE}")}"
