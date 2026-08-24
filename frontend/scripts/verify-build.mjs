@@ -4,6 +4,7 @@ import { extname, relative, resolve } from "node:path";
 const dist = resolve(import.meta.dirname, "../dist");
 const indexBuffer = await readFile(resolve(dist, "index.html"));
 const index = indexBuffer.toString("utf8");
+const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
 
@@ -50,6 +51,55 @@ function totalBytesForExtensions(extensions) {
   return buildFiles
     .filter((file) => extensions.has(file.extension))
     .reduce((total, file) => total + file.bytes, 0);
+}
+
+function extractLandmark(markup, tag) {
+  const match = markup.match(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`));
+  if (!match) {
+    throw new Error(`Missing required ${tag} landmark.`);
+  }
+
+  return match[0];
+}
+
+function extractAnchorHrefs(markup) {
+  return [...markup.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>/g)].map((match) => match[1]);
+}
+
+function hasId(markup, id) {
+  return new RegExp(`\\bid="${id}"`).test(markup);
+}
+
+const homeNavigationFragments = new Set(["top", "clientes", "servicios", "nosotros", "contacto"]);
+
+function verifySharedNavigation(markup, prefix, routeLabel) {
+  const navigationMarkup = [extractLandmark(markup, "header"), extractLandmark(markup, "footer")].join(
+    "",
+  );
+  const hrefs = extractAnchorHrefs(navigationMarkup).filter((href) => href.includes("#"));
+
+  if (hrefs.length === 0) {
+    throw new Error(`${routeLabel} shared navigation does not contain links.`);
+  }
+
+  const resolvedFragments = new Set();
+  for (const href of hrefs) {
+    const match = href.match(new RegExp(`^${prefix === "/" ? "\\/" : ""}#(.+)$`));
+    if (!match || !homeNavigationFragments.has(match[1])) {
+      throw new Error(`${routeLabel} shared navigation contains an invalid home link: ${href}`);
+    }
+
+    if (!hasId(index, match[1])) {
+      throw new Error(`${routeLabel} shared navigation target ${href} is missing from the homepage.`);
+    }
+    resolvedFragments.add(match[1]);
+  }
+
+  for (const fragment of homeNavigationFragments) {
+    if (!resolvedFragments.has(fragment)) {
+      throw new Error(`${routeLabel} shared navigation is missing the ${prefix}#${fragment} link.`);
+    }
+  }
 }
 
 const measuredBuild = Object.freeze({
@@ -101,6 +151,18 @@ for (const [pattern, label] of assertions) {
   if (!pattern.test(index)) {
     throw new Error(`Missing required build output: ${label}`);
   }
+}
+
+verifySharedNavigation(index, "", "Homepage");
+verifySharedNavigation(notFound, "/", "404 page");
+
+const notFoundLocalFragmentLinks = extractAnchorHrefs(notFound).filter((href) => href.startsWith("#"));
+if (
+  notFoundLocalFragmentLinks.length !== 1 ||
+  notFoundLocalFragmentLinks[0] !== "#contenido" ||
+  !hasId(notFound, "contenido")
+) {
+  throw new Error("The 404 page skip link must be the only local fragment link and target #contenido.");
 }
 
 const structuredDataMatch = index.match(/<script type="application\/ld\+json">([^<]+)<\/script>/);

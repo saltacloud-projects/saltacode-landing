@@ -1,24 +1,33 @@
 ---
 import { Image } from "astro:assets";
 import logo from "../assets/brand/mark.png";
+
+interface Props {
+  homePath?: "" | "/";
+}
+
+const { homePath = "" } = Astro.props;
+const homeFragment = (id: string) => `${homePath}#${id}`;
 ---
 
 <header class="site-header">
   <div class="container header-inner">
-    <a class="brand" href="#top" aria-label="SaltaCode, inicio">
+    <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, inicio">
       <Image src={logo} width={68} alt="" loading="eager" decoding="sync" />
       <span>SaltaCode</span>
     </a>
 
     <nav aria-label="Navegación principal">
       <ul class="primary-nav">
-        <li><a href="#clientes">Nuestros clientes</a></li>
-        <li><a href="#servicios">Servicios y productos</a></li>
-        <li><a href="#nosotros">Nosotros</a></li>
-        <li><a href="#contacto">Contactanos</a></li>
+        <li><a href={homeFragment("clientes")}>Nuestros clientes</a></li>
+        <li><a href={homeFragment("servicios")}>Servicios y productos</a></li>
+        <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
+        <li><a href={homeFragment("contacto")}>Contactanos</a></li>
       </ul>
     </nav>
 
-    <a class="button button-small header-cta" href="#contacto">Hablar con un experto</a>
+    <a class="button button-small header-cta" href={homeFragment("contacto")}>
+      Hablar con un experto
+    </a>
   </div>
 </header>

@@ -2,13 +2,19 @@
 import { Image } from "astro:assets";
 import logo from "../assets/brand/mark.png";
 
+interface Props {
+  homePath?: "" | "/";
+}
+
+const { homePath = "" } = Astro.props;
+const homeFragment = (id: string) => `${homePath}#${id}`;
 const year = new Date().getFullYear();
 ---
 
 <footer class="site-footer">
   <div class="container footer-grid">
     <div>
-      <a class="brand" href="#top" aria-label="SaltaCode, volver al inicio">
+      <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, volver al inicio">
         <Image src={logo} width={34} alt="" loading="lazy" decoding="async" />
         <span>SaltaCode</span>
       </a>
@@ -20,10 +26,10 @@ const year = new Date().getFullYear();
 
     <nav aria-label="Navegación del pie">
       <ul>
-        <li><a href="#clientes">Nuestros clientes</a></li>
-        <li><a href="#servicios">Servicios y productos</a></li>
-        <li><a href="#nosotros">Nosotros</a></li>
-        <li><a href="#contacto">Contactanos</a></li>
+        <li><a href={homeFragment("clientes")}>Nuestros clientes</a></li>
+        <li><a href={homeFragment("servicios")}>Servicios y productos</a></li>
+        <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
+        <li><a href={homeFragment("contacto")}>Contactanos</a></li>
       </ul>
     </nav>
 
