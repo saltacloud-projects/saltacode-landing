@@ -1,0 +1,36 @@
+# Agent and local runtime state
+.atl/
+.codegraph/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# JavaScript and Astro
+node_modules/
+dist/
+.astro/
+.wrangler/
+coverage/
+
+# Test and audit output
+playwright-report/
+test-results/
+.lighthouseci/
+lighthouse-report*.html
+lighthouse-report*.json
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

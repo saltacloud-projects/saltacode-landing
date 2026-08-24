@@ -1,0 +1,27 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 4
+
+[agents.repo_explorer]
+description = "Read-only repository mapper for architecture, dependencies, and blast-radius evidence."
+config_file = "./agents/repo_explorer.toml"
+
+[agents.seo_auditor]
+description = "Read-only SEO auditor for crawlability, semantics, metadata, and structured data."
+config_file = "./agents/seo_auditor.toml"
+
+[agents.performance_auditor]
+description = "Read-only performance auditor for payload, rendering, and Core Web Vitals risks."
+config_file = "./agents/performance_auditor.toml"
+
+[agents.frontend_implementer]
+description = "Scoped frontend writer for explicitly approved implementation slices and validation."
+config_file = "./agents/frontend_implementer.toml"
+
+[agents.chat_integration_architect]
+description = "Read-only architect for the browser, edge, and external AI-agent boundary."
+config_file = "./agents/chat_integration_architect.toml"
+
+[agents.release_verifier]
+description = "Read-only verifier for release candidates, deployed responses, and rollback evidence."
+config_file = "./agents/release_verifier.toml"

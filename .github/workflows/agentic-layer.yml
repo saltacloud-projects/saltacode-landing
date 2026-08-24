@@ -1,0 +1,39 @@
+name: Agentic layer
+
+on:
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "README.md"
+      - ".gitignore"
+      - ".agents/**"
+      - ".codex/**"
+      - "docs/**"
+      - "scripts/agentic/**"
+      - ".github/workflows/agentic-layer.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "AGENTS.md"
+      - "README.md"
+      - ".gitignore"
+      - ".agents/**"
+      - ".codex/**"
+      - "docs/**"
+      - "scripts/agentic/**"
+      - ".github/workflows/agentic-layer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate agentic contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Validate layer
+        run: bash scripts/agentic/validate-layer.sh
