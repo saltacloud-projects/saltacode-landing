@@ -1,0 +1,178 @@
+{
+  "$defs": {
+    "ChatDeltaEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "delta": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Delta",
+          "type": "string"
+        },
+        "response_id": {
+          "format": "uuid",
+          "title": "Response Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "type": {
+          "const": "chat.delta",
+          "default": "chat.delta",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlation_id",
+        "response_id",
+        "sequence",
+        "delta"
+      ],
+      "title": "ChatDeltaEvent",
+      "type": "object"
+    },
+    "ChatDoneEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "response_id": {
+          "format": "uuid",
+          "title": "Response Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.done",
+          "default": "chat.done",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlation_id",
+        "response_id",
+        "outcome"
+      ],
+      "title": "ChatDoneEvent",
+      "type": "object"
+    },
+    "ChatErrorEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "pattern": "^[a-z][a-z0-9_]{2,63}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "response_id": {
+          "format": "uuid",
+          "title": "Response Id",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "chat.error",
+          "default": "chat.error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlation_id",
+        "response_id",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "ChatErrorEvent",
+      "type": "object"
+    },
+    "ChatStartedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "response_id": {
+          "format": "uuid",
+          "title": "Response Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chat.started",
+          "default": "chat.started",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlation_id",
+        "response_id"
+      ],
+      "title": "ChatStartedEvent",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "discriminator": {
+    "mapping": {
+      "chat.delta": "#/$defs/ChatDeltaEvent",
+      "chat.done": "#/$defs/ChatDoneEvent",
+      "chat.error": "#/$defs/ChatErrorEvent",
+      "chat.started": "#/$defs/ChatStartedEvent"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ChatStartedEvent"
+    },
+    {
+      "$ref": "#/$defs/ChatDeltaEvent"
+    },
+    {
+      "$ref": "#/$defs/ChatErrorEvent"
+    },
+    {
+      "$ref": "#/$defs/ChatDoneEvent"
+    }
+  ]
+}

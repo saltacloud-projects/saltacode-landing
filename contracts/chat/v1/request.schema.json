@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "client_message_id": {
+      "format": "uuid",
+      "title": "Client Message Id",
+      "type": "string"
+    },
+    "locale": {
+      "default": "es-AR",
+      "enum": [
+        "es-AR",
+        "es",
+        "en"
+      ],
+      "title": "Locale",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "client_message_id",
+    "message"
+  ],
+  "title": "ChatRequest",
+  "type": "object"
+}
