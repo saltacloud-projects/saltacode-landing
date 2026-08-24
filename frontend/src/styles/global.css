@@ -464,7 +464,7 @@ ul {
   border-inline-end: 0;
 }
 
-.client-list li:nth-last-child(-n + 4) {
+.client-list li:nth-last-child(-n + 3) {
   border-block-end: 0;
 }
 
@@ -845,7 +845,7 @@ ul {
 
   .client-list li,
   .client-list li:nth-child(4n),
-  .client-list li:nth-last-child(-n + 4) {
+  .client-list li:nth-last-child(-n + 3) {
     min-height: 108px;
     border-inline-end: 1px solid var(--line);
     border-block-end: 1px solid var(--line);
@@ -855,7 +855,7 @@ ul {
     border-inline-end: 0;
   }
 
-  .client-list li:nth-last-child(-n + 2) {
+  .client-list li:last-child {
     border-block-end: 0;
   }
 

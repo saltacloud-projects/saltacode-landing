@@ -344,6 +344,132 @@
       }
     },
     {
+      "id": "client-coseguro-total",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/logo-coseguro-total.png",
+            "bytes": 42456,
+            "sha256": "3194db09c53ea87c263c52ea0103b44f0bb6333b7741d1891e8d313918d01dba",
+            "width": 1030,
+            "height": 320
+          },
+          "output": {
+            "path": "src/assets/optimized/client/coseguro-total-onLight.webp",
+            "bytes": 7456,
+            "sha256": "f45249c72e81a5c84e15f32f17928a72186454a50de74f790807ccf6f500e0d5",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/logo-coseguro-total.png",
+            "bytes": 42456,
+            "sha256": "3194db09c53ea87c263c52ea0103b44f0bb6333b7741d1891e8d313918d01dba",
+            "width": 1030,
+            "height": 320
+          },
+          "output": {
+            "path": "src/assets/optimized/client/coseguro-total-onDark.webp",
+            "bytes": 7442,
+            "sha256": "4d6fdf04fd7a4108cca18714d5e59e9f34571aead954a9d2dcbb12c3c033a332",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-mariana-prone",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/logo-sitio-mariana-prone.png",
+            "bytes": 4600,
+            "sha256": "738d5541ac98b5b8c081bf3b25f9f16ef51633166a5c49f4c684c6fa40b55602",
+            "width": 131,
+            "height": 94
+          },
+          "output": {
+            "path": "src/assets/optimized/client/mariana-prone-onLight.webp",
+            "bytes": 7438,
+            "sha256": "c96923e9b4b17ca619f410a10e3d938b0c413273456f2907b6fde1f6fb473374",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/logo-sitio-mariana-prone.png",
+            "bytes": 4600,
+            "sha256": "738d5541ac98b5b8c081bf3b25f9f16ef51633166a5c49f4c684c6fa40b55602",
+            "width": 131,
+            "height": 94
+          },
+          "output": {
+            "path": "src/assets/optimized/client/mariana-prone-onDark.webp",
+            "bytes": 7430,
+            "sha256": "ae1e065d59593dd731a7707767d52544fd82276250ea722b125d474eaf2a69f7",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
+      "id": "client-finanx",
+      "kind": "client",
+      "canvas": {
+        "width": 360,
+        "height": 160
+      },
+      "variants": {
+        "onLight": {
+          "source": {
+            "path": "src/assets/clients/finanx.png",
+            "bytes": 42757,
+            "sha256": "a7c422f31d68cae8be4e5f2de1a80a10b5ba094b062b9bc7a2dfd3cb622a8e1e",
+            "width": 262,
+            "height": 88
+          },
+          "output": {
+            "path": "src/assets/optimized/client/finanx-onLight.webp",
+            "bytes": 8288,
+            "sha256": "39dc54cb874e7ad8e548e46be1b4771854018f9247fe77aa3c373161474d5e56",
+            "width": 360,
+            "height": 160
+          }
+        },
+        "onDark": {
+          "source": {
+            "path": "src/assets/clients/finanx.png",
+            "bytes": 42757,
+            "sha256": "a7c422f31d68cae8be4e5f2de1a80a10b5ba094b062b9bc7a2dfd3cb622a8e1e",
+            "width": 262,
+            "height": 88
+          },
+          "output": {
+            "path": "src/assets/optimized/client/finanx-onDark.webp",
+            "bytes": 8280,
+            "sha256": "6459158412d97e52602299716a3feab2335c88836319269d0dd529a9ad7d3cf0",
+            "width": 360,
+            "height": 160
+          }
+        }
+      }
+    },
+    {
       "id": "client-metalnor",
       "kind": "client",
       "canvas": {

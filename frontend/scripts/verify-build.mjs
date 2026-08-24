@@ -31,10 +31,13 @@ const EXPECTED_CLIENTS = [
   "Óptica Total",
   "Metalnor",
   "Cocel",
+  "Finanx",
+  "Coseguro Total",
+  "Mariana Prone",
 ];
 const ASSET_LIBRARY_BUDGETS = Object.freeze({
   maximumVariantBytes: 32 * 1024,
-  totalVariantBytes: 220 * 1024,
+  totalVariantBytes: 260 * 1024,
 });
 
 async function listBuildFiles(directory) {
@@ -283,7 +286,7 @@ for (const tag of clientImageTags) {
   }
 }
 
-if (assetManifest.schemaVersion !== 1 || assetManifest.assets?.length !== 10) {
+if (assetManifest.schemaVersion !== 1 || assetManifest.assets?.length !== 13) {
   throw new Error("The theme-ready image manifest must contain the two brand and eight client assets.");
 }
 
@@ -313,7 +316,7 @@ for (const asset of assetManifest.assets) {
 }
 
 console.log(
-  `Asset budget: ${totalAssetVariantBytes} bytes / ${ASSET_LIBRARY_BUDGETS.totalVariantBytes} bytes maximum for 20 variants.`,
+  `Asset budget: ${totalAssetVariantBytes} bytes / ${ASSET_LIBRARY_BUDGETS.totalVariantBytes} bytes maximum for 26 variants.`,
 );
 if (totalAssetVariantBytes > ASSET_LIBRARY_BUDGETS.totalVariantBytes) {
   throw new Error("The complete theme-ready image library exceeds its performance budget.");

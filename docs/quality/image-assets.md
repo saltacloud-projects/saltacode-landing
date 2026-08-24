@@ -25,11 +25,11 @@ pnpm --dir frontend assets:check
 
 The build gate also requires:
 
-- exactly two brand assets and eight displayed clients;
+- exactly two brand assets and eleven displayed clients;
 - both surface variants for every asset;
 - the canonical canvases above;
 - no variant larger than 32 KiB;
-- no more than 220 KiB for the complete 20-variant library;
+- no more than 260 KiB for the complete 26-variant library;
 - lazy loading and explicit 180 × 80 rendered dimensions for all client logos.
 
 ## Verified sources
@@ -37,7 +37,8 @@ The build gate also requires:
 - Saltacode mark and lockup variants were recovered from the repository's legacy commit `b6562bfa`.
 - Metalnor uses the provided dark-surface logo and the official light-surface logo from the first-party `sistema-metalnor` working copy.
 - Cocel uses the provided variants verified against the first-party `website-cocel` working copy.
-- The six historical client logos are converted to consistent monochrome surface variants without changing their geometry.
+- The nine historical client logos are converted to consistent monochrome surface variants without changing their geometry.
+- Finanx keeps its original source intact; the deterministic generator removes its uniform source background before producing the two monochrome surface variants.
 
 Generative AI is not used for logos. Verified official variants exist, and synthesizing a trademark would introduce brand and provenance risk rather than improve quality.
 

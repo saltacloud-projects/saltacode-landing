@@ -37,6 +37,8 @@ const assets = [
     ["grupo-kamal", "src/assets/clients/kamal.png"],
     ["planeta-puna", "src/assets/clients/puna.png"],
     ["optica-total", "src/assets/clients/optica-total.png"],
+    ["coseguro-total", "src/assets/clients/logo-coseguro-total.png"],
+    ["mariana-prone", "src/assets/clients/logo-sitio-mariana-prone.png"],
   ].map(([slug, source]) => ({
     id: `client-${slug}`,
     kind: "client",
@@ -46,6 +48,23 @@ const assets = [
       onDark: { source, color: "#D8D8E0" },
     },
   })),
+  {
+    id: "client-finanx",
+    kind: "client",
+    canvas: clientCanvas,
+    variants: {
+      onLight: {
+        source: "src/assets/clients/finanx.png",
+        color: "#74747D",
+        removeBackground: { color: "#013660", tolerance: 18, feather: 32 },
+      },
+      onDark: {
+        source: "src/assets/clients/finanx.png",
+        color: "#D8D8E0",
+        removeBackground: { color: "#013660", tolerance: 18, feather: 32 },
+      },
+    },
+  },
   {
     id: "client-metalnor",
     kind: "client",
@@ -74,10 +93,41 @@ function outputPath(asset, theme) {
   return resolve(outputRoot, asset.kind, `${asset.id.replace(`${asset.kind}-`, "")}-${theme}.webp`);
 }
 
+function parseHexColor(color) {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
+  if (!match) throw new Error(`Unsupported background color: ${color}`);
+  return match.slice(1).map((channel) => Number.parseInt(channel, 16));
+}
+
+async function removeBackground(sourceBuffer, settings) {
+  const { data, info } = await sharp(sourceBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const [backgroundRed, backgroundGreen, backgroundBlue] = parseHexColor(settings.color);
+
+  for (let offset = 0; offset < data.length; offset += 4) {
+    const redDelta = data[offset] - backgroundRed;
+    const greenDelta = data[offset + 1] - backgroundGreen;
+    const blueDelta = data[offset + 2] - backgroundBlue;
+    const distance = Math.sqrt(redDelta ** 2 + greenDelta ** 2 + blueDelta ** 2);
+    const coverage = Math.min(
+      1,
+      Math.max(0, (distance - settings.tolerance) / settings.feather),
+    );
+    data[offset + 3] = Math.round(data[offset + 3] * coverage);
+  }
+
+  return sharp(data, { raw: info }).png().toBuffer();
+}
+
 async function renderVariant(asset, variant) {
   const sourcePath = resolve(frontendRoot, variant.source);
   const sourceBuffer = await readFile(sourcePath);
-  const trimmed = await sharp(sourceBuffer)
+  const preparedSource = variant.removeBackground
+    ? await removeBackground(sourceBuffer, variant.removeBackground)
+    : sourceBuffer;
+  const trimmed = await sharp(preparedSource)
     .ensureAlpha()
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
     .png()

@@ -8,12 +8,18 @@ import balanceOnDark from "../assets/optimized/client/balance-onDark.webp";
 import balanceOnLight from "../assets/optimized/client/balance-onLight.webp";
 import cocelOnDark from "../assets/optimized/client/cocel-onDark.webp";
 import cocelOnLight from "../assets/optimized/client/cocel-onLight.webp";
+import coseguroTotalOnDark from "../assets/optimized/client/coseguro-total-onDark.webp";
+import coseguroTotalOnLight from "../assets/optimized/client/coseguro-total-onLight.webp";
+import finanxOnDark from "../assets/optimized/client/finanx-onDark.webp";
+import finanxOnLight from "../assets/optimized/client/finanx-onLight.webp";
 import grupoKamalOnDark from "../assets/optimized/client/grupo-kamal-onDark.webp";
 import grupoKamalOnLight from "../assets/optimized/client/grupo-kamal-onLight.webp";
 import ko27OnDark from "../assets/optimized/client/ko27-onDark.webp";
 import ko27OnLight from "../assets/optimized/client/ko27-onLight.webp";
 import metalnorOnDark from "../assets/optimized/client/metalnor-onDark.webp";
 import metalnorOnLight from "../assets/optimized/client/metalnor-onLight.webp";
+import marianaProneOnDark from "../assets/optimized/client/mariana-prone-onDark.webp";
+import marianaProneOnLight from "../assets/optimized/client/mariana-prone-onLight.webp";
 import opticaTotalOnDark from "../assets/optimized/client/optica-total-onDark.webp";
 import opticaTotalOnLight from "../assets/optimized/client/optica-total-onLight.webp";
 import planetaPunaOnDark from "../assets/optimized/client/planeta-puna-onDark.webp";
@@ -48,4 +54,13 @@ export const clients = [
   },
   { name: "Metalnor", logo: { onLight: metalnorOnLight, onDark: metalnorOnDark } },
   { name: "Cocel", logo: { onLight: cocelOnLight, onDark: cocelOnDark } },
+  { name: "Finanx", logo: { onLight: finanxOnLight, onDark: finanxOnDark } },
+  {
+    name: "Coseguro Total",
+    logo: { onLight: coseguroTotalOnLight, onDark: coseguroTotalOnDark },
+  },
+  {
+    name: "Mariana Prone",
+    logo: { onLight: marianaProneOnLight, onDark: marianaProneOnDark },
+  },
 ] as const satisfies readonly Client[];
