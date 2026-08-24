@@ -67,11 +67,12 @@ See [`docs/architecture/platform-topology.md`](docs/architecture/platform-topolo
 
 1. `docs/discovery/initial-baseline.md`
 2. `docs/discovery/production-baseline.md`
-3. `docs/quality/seo-performance-contract.md`
-4. `docs/architecture/technology-direction.md`
-5. `docs/architecture/platform-topology.md`
-6. `docs/architecture/ai-chat-boundary.md`
-7. `docs/agentic/tooling.md`
+3. `docs/discovery/modernization-readiness-2026-08-24.md`
+4. `docs/quality/seo-performance-contract.md`
+5. `docs/architecture/technology-direction.md`
+6. `docs/architecture/platform-topology.md`
+7. `docs/architecture/ai-chat-boundary.md`
+8. `docs/agentic/tooling.md`
 
 ## Evidence boundary
 
