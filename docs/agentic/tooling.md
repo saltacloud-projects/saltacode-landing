@@ -39,3 +39,14 @@ The project caps spawned-agent threads at four. Parallelize only independent wor
 2. Repair `gh` authentication only if the user explicitly requests GitHub operations.
 3. Discover Cloudflare state read-only after explicit authorization.
 4. Add pnpm, Astro, testing, Lighthouse, and Wrangler dependencies only in the separate migration phase.
+
+## Maintenance loop
+
+After each bounded work unit:
+
+1. Inspect and stage only the owned diff; exclude unrelated working-tree changes.
+2. Run focused checks plus a runtime harness, or record runtime as `N/A` with a concrete reason.
+3. Record the rollback boundary. Save durable facts to Engram.
+4. Update skills, agents, docs, or validators only when the operating contract drifted. After skill changes, run `gentle-ai skill-registry refresh` and validate the layer.
+5. Let the CodeGraph watcher synchronize changes; run `codegraph sync` only when the watcher is disabled or reports stale files.
+6. Inspect the staged diff and create one local Conventional Commit. Never add AI attribution, push, or deploy without explicit authorization.

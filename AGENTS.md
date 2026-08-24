@@ -25,7 +25,8 @@ This repository hosts Saltacode's production landing page. Protect discoverabili
 3. Search Engram before repeating prior architecture or discovery work; save durable decisions and non-obvious findings.
 4. Delegate only a bounded role with a clear write boundary. One writer owns overlapping files.
 5. Validate locally with `scripts/agentic/validate-layer.sh` and any task-specific checks.
-6. Report evidence, remaining unknowns, and potential SEO/performance impact.
+6. Finish each bounded work unit with `.agents/skills/delivery-checkpoint/SKILL.md`.
+7. Report evidence, remaining unknowns, and potential SEO/performance impact.
 
 ## Project agents
 
@@ -51,6 +52,7 @@ Agent definitions live in `.codex/agents/`. Do not pin agent models; inherit the
 | `.agents/skills/accessibility-quality/SKILL.md` | Accessibility, semantics, keyboard, or assistive technology review. |
 | `.agents/skills/ai-chat-boundary/SKILL.md` | AI chat, quote flow, external agent, privacy, or secret handling. |
 | `.agents/skills/cloudflare-release/SKILL.md` | Cloudflare preview, Pages configuration, production release, or rollback. |
+| `.agents/skills/delivery-checkpoint/SKILL.md` | Work-unit validation, commit, rollback, or agentic maintenance. |
 
 ## Quality contract
 
