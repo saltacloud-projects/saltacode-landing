@@ -5,7 +5,8 @@ This repository hosts Saltacode's production landing page. Protect discoverabili
 ## Source of truth
 
 - Treat the live site, provider responses, Search Console evidence, and measured field data as production truth.
-- Treat `docs/discovery/initial-baseline.md` as the verified repository baseline, not proof of live behavior.
+- Treat the current tracked files and checks as repository truth, not proof of live behavior.
+- Treat `docs/discovery/initial-baseline.md` as a dated pre-modernization snapshot, not the current repository architecture or current production proof.
 - Keep unknown deployment, DNS, Cloudflare, analytics, and indexing state explicitly unknown until verified.
 
 ## Universal guardrails
@@ -60,4 +61,13 @@ Follow `docs/quality/seo-performance-contract.md`. Its Lighthouse targets are la
 
 ## Architecture direction
 
-The recommended direction is documented, not implemented: Astro with TypeScript and pnpm, static-first output on Cloudflare Pages, selective islands, and an external AI-agent integration through an edge/backend boundary. Migration is a separate phase and requires explicit approval.
+The repository now implements the approved platform foundation:
+
+- `frontend/`: Astro with strict TypeScript and pnpm, static-first output, and no default client hydration.
+- `backend/`: FastAPI with uv as the public same-origin BFF and SSE boundary.
+- `agent-ai/`: private FastAPI/uv orchestration seed; no public browser endpoint.
+- `contracts/`: versioned public chat schemas.
+- `compose.yml`: locally built application containers plus a private ephemeral Redis rate limiter.
+- `infrastructure/`: host-managed `cloudflared` path routing to loopback origins, without Nginx or Caddy.
+
+Netlify and Cloudflare Pages are not deployment targets for this direction. Repository implementation does not authorize or prove a production cutover. Follow `docs/architecture/platform-topology.md` and `infrastructure/README.md` for boundaries and evidence gates.

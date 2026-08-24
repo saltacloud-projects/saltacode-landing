@@ -1,6 +1,6 @@
-# Initial repository baseline
+# Initial repository baseline (historical: 2026-08-23)
 
-This document records verified local repository evidence before modernization. It does not describe or certify the live production environment.
+This immutable-in-intent snapshot records verified local repository evidence **before** modernization began. It does not describe the current repository architecture and does not certify the live production environment.
 
 ## Scope and method
 
@@ -57,4 +57,10 @@ These are risks, not measured Core Web Vitals. Compression, caching, CDN behavio
 
 ## Next discovery gate
 
-The first public-response and synthetic mobile checks are recorded in [`production-baseline.md`](production-baseline.md). Before migration, complete the remaining read-only evidence for authenticated deployment ownership and configuration, Search Console coverage and selected canonical, CrUX field Core Web Vitals, repeatable multi-run lab measurements, structured-data validation, and rollback controls.
+The first public-response and synthetic mobile checks are recorded in [`production-baseline.md`](production-baseline.md). Before production cutover, complete the remaining read-only evidence for authenticated deployment ownership and configuration, Search Console coverage and selected canonical, CrUX field Core Web Vitals, repeatable multi-run lab measurements, structured-data validation, and rollback controls.
+
+## Post-baseline repository state
+
+The repository now contains an Astro static frontend, FastAPI BFF, private agent seed, versioned chat contracts, Compose topology, host-managed Tunnel templates, CI, and agentic validation. Those changes supersede this document as a description of the repository, but they do not prove that production has changed.
+
+Use the current tracked files, [`../architecture/technology-direction.md`](../architecture/technology-direction.md), and [`../architecture/platform-topology.md`](../architecture/platform-topology.md) for implemented architecture. Keep live deployment, DNS, Cloudflare, indexing, rankings, and field Core Web Vitals unknown until verified directly.
