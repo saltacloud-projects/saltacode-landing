@@ -1,16 +1,96 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { extname, relative, resolve } from "node:path";
 
 const dist = resolve(import.meta.dirname, "../dist");
-const index = await readFile(resolve(dist, "index.html"), "utf8");
+const indexBuffer = await readFile(resolve(dist, "index.html"));
+const index = indexBuffer.toString("utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
+
+const BUILD_BUDGETS = Object.freeze({
+  indexHtmlBytes: 20 * 1024,
+  cssBytes: 15 * 1024,
+  executableJavaScriptBytes: 0,
+  socialImageBytes: 100 * 1024,
+  webfontBytes: 0,
+});
+
+const EXECUTABLE_JAVASCRIPT_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
+const SOCIAL_IMAGE_PATH = "images/social/saltacode-social.webp";
+const WEBFONT_EXTENSIONS = new Set([".eot", ".otf", ".ttf", ".woff", ".woff2"]);
+
+async function listBuildFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const absolutePath = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listBuildFiles(absolutePath)));
+    } else if (entry.isFile()) {
+      const contents = await readFile(absolutePath);
+      files.push({
+        bytes: contents.byteLength,
+        extension: extname(entry.name).toLowerCase(),
+        path: relative(dist, absolutePath),
+      });
+    }
+  }
+
+  return files;
+}
+
+const buildFiles = await listBuildFiles(dist);
+const socialImage = buildFiles.find((file) => file.path === SOCIAL_IMAGE_PATH);
+if (!socialImage) {
+  throw new Error(`Missing required build output: ${SOCIAL_IMAGE_PATH}`);
+}
+
+function totalBytesForExtensions(extensions) {
+  return buildFiles
+    .filter((file) => extensions.has(file.extension))
+    .reduce((total, file) => total + file.bytes, 0);
+}
+
+const measuredBuild = Object.freeze({
+  indexHtmlBytes: indexBuffer.byteLength,
+  cssBytes: totalBytesForExtensions(new Set([".css"])),
+  executableJavaScriptBytes: totalBytesForExtensions(EXECUTABLE_JAVASCRIPT_EXTENSIONS),
+  socialImageBytes: socialImage.bytes,
+  webfontBytes: totalBytesForExtensions(WEBFONT_EXTENSIONS),
+});
+
+const budgetResults = [
+  ["generated index HTML", measuredBuild.indexHtmlBytes, BUILD_BUDGETS.indexHtmlBytes],
+  ["total emitted CSS", measuredBuild.cssBytes, BUILD_BUDGETS.cssBytes],
+  [
+    "emitted executable JavaScript",
+    measuredBuild.executableJavaScriptBytes,
+    BUILD_BUDGETS.executableJavaScriptBytes,
+  ],
+  ["social preview image", measuredBuild.socialImageBytes, BUILD_BUDGETS.socialImageBytes],
+  ["emitted webfonts", measuredBuild.webfontBytes, BUILD_BUDGETS.webfontBytes],
+];
+
+for (const [label, actual, maximum] of budgetResults) {
+  console.log(`Build budget: ${label} ${actual} bytes / ${maximum} bytes maximum.`);
+}
+
+const budgetFailures = budgetResults.filter(([, actual, maximum]) => actual > maximum);
+if (budgetFailures.length > 0) {
+  const details = budgetFailures
+    .map(([label, actual, maximum]) => `${label}: ${actual} bytes exceeds ${maximum} bytes`)
+    .join("; ");
+  throw new Error(`Static build performance budget failed: ${details}.`);
+}
 
 const assertions = [
   [/<html lang="es-AR">/, "document language"],
   [/<link rel="canonical" href="https:\/\/saltacode\.com\.ar\/">/, "canonical URL"],
   [/<meta name="description" content="[^"]+">/, "meta description"],
   [/<meta property="og:image" content="https:\/\/saltacode\.com\.ar\/images\/social\/saltacode-social\.webp">/, "OpenGraph image"],
+  [/<meta property="og:image:width" content="1200">/, "OpenGraph image width"],
+  [/<meta property="og:image:height" content="630">/, "OpenGraph image height"],
   [/<meta name="twitter:card" content="summary_large_image">/, "Twitter card"],
   [/<script type="application\/ld\+json">\{/, "JSON-LD"],
   [/href="mailto:saltacodear@gmail\.com"/, "email contact path"],
@@ -85,4 +165,6 @@ if (executableScripts.length !== 0) {
   throw new Error("The static landing page unexpectedly ships executable JavaScript.");
 }
 
-console.log("Verified static HTML, canonical metadata, crawl files, contacts, and zero client JavaScript.");
+console.log(
+  `Verified ${buildFiles.length} emitted files, static HTML, canonical metadata, crawl files, contacts, and local build budgets.`,
+);

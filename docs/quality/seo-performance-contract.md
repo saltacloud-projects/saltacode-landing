@@ -39,7 +39,21 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Capture preview and production baselines before enforcing numeric resource budgets. Then version budgets for HTML, critical CSS, initial JavaScript, fonts, LCP media, total initial transfer, third-party requests, and main-thread work. A budget change requires evidence and review; do not silently raise it to make CI pass.
+Version 1 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+
+| Resource or scenario | Version 1 limit | Gate |
+|---|---:|---|
+| Generated home HTML | <= 20 KiB raw | Deterministic build assertion |
+| Total emitted CSS | <= 15 KiB raw | Deterministic build assertion |
+| Emitted executable JavaScript | 0 bytes | Deterministic build assertion |
+| Emitted webfonts | 0 bytes | Deterministic build assertion |
+| Social preview image | <= 100 KiB raw | Deterministic build assertion |
+| Cold initial-page transfer | <= 125 KiB encoded | Repeatable browser lab |
+| Cold full-scroll transfer | <= 175 KiB encoded | Repeatable browser lab |
+
+The browser-lab gates require consistent viewport, network, CPU, cache state, route, and run count. Record the median and raw runs. Lighthouse scores, public-origin compression and cache behavior, and 75th-percentile field data are separate evidence and must still be verified.
+
+Budget changes require measured evidence and review. Never raise a limit only to make CI pass; first attribute the regression and either remove it or document the reviewed tradeoff.
 
 ## Accessibility contract
 
