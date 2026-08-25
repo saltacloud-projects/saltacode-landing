@@ -374,7 +374,10 @@ if (!clientList) {
   throw new Error("The accessible client carousel group is missing.");
 }
 
-if ((index.match(/\bdata-client-group\b/g) ?? []).length !== 1 || /class="service-summary"/.test(index)) {
+if (
+  (index.match(/<ul\b[^>]*\bdata-client-group\b/g) ?? []).length !== 1 ||
+  /class="service-summary"/.test(index)
+) {
   throw new Error("The homepage must render one client group instead of the former service summary.");
 }
 const clientImageTags = [...clientList.matchAll(/<img\b[^>]*>/g)].map((match) => match[0]);
