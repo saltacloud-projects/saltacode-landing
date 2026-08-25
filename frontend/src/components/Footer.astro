@@ -12,38 +12,67 @@ const year = new Date().getFullYear();
 ---
 
 <footer class="site-footer">
-  <div class="container footer-grid">
-    <div>
-      <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, volver al inicio">
+  <div class="container">
+    <div class="footer-main">
+      <div class="footer-intro">
+        <a class="brand footer-brand" href={homeFragment("top")} aria-label="SaltaCode, volver al inicio">
         <ThemeImage
-          variants={brandImages.mark}
-          width={34}
+          variants={brandImages.lockup}
+          width={320}
           alt=""
           loading="lazy"
           decoding="async"
         />
-        <span>SaltaCode</span>
-      </a>
-      <p>
-        Empresa tecnológica integral: desarrollo de software, consultoría IT, outsourcing de equipos
-        y soluciones bajo el modelo SaaS.
-      </p>
+        </a>
+        <p>
+          Creamos software a medida y sumamos capacidades IT para resolver procesos, integrar sistemas
+          y acompañar el crecimiento de empresas.
+        </p>
+        <a class="footer-cta" href={homeFragment("contacto")}>Conversemos sobre tu proyecto</a>
+      </div>
+
+      <div class="footer-directory">
+        <nav aria-label="Servicios en el pie">
+          <strong>Servicios</strong>
+          <ul class="footer-links">
+            <li><a href={homeFragment("software-factory")}>Software a medida</a></li>
+            <li><a href={homeFragment("consultoria-it")}>Consultoría IT</a></li>
+            <li><a href={homeFragment("outsourcing")}>Equipos IT</a></li>
+            <li><a href={homeFragment("soluciones-saas")}>Soluciones SaaS</a></li>
+          </ul>
+        </nav>
+
+        <nav aria-label="Empresa en el pie">
+          <strong>SaltaCode</strong>
+          <ul class="footer-links">
+            <li><a href={homeFragment("clientes")}>Clientes</a></li>
+            <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
+            <li><a href={homeFragment("contacto")}>Contacto</a></li>
+          </ul>
+        </nav>
+      </div>
+
+      <div class="footer-contact">
+        <strong>Hablemos</strong>
+        <address>
+          <a href="mailto:saltacodear@gmail.com">saltacodear@gmail.com</a>
+          <a href="https://wa.me/5493875296587" target="_blank" rel="noopener noreferrer">
+            +54 9 387 529-6587
+          </a>
+          <a href="https://maps.app.goo.gl/RKfbDFHbga3HUNvH7" target="_blank" rel="noopener noreferrer">
+            Zuviría 333, Oficina 4C<br />Salta, Argentina
+          </a>
+        </address>
+      </div>
     </div>
 
-    <nav aria-label="Navegación del pie">
-      <ul>
-        <li><a href={homeFragment("clientes")}>Nuestros clientes</a></li>
-        <li><a href={homeFragment("servicios")}>Servicios y productos</a></li>
-        <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
-        <li><a href={homeFragment("contacto")}>Contactanos</a></li>
+    <div class="footer-bottom">
+      <small>© {year} SaltaCode. Todos los derechos reservados.</small>
+      <ul class="footer-social" aria-label="Redes sociales">
+        <li><a href="https://www.linkedin.com/company/saltacode/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
+        <li><a href="https://www.instagram.com/saltacode.ar/" target="_blank" rel="noopener noreferrer">Instagram</a></li>
+        <li><a href="https://www.facebook.com/saltacode.ar" target="_blank" rel="noopener noreferrer">Facebook</a></li>
       </ul>
-    </nav>
-
-    <div>
-      <strong>Contacto</strong>
-      <a href="mailto:saltacodear@gmail.com">saltacodear@gmail.com</a>
-      <span>Zuviría 333, Oficina 4C</span>
-      <small>© {year} SaltaCode</small>
     </div>
   </div>
 </footer>

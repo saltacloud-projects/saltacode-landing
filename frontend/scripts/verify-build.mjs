@@ -12,7 +12,7 @@ const assetManifest = JSON.parse(
 );
 
 const BUILD_BUDGETS = Object.freeze({
-  indexHtmlBytes: 27 * 1024,
+  indexHtmlBytes: 29 * 1024,
   cssBytes: 20 * 1024,
   initialExecutableJavaScriptBytes: 5 * 1024,
   totalExecutableJavaScriptBytes: 14 * 1024,
@@ -103,7 +103,20 @@ function extractExecutableScripts(markup) {
   ];
 }
 
-const homeNavigationFragments = new Set(["top", "clientes", "servicios", "nosotros", "contacto"]);
+const requiredHomeNavigationFragments = new Set([
+  "top",
+  "clientes",
+  "servicios",
+  "nosotros",
+  "contacto",
+]);
+const allowedHomeNavigationFragments = new Set([
+  ...requiredHomeNavigationFragments,
+  "software-factory",
+  "consultoria-it",
+  "outsourcing",
+  "soluciones-saas",
+]);
 
 function verifySharedNavigation(markup, prefix, routeLabel) {
   const navigationMarkup = [extractLandmark(markup, "header"), extractLandmark(markup, "footer")].join(
@@ -118,7 +131,7 @@ function verifySharedNavigation(markup, prefix, routeLabel) {
   const resolvedFragments = new Set();
   for (const href of hrefs) {
     const match = href.match(new RegExp(`^${prefix === "/" ? "\\/" : ""}#(.+)$`));
-    if (!match || !homeNavigationFragments.has(match[1])) {
+    if (!match || !allowedHomeNavigationFragments.has(match[1])) {
       throw new Error(`${routeLabel} shared navigation contains an invalid home link: ${href}`);
     }
 
@@ -128,7 +141,7 @@ function verifySharedNavigation(markup, prefix, routeLabel) {
     resolvedFragments.add(match[1]);
   }
 
-  for (const fragment of homeNavigationFragments) {
+  for (const fragment of requiredHomeNavigationFragments) {
     if (!resolvedFragments.has(fragment)) {
       throw new Error(`${routeLabel} shared navigation is missing the ${prefix}#${fragment} link.`);
     }
