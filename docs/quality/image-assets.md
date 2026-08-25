@@ -34,7 +34,7 @@ The build gate also requires:
 - no variant larger than 32 KiB;
 - no more than 260 KiB for the complete 26-variant library;
 - lazy loading and explicit 180 × 80 rendered dimensions for all client logos.
-- one accessible client group, automatic pause on hover or keyboard focus, and a non-animated reduced-motion fallback.
+- one accessible client group, pause on keyboard focus, and a non-animated reduced-motion fallback.
 
 ## Verified sources
 

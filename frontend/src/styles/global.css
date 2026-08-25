@@ -684,16 +684,17 @@ ul {
 
 .hero-clients-heading {
   max-width: 620px;
-  margin: 0 auto clamp(1.5rem, 3vw, 2.2rem);
+  margin: 0 auto clamp(1.1rem, 2vw, 1.5rem);
 }
 
 .hero-clients-heading h2 {
   margin-bottom: 0;
-  font-size: clamp(1.55rem, 3vw, 2.2rem);
+  font-size: clamp(1.25rem, 2vw, 1.55rem);
 }
 
 .client-viewport {
   overflow: hidden;
+  contain: paint;
   --client-fade: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
   mask-image: var(--client-fade);
   -webkit-mask-image: var(--client-fade);
@@ -702,15 +703,16 @@ ul {
 .client-track {
   display: flex;
   width: max-content;
+  backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
 }
 
 .hero-clients[data-animated] .client-track {
   animation: client-marquee 38s linear infinite;
 }
 
-.client-viewport:hover .client-track,
-.client-viewport:focus .client-track,
-.client-viewport:focus-within .client-track {
+.client-viewport:focus-visible .client-track {
   animation-play-state: paused !important;
 }
 
@@ -724,7 +726,7 @@ ul {
 
 .client-group li {
   display: grid;
-  width: clamp(9.25rem, 16vw, 11.25rem);
+  width: clamp(8.25rem, 16vw, 11.25rem);
   min-height: 84px;
   flex: 0 0 auto;
   place-items: center;
@@ -733,13 +735,12 @@ ul {
 
 .client-group img {
   width: min(100%, 180px);
-  filter: grayscale(1);
   opacity: 0.76;
 }
 
 @keyframes client-marquee {
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
@@ -1158,15 +1159,15 @@ ul {
   }
 
   .hero-clients {
-    padding-top: 1.75rem;
+    padding-top: 1.5rem;
   }
 
   .hero-clients-heading {
-    margin-bottom: 1.35rem;
+    margin-bottom: 0.9rem;
   }
 
   .hero-clients-heading h2 {
-    font-size: 1.6rem;
+    font-size: 1.2rem;
   }
 
   .service.reverse .service-media {

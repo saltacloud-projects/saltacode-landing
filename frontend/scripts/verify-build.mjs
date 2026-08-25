@@ -211,7 +211,7 @@ const assertions = [
   [/data-circuit-node="core"/, "central circuit particles"],
   [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
   [/data-client-carousel/, "progressively enhanced client carousel"],
-  [/class="client-viewport" role="region" aria-label="Carrusel de clientes de SaltaCode; el movimiento se pausa al enfocarlo" tabindex="0"/, "focusable client carousel pause surface"],
+  [/class="client-viewport" role="region" aria-label="Carrusel de clientes de SaltaCode; el movimiento se pausa al enfocarlo con teclado" tabindex="0"/, "focusable client carousel pause surface"],
   [/data-client-track/, "client carousel track"],
   [/data-client-group/, "accessible client logo group"],
   [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
