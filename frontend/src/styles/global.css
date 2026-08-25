@@ -24,6 +24,7 @@
   --hero-wash: light-dark(rgb(252 252 255 / 50%), rgb(14 13 20 / 52%));
   --hero-wash-end: light-dark(rgb(252 252 255 / 74%), rgb(14 13 20 / 78%));
   --hero-veil-solid: light-dark(#fcfcff, #0e0d14);
+  --hero-veil-core: light-dark(rgb(252 252 255 / 88%), rgb(14 13 20 / 86%));
   --hero-veil-strong: light-dark(rgb(252 252 255 / 94%), rgb(14 13 20 / 94%));
   --hero-veil-soft: light-dark(rgb(252 252 255 / 42%), rgb(14 13 20 / 44%));
   --circuit-stroke: light-dark(rgb(105 67 244 / 52%), rgb(156 130 255 / 58%));
@@ -431,7 +432,7 @@ ul {
   background:
     radial-gradient(
       ellipse 46% 54% at 50% 42%,
-      var(--hero-veil-solid) 0 46%,
+      var(--hero-veil-core) 0 40%,
       var(--hero-veil-strong) 61%,
       var(--hero-veil-soft) 80%,
       transparent 100%
@@ -474,6 +475,11 @@ ul {
   vector-effect: non-scaling-stroke;
 }
 
+.hero-circuit-path-core {
+  opacity: 0.9;
+  stroke-width: 1.6;
+}
+
 .hero-circuit-node {
   position: absolute;
   top: 0;
@@ -514,6 +520,26 @@ ul {
   --node-left: 30%;
 }
 
+.hero-circuit-node:nth-of-type(6) {
+  --node-top: 55.9%;
+  --node-left: 18.1%;
+}
+
+.hero-circuit-node:nth-of-type(7) {
+  --node-top: 55.9%;
+  --node-left: 81.9%;
+}
+
+.hero-circuit-node:nth-of-type(8) {
+  --node-top: 50%;
+  --node-left: 50%;
+}
+
+.hero-circuit-node:nth-of-type(9) {
+  --node-top: 77%;
+  --node-left: 46%;
+}
+
 .hero-inner {
   position: relative;
   z-index: 2;
@@ -523,29 +549,9 @@ ul {
 
 .hero-brand {
   display: block;
-  width: min(100%, 300px);
+  width: min(100%, 220px);
   height: auto;
-  margin: 0 auto 1.25rem;
-  color: var(--ink);
-}
-
-.hero-brand-draw {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: hero-brand-draw 720ms forwards;
-}
-
-.hero-brand-copy {
-  opacity: 0;
-  animation: hero-brand-copy 480ms 620ms forwards;
-}
-
-@keyframes hero-brand-draw {
-  to { stroke-dashoffset: 0; }
-}
-
-@keyframes hero-brand-copy {
-  to { opacity: 1; }
+  margin: 0 auto 1rem;
 }
 
 .hero h1 span {
@@ -1250,12 +1256,6 @@ ul {
     transform: translate(-50%, -50%);
   }
 
-  .hero-brand-draw,
-  .hero-brand-copy {
-    animation: none;
-    opacity: 1;
-    stroke-dashoffset: 0;
-  }
 }
 
 @media print {

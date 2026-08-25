@@ -25,6 +25,21 @@ import AnimatedBrandLockup from "./AnimatedBrandLockup.astro";
         class="hero-circuit-path"
         d="M 340 0 V 110 L 480 250 H 620 L 710 340 H 890 L 980 250 H 1120 L 1260 110 V 0"
       ></path>
+      <path
+        data-circuit-path="left-branch"
+        class="hero-circuit-path"
+        d="M 0 285 H 150 L 290 425 H 460 L 610 575 H 720 L 800 495"
+      ></path>
+      <path
+        data-circuit-path="right-branch"
+        class="hero-circuit-path"
+        d="M 800 495 L 880 575 H 990 L 1140 425 H 1310 L 1450 285 H 1600"
+      ></path>
+      <path
+        data-circuit-path="core"
+        class="hero-circuit-path hero-circuit-path-core"
+        d="M 800 0 V 150 L 735 215 V 315 L 800 380 V 520 L 735 585 V 760"
+      ></path>
     </svg>
     <span
       class="hero-circuit-node"
@@ -55,6 +70,30 @@ import AnimatedBrandLockup from "./AnimatedBrandLockup.astro";
       data-circuit-node="crown"
       data-duration="18"
       data-delay="-9"
+    ></span>
+    <span
+      class="hero-circuit-node"
+      data-circuit-node="left-branch"
+      data-duration="19"
+      data-delay="-4"
+    ></span>
+    <span
+      class="hero-circuit-node"
+      data-circuit-node="right-branch"
+      data-duration="19"
+      data-delay="-12"
+    ></span>
+    <span
+      class="hero-circuit-node"
+      data-circuit-node="core"
+      data-duration="17"
+      data-delay="-2"
+    ></span>
+    <span
+      class="hero-circuit-node"
+      data-circuit-node="core"
+      data-duration="17"
+      data-delay="-10.5"
     ></span>
   </div>
 

@@ -9,7 +9,7 @@ This contract covers Saltacode brand images and the client logos currently rende
 - The pre-paint theme bootstrap selects the correct variant for light, dark, or system mode before themed images load.
 - Brand marks use a 256 × 256 transparent canvas; brand lockups use 720 × 288.
 - Client logos use a 360 × 160 transparent canvas, preserving a consistent 9:4 visual area.
-- The hero uses a separate 1,369-byte generated inline SVG lockup with CSS-only animation and theme tokens; it does not request either raster lockup variant on the critical path.
+- The hero loads one surface-specific vector lockup recovered from the historical production artwork. Each animated SVG is 26,527 raw bytes and 4,841 bytes over the local server's negotiated gzip response; reduced-motion visitors receive a static 13,627-byte vector instead of downloading or running the animation.
 
 The source-to-output mapping, dimensions, byte sizes, and SHA-256 hashes live in `frontend/src/assets/optimized/manifest.json`.
 
@@ -36,7 +36,7 @@ The build gate also requires:
 ## Verified sources
 
 - Saltacode mark and lockup variants were recovered from the repository's legacy commit `b6562bfa`.
-- The animated hero lockup reuses the verified geometry, gradient direction, wordmark, and tagline from that commit's `index.html`, `assets/css/logo-animated.css`, and `assets/js/hero-logo-animated.js`. The historical 72,606-byte SVG and global delayed rules were not copied; the current scoped component preserves the brand sequence with fixed dimensions, no JavaScript, and a reduced-motion final state.
+- The animated hero lockup preserves the verified paths, gradient stops, vector wordmark, tagline, drawing order, easing, and delays from that commit's `index.html`, `assets/css/logo-animated.css`, and `assets/js/hero-logo-animated.js`. The historical 72,606-byte inline source was converted into hashed light/dark external assets, scoped animations, fixed dimensions, and dedicated static reduced-motion variants; it adds no font request and the selected response is compressed by the static server.
 - Metalnor uses the provided dark-surface logo and the official light-surface logo from the first-party `sistema-metalnor` working copy.
 - Cocel uses the provided variants verified against the first-party `website-cocel` working copy.
 - The nine historical client logos are converted to consistent monochrome surface variants without changing their geometry.

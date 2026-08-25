@@ -56,6 +56,12 @@ try {
   if (home.headers.get("cache-control") !== "public, max-age=0, must-revalidate") {
     throw new Error("HTML revalidation policy is missing.");
   }
+  if (
+    home.headers.get("content-encoding") !== "gzip" ||
+    !home.headers.get("vary")?.includes("Accept-Encoding")
+  ) {
+    throw new Error("Compressible HTML must negotiate gzip and vary by content encoding.");
+  }
   const contentSecurityPolicy = home.headers.get("content-security-policy") ?? "";
   const homeMarkup = await home.text();
   const executableScripts = [
@@ -148,12 +154,26 @@ try {
     throw new Error("Fingerprint assets must be served with immutable caching.");
   }
 
+  const animatedLockupName = astroAssets.find((name) =>
+    /^animated-lockup-on(?:Light|Dark)\..+\.svg$/.test(name),
+  );
+  if (!animatedLockupName) {
+    throw new Error("The exact animated Saltacode lockup was not emitted.");
+  }
+  const animatedLockup = await fetch(`${baseUrl}/_astro/${animatedLockupName}`);
+  if (
+    animatedLockup.headers.get("content-encoding") !== "gzip" ||
+    !animatedLockup.headers.get("vary")?.includes("Accept-Encoding")
+  ) {
+    throw new Error("The animated SVG lockup must be served with negotiated gzip compression.");
+  }
+
   const head = await fetch(`${baseUrl}/`, { method: "HEAD" });
   if (head.status !== 200 || (await head.text()) !== "") {
     throw new Error("HEAD requests must return headers without a body.");
   }
 
-  console.log("Verified health, index redirect, real 404s, no API fallback, cache policy, security headers, and HEAD support.");
+  console.log("Verified health, compression, index redirect, real 404s, no API fallback, cache policy, security headers, and HEAD support.");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolveExit) => {

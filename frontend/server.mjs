@@ -3,7 +3,9 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { createGzip } from "node:zlib";
 
 const port = Number.parseInt(process.env.PORT ?? "8080", 10);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -52,6 +54,8 @@ const mimeTypes = new Map([
   [".webp", "image/webp"],
   [".xml", "application/xml; charset=utf-8"],
 ]);
+
+const compressibleExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".txt", ".xml"]);
 
 const securityHeaders = {
   "Content-Security-Policy": [
@@ -118,6 +122,41 @@ function sendBody(request, response, body) {
   response.end(request.method === "HEAD" ? undefined : body);
 }
 
+function acceptsGzip(request) {
+  const header = request.headers["accept-encoding"];
+  const value = Array.isArray(header) ? header.join(",") : (header ?? "");
+
+  return value.split(",").some((entry) => {
+    const [coding, ...parameters] = entry.trim().toLowerCase().split(";");
+    if (coding !== "gzip") return false;
+    const quality = parameters
+      .map((parameter) => parameter.trim().match(/^q=(\d(?:\.\d+)?)$/)?.[1])
+      .find(Boolean);
+    return quality === undefined || Number(quality) > 0;
+  });
+}
+
+async function sendFile(request, response, filePath, fileSize, extension) {
+  const compress =
+    fileSize >= 1_024 && compressibleExtensions.has(extension) && acceptsGzip(request);
+
+  if (compressibleExtensions.has(extension)) response.setHeader("Vary", "Accept-Encoding");
+  if (compress) response.setHeader("Content-Encoding", "gzip");
+  else response.setHeader("Content-Length", fileSize);
+
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  if (compress) {
+    await pipeline(createReadStream(filePath), createGzip({ level: 6 }), response);
+    return;
+  }
+
+  await pipeline(createReadStream(filePath), response);
+}
+
 async function sendNotFound(request, response) {
   const fallback = await resolveRequestPath("/404.html");
   response.statusCode = 404;
@@ -130,13 +169,7 @@ async function sendNotFound(request, response) {
   }
 
   response.setHeader("Content-Type", "text/html; charset=utf-8");
-  response.setHeader("Content-Length", fallback.fileStat.size);
-  if (request.method === "HEAD") {
-    response.end();
-    return;
-  }
-
-  createReadStream(fallback.filePath).pipe(response);
+  await sendFile(request, response, fallback.filePath, fallback.fileStat.size, ".html");
 }
 
 async function handleRequest(request, response) {
@@ -189,7 +222,7 @@ async function handleRequest(request, response) {
   response.setHeader("Cache-Control", cacheControl(pathname, extension));
   response.setHeader("Content-Type", mimeTypes.get(extension) ?? "application/octet-stream");
   response.setHeader("Last-Modified", lastModified);
-  response.setHeader("Content-Length", asset.fileStat.size);
+  if (compressibleExtensions.has(extension)) response.setHeader("Vary", "Accept-Encoding");
 
   if (request.headers["if-modified-since"] === lastModified) {
     response.statusCode = 304;
@@ -199,12 +232,7 @@ async function handleRequest(request, response) {
   }
 
   response.statusCode = 200;
-  if (request.method === "HEAD") {
-    response.end();
-    return;
-  }
-
-  createReadStream(asset.filePath).pipe(response);
+  await sendFile(request, response, asset.filePath, asset.fileStat.size, extension);
 }
 
 const server = createServer((request, response) => {

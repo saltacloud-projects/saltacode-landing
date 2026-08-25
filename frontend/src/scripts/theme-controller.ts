@@ -5,6 +5,7 @@ type ThemePreference = Theme | "system";
 
 const storageKey = "saltacode-theme";
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const root = document.documentElement;
 const choices = [...document.querySelectorAll<HTMLInputElement>("[data-theme-choice]")];
 
@@ -18,7 +19,12 @@ function resolveTheme(preference: ThemePreference): Theme {
 
 function syncThemeImages(theme: Theme): void {
   document.querySelectorAll<HTMLImageElement>("[data-theme-image]").forEach((image) => {
-    const source = theme === "dark" ? image.dataset.themeSrcDark : image.dataset.themeSrcLight;
+    const reducedSource =
+      theme === "dark"
+        ? image.dataset.themeSrcReducedDark
+        : image.dataset.themeSrcReducedLight;
+    const themeSource = theme === "dark" ? image.dataset.themeSrcDark : image.dataset.themeSrcLight;
+    const source = reducedMotion.matches ? (reducedSource ?? themeSource) : themeSource;
     if (source && image.getAttribute("src") !== source) image.src = source;
   });
 }
@@ -59,6 +65,10 @@ choices.forEach((choice) => {
 
 systemTheme.addEventListener("change", () => {
   if (root.dataset.themePreference === "system") applyPreference("system");
+});
+
+reducedMotion.addEventListener("change", () => {
+  syncThemeImages(root.dataset.theme === "dark" ? "dark" : "light");
 });
 
 window.addEventListener("storage", ({ key, newValue }) => {

@@ -63,13 +63,6 @@ async function listBuildFiles(directory) {
 }
 
 const buildFiles = await listBuildFiles(dist);
-const emittedCss = (
-  await Promise.all(
-    buildFiles
-      .filter((file) => file.extension === ".css")
-      .map((file) => readFile(resolve(dist, file.path), "utf8")),
-  )
-).join("\n");
 const socialImage = buildFiles.find((file) => file.path === SOCIAL_IMAGE_PATH);
 if (!socialImage) {
   throw new Error(`Missing required build output: ${SOCIAL_IMAGE_PATH}`);
@@ -211,11 +204,11 @@ const assertions = [
   [/value="dark" data-theme-choice/, "dark theme choice"],
   [/value="system" data-theme-choice/, "system theme choice"],
   [
-    /<svg\b(?=[^>]*data-hero-brand)(?=[^>]*viewBox="0 0 370 152")(?=[^>]*width="370")(?=[^>]*height="152")(?=[^>]*aria-hidden="true")[^>]*>/,
-    "intrinsic-size inline animated Saltacode lockup",
+    /<img\b(?=[^>]*data-hero-brand)(?=[^>]*data-theme-image)(?=[^>]*data-theme-src-reduced-light="\/_astro\/)(?=[^>]*data-theme-src-reduced-dark="\/_astro\/)(?=[^>]*width="370")(?=[^>]*height="152")(?=[^>]*aria-hidden="true")(?=[^>]*loading="eager")[^>]*>/,
+    "intrinsic-size theme-aware animated Saltacode lockup",
   ],
-  [/>SaltaCode<\/text>/, "vector brand name"],
-  [/>Innovación y Desarrollo<\/text>/, "vector brand tagline"],
+  [/data-circuit-path="core"/, "central circuit trace"],
+  [/data-circuit-node="core"/, "central circuit particles"],
   [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
   [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
   [/Nuestro agente IA responderá al instante/, "agent assistance explanation"],
@@ -229,17 +222,59 @@ for (const [pattern, label] of assertions) {
   }
 }
 
-if (
-  !emittedCss.includes(
-    ".hero-brand-draw,.hero-brand-copy{opacity:1;stroke-dashoffset:0;animation:none}",
-  )
-) {
-  throw new Error("The animated brand lockup must expose a static reduced-motion state.");
+const animatedLockups = buildFiles.filter(
+  (file) => file.extension === ".svg" && file.path.includes("animated-lockup-on"),
+);
+if (animatedLockups.length !== 2) {
+  throw new Error("The build must emit both light and dark animated brand lockups.");
+}
+for (const lockup of animatedLockups) {
+  const markup = await readFile(resolve(dist, lockup.path), "utf8");
+  const invariants = [
+    /viewBox="0 0 370 152"/,
+    /data-brand-part="logo"/,
+    /data-brand-part="copy"/,
+    /prefers-reduced-motion:reduce/,
+    /M19\.8 104\.5c-4\.9-2\.7-11\.1-7\.4-13\.9-2\.8/,
+  ];
+  if (invariants.some((pattern) => !pattern.test(markup))) {
+    throw new Error(`${lockup.path} must preserve the historical paths and motion safeguards.`);
+  }
+  if (
+    (markup.match(/data-brand-part="logo"/g) ?? []).length !== 8 ||
+    (markup.match(/data-brand-part="copy"/g) ?? []).length !== 31 ||
+    (markup.match(/<animate\b/g) ?? []).length !== 42
+  ) {
+    throw new Error(`${lockup.path} must retain the complete historical animation sequence.`);
+  }
+}
+
+const staticLockups = buildFiles.filter(
+  (file) => file.extension === ".svg" && file.path.includes("static-lockup-on"),
+);
+if (staticLockups.length !== 2) {
+  throw new Error("The build must emit both light and dark reduced-motion brand lockups.");
+}
+for (const lockup of staticLockups) {
+  const markup = await readFile(resolve(dist, lockup.path), "utf8");
+  const invariants = [
+    /viewBox="0 0 370 152"/,
+    /M19\.8 104\.5c-4\.9-2\.7-11\.1-7\.4-13\.9-2\.8/,
+    /M166\.9 91h2\.5v10\.2h-2\.5/,
+  ];
+  if (
+    invariants.some((pattern) => !pattern.test(markup)) ||
+    /<animate\b/.test(markup) ||
+    (markup.match(/<linearGradient\b/g) ?? []).length !== 8 ||
+    (markup.match(/<stop\b/g) ?? []).length !== 34
+  ) {
+    throw new Error(`${lockup.path} must be an intrinsic-size static vector lockup.`);
+  }
 }
 
 const themeImages = [...index.matchAll(/<img\b(?=[^>]*\bdata-theme-image\b)[^>]*>/g)];
-if (themeImages.length !== EXPECTED_CLIENTS.length + 2) {
-  throw new Error("Homepage theme images must include every client logo and the header/footer brand marks.");
+if (themeImages.length !== EXPECTED_CLIENTS.length + 3) {
+  throw new Error("Homepage theme images must include every client logo and all three brand marks.");
 }
 for (const [image] of themeImages) {
   if (!/\bdata-theme-src-light="\/_astro\/[^"]+"/.test(image) ||
