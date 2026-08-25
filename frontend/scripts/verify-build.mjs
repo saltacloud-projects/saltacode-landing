@@ -211,8 +211,7 @@ const assertions = [
   [/data-circuit-node="core"/, "central circuit particles"],
   [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
   [/data-client-carousel/, "progressively enhanced client carousel"],
-  [/class="client-viewport" role="region" aria-label="Carrusel de clientes de SaltaCode" tabindex="0"/, "focusable client carousel pause surface"],
-  [/data-client-motion-toggle aria-pressed="false" hidden/, "client carousel pause control"],
+  [/class="client-viewport" role="region" aria-label="Carrusel de clientes de SaltaCode; el movimiento se pausa al enfocarlo" tabindex="0"/, "focusable client carousel pause surface"],
   [/data-client-track/, "client carousel track"],
   [/data-client-group/, "accessible client logo group"],
   [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
@@ -364,6 +363,10 @@ for (const [alias, target, element] of legacyFragmentAliases) {
 
 if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) {
   throw new Error("The clients heading must use the conservative historical wording.");
+}
+
+if (/<p class="eyebrow">Nuestros clientes<\/p>/.test(index) || /data-client-motion-toggle/.test(index)) {
+  throw new Error("The client carousel must not duplicate its heading or render a visible motion button.");
 }
 
 const clientList = index.match(/<ul class="client-group" data-client-group[^>]*>([\s\S]*?)<\/ul>/)?.[1];

@@ -184,15 +184,6 @@ import Clients from "./Clients.astro";
     });
     track.append(clone);
     clientCarousel.dataset.animated = "";
-
-    const toggle = clientCarousel.querySelector<HTMLButtonElement>("[data-client-motion-toggle]");
-    if (!toggle) return;
-    toggle.hidden = false;
-    toggle.addEventListener("click", () => {
-      const paused = clientCarousel.toggleAttribute("data-paused");
-      toggle.setAttribute("aria-pressed", String(paused));
-      toggle.textContent = paused ? "Reanudar movimiento" : "Pausar movimiento";
-    });
   };
 
   if (!reducedMotion.matches) initializeClientCarousel();

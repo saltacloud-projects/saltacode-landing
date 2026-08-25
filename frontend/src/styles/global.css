@@ -709,13 +709,9 @@ ul {
 }
 
 .client-viewport:hover .client-track,
-.hero-clients[data-paused] .client-track {
+.client-viewport:focus .client-track,
+.client-viewport:focus-within .client-track {
   animation-play-state: paused !important;
-}
-
-.client-motion-toggle {
-  margin-top: 0.55rem;
-  cursor: pointer;
 }
 
 .client-group {
