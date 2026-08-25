@@ -227,8 +227,8 @@ const assertions = [
   [/class="client-viewport" role="region" aria-label="Carrusel de clientes de SaltaCode; el movimiento se pausa al enfocarlo con teclado" tabindex="0"/, "focusable client carousel pause surface"],
   [/data-client-track/, "client carousel track"],
   [/data-client-group/, "accessible client logo group"],
-  [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
-  [/Nuestro agente IA responderá al instante/, "agent assistance explanation"],
+  [/¿Qué necesitás resolver en tu empresa\?/, "customer-first hero prompt"],
+  [/Contanos el contexto y te orientamos/, "customer assistance explanation"],
   [/href="mailto:saltacodear@gmail\.com"/, "email contact path"],
   [/href="https:\/\/wa\.me\/5493875296587/, "WhatsApp contact path"],
 ];
