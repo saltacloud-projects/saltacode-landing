@@ -1,30 +1,35 @@
-const header = document.querySelector<HTMLElement>("[data-scroll-header]");
+const compactMenuQuery = matchMedia("(max-width: 1151px)");
+const header = document.querySelector<HTMLElement>(".site-header");
 
 if (header) {
-  const revealOffset = 48;
   const menu = header.querySelector<HTMLDetailsElement>("[data-header-menu]");
-  let framePending = false;
 
-  const syncVisibility = () => {
-    header.classList.toggle("is-visible", window.scrollY > revealOffset);
-    framePending = false;
-  };
+  if (menu) {
+    const syncMenuMode = () => (menu.open = !compactMenuQuery.matches);
 
-  const scheduleSync = () => {
-    if (framePending) return;
-    framePending = true;
-    window.requestAnimationFrame(syncVisibility);
-  };
+    syncMenuMode();
+    compactMenuQuery.onchange = syncMenuMode;
+    menu.onclick = ({ target }) => {
+      if (compactMenuQuery.matches && (target as Element).closest("a")) {
+        menu.open = false;
+      }
+    };
+    menu.onkeydown = ({ key }) => {
+      if (key !== "Escape" || !compactMenuQuery.matches) return;
+      menu.open = false;
+      menu.querySelector<HTMLElement>("summary")?.focus();
+    };
+  }
 
-  syncVisibility();
-  menu?.querySelectorAll("a").forEach((link) => {
-    link.addEventListener("click", () => menu.removeAttribute("open"));
-  });
-  menu?.addEventListener("keydown", ({ key }) => {
-    if (key !== "Escape") return;
-    menu.removeAttribute("open");
-    menu.querySelector<HTMLElement>("summary")?.focus();
-  });
-  window.addEventListener("scroll", scheduleSync, { passive: true });
-  window.addEventListener("pageshow", syncVisibility);
+  if (header.hasAttribute("data-scroll-header")) {
+    const syncVisibility = () => {
+      header.classList.toggle("is-visible", scrollY > 48);
+    };
+
+    syncVisibility();
+    window.addEventListener("scroll", () => requestAnimationFrame(syncVisibility), {
+      passive: true,
+    });
+    window.addEventListener("pageshow", syncVisibility);
+  }
 }

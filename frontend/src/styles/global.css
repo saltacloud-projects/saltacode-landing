@@ -1103,7 +1103,7 @@ ul {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1151px) {
   html {
     scroll-padding-top: 8.5rem;
   }
@@ -1190,6 +1190,7 @@ ul {
 
   .primary-nav {
     display: grid;
+    justify-content: stretch;
     gap: 0.25rem;
   }
 
@@ -1218,7 +1219,9 @@ ul {
     flex: 1;
     padding-inline: 0.75rem;
   }
+}
 
+@media (max-width: 760px) {
   .hero-inner {
     padding-block: 3.5rem 3rem;
   }
