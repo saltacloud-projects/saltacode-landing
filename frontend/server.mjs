@@ -57,27 +57,37 @@ const mimeTypes = new Map([
 
 const compressibleExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".txt", ".xml"]);
 
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "connect-src 'self'",
+  "font-src 'self'",
+  "form-action 'self' mailto: https://wa.me",
+  "frame-ancestors 'none'",
+  "img-src 'self' data:",
+  "object-src 'none'",
+  `script-src 'self' ${inlineScriptHashes.map((hash) => `'sha256-${hash}'`).join(" ")}`,
+  "style-src 'self'",
+];
+
 const securityHeaders = {
-  "Content-Security-Policy": [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "connect-src 'self'",
-    "font-src 'self'",
-    "form-action 'self' mailto: https://wa.me",
-    "frame-ancestors 'none'",
-    "img-src 'self' data:",
-    "object-src 'none'",
-    `script-src 'self' ${inlineScriptHashes.map((hash) => `'sha256-${hash}'`).join(" ")}`,
-    "style-src 'self'",
-    "upgrade-insecure-requests",
-  ].join("; "),
   "Permissions-Policy": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 };
 
-function setSecurityHeaders(response) {
+function requestUsesForwardedHttps(request) {
+  const forwardedProto = request.headers["x-forwarded-proto"];
+  const value = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+  return value?.split(",", 1)[0].trim().toLowerCase() === "https";
+}
+
+function setSecurityHeaders(request, response) {
+  const policy = requestUsesForwardedHttps(request)
+    ? [...contentSecurityPolicy, "upgrade-insecure-requests"]
+    : contentSecurityPolicy;
+  response.setHeader("Content-Security-Policy", policy.join("; "));
   for (const [name, value] of Object.entries(securityHeaders)) {
     response.setHeader(name, value);
   }
@@ -173,7 +183,7 @@ async function sendNotFound(request, response) {
 }
 
 async function handleRequest(request, response) {
-  setSecurityHeaders(response);
+  setSecurityHeaders(request, response);
 
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.statusCode = 405;

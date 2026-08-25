@@ -63,6 +63,9 @@ try {
     throw new Error("Compressible HTML must negotiate gzip and vary by content encoding.");
   }
   const contentSecurityPolicy = home.headers.get("content-security-policy") ?? "";
+  if (contentSecurityPolicy.includes("upgrade-insecure-requests")) {
+    throw new Error("Direct HTTP previews must not upgrade same-origin static assets to HTTPS.");
+  }
   const homeMarkup = await home.text();
   const executableScripts = [
     ...homeMarkup.matchAll(/<script\b(?![^>]*type="application\/ld\+json")([^>]*)>([\s\S]*?)<\/script>/g),
@@ -87,6 +90,18 @@ try {
     contentSecurityPolicy.includes("'unsafe-eval'")
   ) {
     throw new Error("Security headers are missing from the home page.");
+  }
+
+  const forwardedHttps = await fetch(`${baseUrl}/`, {
+    method: "HEAD",
+    headers: { "X-Forwarded-Proto": "https" },
+  });
+  if (
+    !forwardedHttps.headers
+      .get("content-security-policy")
+      ?.includes("upgrade-insecure-requests")
+  ) {
+    throw new Error("HTTPS-forwarded responses must retain the CSP upgrade directive.");
   }
 
   for (const externalModuleSource of externalModuleSources) {

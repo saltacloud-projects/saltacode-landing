@@ -109,8 +109,10 @@ SALTACODE_FRONTEND_BIND_ADDRESS=0.0.0.0 docker compose \
 ```
 
 Open `http://HOST_LAN_IP:28080`. The BFF remains bound to loopback and Redis/agent-ai keep no host
-port. Do not use this override on an untrusted network; recreate the frontend without it after the
-device review to restore the loopback-only bind.
+port. Direct HTTP previews omit the CSP HTTPS-upgrade directive so same-origin assets stay on the
+LAN endpoint; HTTPS-forwarded production responses retain it. Do not use this override on an
+untrusted network; recreate the frontend without it after the device review to restore the
+loopback-only bind.
 
 ## Tunnel preparation
 
