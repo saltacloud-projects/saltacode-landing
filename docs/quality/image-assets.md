@@ -40,7 +40,7 @@ The build gate also requires:
 
 - Saltacode mark and lockup variants were recovered from the repository's legacy commit `b6562bfa`.
 - The animated hero lockup preserves the verified paths, gradient stops, vector wordmark, tagline, drawing order, easing, and delays from that commit's `index.html`, `assets/css/logo-animated.css`, and `assets/js/hero-logo-animated.js`. The historical 72,606-byte inline source was converted into hashed light/dark external assets, scoped animations, fixed dimensions, and dedicated static reduced-motion variants; it adds no font request and the selected response is compressed by the static server.
-- Metalnor uses the provided dark-surface logo and the official light-surface logo from the first-party `sistema-metalnor` working copy.
+- Metalnor uses its official first-party lockup as the shared source for both themes. A luminance-derived ink mask preserves the globe, arrows, and wordmark detail before applying the common client palette; flattening the complete alpha channel produced an unreadable solid emblem.
 - Cocel uses the provided variants verified against the first-party `website-cocel` working copy.
 - Every client, including Metalnor and Cocel, is converted to the shared monochrome palette without changing its geometry: `#74747D` on light surfaces and `#D8D8E0` on dark surfaces.
 - Finanx keeps its original source intact; the deterministic generator removes its uniform source background before producing the two monochrome surface variants.

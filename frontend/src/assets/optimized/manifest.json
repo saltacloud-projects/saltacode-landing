@@ -487,24 +487,24 @@
           },
           "output": {
             "path": "src/assets/optimized/client/metalnor-onLight.webp",
-            "bytes": 6180,
-            "sha256": "4c72e4cb9ef4d9b9f8d23909d32831698aa9af9c5421a09762a991b1ed44ddde",
+            "bytes": 9060,
+            "sha256": "26349cb785e3335f7f522316d418fd71cf5cdabf985141e506d5b8f510966dc0",
             "width": 360,
             "height": 160
           }
         },
         "onDark": {
           "source": {
-            "path": "src/assets/clients/metalnor-on-dark.webp",
-            "bytes": 93998,
-            "sha256": "aa31c74dc92eac67fb9ed138b9e59f4ca59f2b8c174a8f808845a40a77fce9a7",
-            "width": 1378,
-            "height": 482
+            "path": "src/assets/clients/metalnor-on-light.png",
+            "bytes": 447694,
+            "sha256": "d2a906e52d97f38cd255db4a96c41593cf620c2b95b980622642777572926c7c",
+            "width": 4055,
+            "height": 1111
           },
           "output": {
             "path": "src/assets/optimized/client/metalnor-onDark.webp",
-            "bytes": 7596,
-            "sha256": "a15f9c8fa9b7ecae01205b67f8bbdff2b8cab6ac3670d1a9d2813ce815cd1bb2",
+            "bytes": 9052,
+            "sha256": "94244233016d2673267cdc1fab8f1d12644814814626530531228a36a1f6403a",
             "width": 360,
             "height": 160
           }

@@ -740,6 +740,7 @@ ul {
 
 .client-group img {
   width: min(100%, 180px);
+  height: auto;
   opacity: 0.76;
 }
 

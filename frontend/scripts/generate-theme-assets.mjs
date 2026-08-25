@@ -74,10 +74,12 @@ const assets = [
       onLight: {
         source: "src/assets/clients/metalnor-on-light.png",
         color: clientPalette.onLight,
+        inkMask: { lightStart: 0.52, lightEnd: 0.72 },
       },
       onDark: {
-        source: "src/assets/clients/metalnor-on-dark.webp",
+        source: "src/assets/clients/metalnor-on-light.png",
         color: clientPalette.onDark,
+        inkMask: { lightStart: 0.52, lightEnd: 0.72 },
       },
     },
   },
@@ -134,13 +136,37 @@ async function removeBackground(sourceBuffer, settings) {
   return sharp(data, { raw: info }).png().toBuffer();
 }
 
+async function createInkMask(sourceBuffer, settings) {
+  const { data, info } = await sharp(sourceBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const range = settings.lightEnd - settings.lightStart;
+
+  for (let offset = 0; offset < data.length; offset += 4) {
+    const luminance =
+      (0.2126 * data[offset] + 0.7152 * data[offset + 1] + 0.0722 * data[offset + 2]) /
+      255;
+    const inkCoverage = Math.min(1, Math.max(0, (settings.lightEnd - luminance) / range));
+    data[offset] = 255;
+    data[offset + 1] = 255;
+    data[offset + 2] = 255;
+    data[offset + 3] = Math.round(data[offset + 3] * inkCoverage);
+  }
+
+  return sharp(data, { raw: info }).png().toBuffer();
+}
+
 async function renderVariant(asset, variant) {
   const sourcePath = resolve(frontendRoot, variant.source);
   const sourceBuffer = await readFile(sourcePath);
   const preparedSource = variant.removeBackground
     ? await removeBackground(sourceBuffer, variant.removeBackground)
     : sourceBuffer;
-  const trimmed = await sharp(preparedSource)
+  const maskedSource = variant.inkMask
+    ? await createInkMask(preparedSource, variant.inkMask)
+    : preparedSource;
+  const trimmed = await sharp(maskedSource)
     .ensureAlpha()
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
     .png()
