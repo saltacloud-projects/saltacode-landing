@@ -96,6 +96,22 @@ The sandbox agent healthcheck uses `/health/live` because the sanitized seed del
 `503 not_ready` until real provider, knowledge, and tool adapters are configured. Production keeps
 the stricter `/health/ready` gate; agent execution remains fail-closed in both environments.
 
+### Temporary LAN preview
+
+The frontend bind address defaults to `127.0.0.1`. To inspect the sandbox from a phone or tablet on
+the same trusted LAN, override only the frontend address for that Compose invocation:
+
+```bash
+SALTACODE_FRONTEND_BIND_ADDRESS=0.0.0.0 docker compose \
+  --env-file /path/to/sandbox.env \
+  -f compose.yml -f compose.sandbox.yml \
+  -p saltacode-sandbox up -d --no-deps frontend
+```
+
+Open `http://HOST_LAN_IP:28080`. The BFF remains bound to loopback and Redis/agent-ai keep no host
+port. Do not use this override on an untrusted network; recreate the frontend without it after the
+device review to restore the loopback-only bind.
+
 ## Tunnel preparation
 
 Copy the relevant template outside Git, insert the existing tunnel UUID and credentials path, then

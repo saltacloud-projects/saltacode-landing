@@ -20,7 +20,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "127.0.0.1:${SALTACODE_FRONTEND_PORT:-18080}:8080"
+      - "${SALTACODE_FRONTEND_BIND_ADDRESS:-127.0.0.1}:${SALTACODE_FRONTEND_PORT:-18080}:8080"
     healthcheck:
       test:
         - CMD
