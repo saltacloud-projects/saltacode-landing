@@ -1,5 +1,6 @@
 ---
 import AnimatedBrandLockup from "./AnimatedBrandLockup.astro";
+import Clients from "./Clients.astro";
 ---
 
 <section class="hero" aria-labelledby="hero-title">
@@ -159,38 +160,45 @@ import AnimatedBrandLockup from "./AnimatedBrandLockup.astro";
       </a>
     </nav>
 
-    <ul class="service-summary" aria-label="Principales servicios">
-      <li>
-        <span aria-hidden="true">01</span>
-        <strong>Software a medida</strong>
-        <p>Web, mobile y sistemas escalables.</p>
-        <a href="#software-factory" aria-label="Conocer Software a medida">Conocer más</a>
-      </li>
-      <li>
-        <span aria-hidden="true">02</span>
-        <strong>Consultoría IT</strong>
-        <p>Arquitectura, estrategia y buenas prácticas.</p>
-        <a href="#consultoria-it" aria-label="Conocer Consultoría IT">Conocer más</a>
-      </li>
-      <li>
-        <span aria-hidden="true">03</span>
-        <strong>Soluciones SaaS</strong>
-        <p>Productos digitales listos para crecer.</p>
-        <a href="#soluciones-saas" aria-label="Conocer Soluciones SaaS">Conocer más</a>
-      </li>
-      <li>
-        <span aria-hidden="true">04</span>
-        <strong>Equipos IT</strong>
-        <p>Talento técnico para proyectos de alto impacto.</p>
-        <a href="#outsourcing" aria-label="Conocer Equipos IT">Conocer más</a>
-      </li>
-    </ul>
+    <Clients />
   </div>
 </section>
 
 <script>
   const motionRoot = document.querySelector<HTMLElement>("[data-hero-motion]");
+  const clientCarousel = document.querySelector<HTMLElement>("[data-client-carousel]");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  const initializeClientCarousel = () => {
+    if (!clientCarousel || clientCarousel.dataset.animated !== undefined) return;
+    const track = clientCarousel.querySelector<HTMLElement>("[data-client-track]");
+    const group = clientCarousel.querySelector<HTMLElement>("[data-client-group]");
+    if (!track || !group) return;
+
+    const clone = group.cloneNode(true) as HTMLElement;
+    clone.removeAttribute("data-client-group");
+    clone.removeAttribute("aria-label");
+    clone.setAttribute("aria-hidden", "true");
+    clone.querySelectorAll<HTMLImageElement>("img").forEach((image) => {
+      image.alt = "";
+    });
+    track.append(clone);
+    clientCarousel.dataset.animated = "";
+
+    const toggle = clientCarousel.querySelector<HTMLButtonElement>("[data-client-motion-toggle]");
+    if (!toggle) return;
+    toggle.hidden = false;
+    toggle.addEventListener("click", () => {
+      const paused = clientCarousel.toggleAttribute("data-paused");
+      toggle.setAttribute("aria-pressed", String(paused));
+      toggle.textContent = paused ? "Reanudar movimiento" : "Pausar movimiento";
+    });
+  };
+
+  if (!reducedMotion.matches) initializeClientCarousel();
+  reducedMotion.addEventListener("change", ({ matches }) => {
+    if (!matches) initializeClientCarousel();
+  });
 
   if (motionRoot && !reducedMotion.matches) {
     const startMotion = async () => {

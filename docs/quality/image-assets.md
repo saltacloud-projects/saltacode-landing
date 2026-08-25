@@ -9,7 +9,9 @@ This contract covers Saltacode brand images and the client logos currently rende
 - The pre-paint theme bootstrap selects the correct variant for light, dark, or system mode before themed images load.
 - Brand marks use a 256 × 256 transparent canvas; brand lockups use 720 × 288.
 - Client logos use a 360 × 160 transparent canvas, preserving a consistent 9:4 visual area.
+- The navbar renders the official surface-specific brand lockup at 320 intrinsic pixels instead of composing the brand mark with a system-font `SaltaCode` label.
 - The hero loads one surface-specific vector lockup recovered from the historical production artwork. Each animated SVG is 26,527 raw bytes and 4,841 bytes over the local server's negotiated gzip response; reduced-motion visitors receive a static 13,627-byte vector instead of downloading or running the animation.
+- The client carousel keeps one complete, indexable logo group in static HTML. A small progressive enhancement clones that group with `aria-hidden` only when motion is allowed, so the infinite loop adds no duplicate asset transfer; reduced-motion visitors retain one horizontally scrollable group.
 
 The source-to-output mapping, dimensions, byte sizes, and SHA-256 hashes live in `frontend/src/assets/optimized/manifest.json`.
 
@@ -32,6 +34,7 @@ The build gate also requires:
 - no variant larger than 32 KiB;
 - no more than 260 KiB for the complete 26-variant library;
 - lazy loading and explicit 180 × 80 rendered dimensions for all client logos.
+- one accessible client group, an explicit pause control for automatic motion, and a non-animated reduced-motion fallback.
 
 ## Verified sources
 

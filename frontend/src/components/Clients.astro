@@ -3,25 +3,46 @@ import { clients } from "../data/image-assets";
 import ThemeImage from "./ThemeImage.astro";
 ---
 
-<section class="section clients legacy-fragment-target" id="clientes" aria-labelledby="clients-title">
+<section
+  class="hero-clients legacy-fragment-target"
+  id="clientes"
+  aria-labelledby="clients-title"
+  data-client-carousel
+>
   <span id="ourCustomers" class="legacy-fragment-alias" aria-hidden="true"></span>
-  <div class="container section-heading centered">
+  <div class="hero-clients-heading">
     <p class="eyebrow">Nuestros clientes</p>
     <h2 id="clients-title">Nuestros clientes</h2>
+    <button
+      class="button button-small button-secondary client-motion-toggle"
+      type="button"
+      data-client-motion-toggle
+      aria-pressed="false"
+      hidden
+    >Pausar movimiento</button>
   </div>
 
-  <ul class="container client-list" aria-label="Clientes de SaltaCode">
-    {clients.map((client) => (
-      <li>
-        <ThemeImage
-          variants={client.logo}
-          width={180}
-          height={80}
-          alt={`Logo de ${client.name}`}
-          loading="lazy"
-          decoding="async"
-        />
-      </li>
-    ))}
-  </ul>
+  <div
+    class="client-viewport"
+    role="region"
+    aria-label="Carrusel de clientes de SaltaCode"
+    tabindex="0"
+  >
+    <div class="client-track" data-client-track>
+      <ul class="client-group" data-client-group aria-label="Clientes de SaltaCode">
+        {clients.map((client) => (
+          <li>
+            <ThemeImage
+              variants={client.logo}
+              width={180}
+              height={80}
+              alt={`Logo de ${client.name}`}
+              loading="lazy"
+              decoding="async"
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
 </section>

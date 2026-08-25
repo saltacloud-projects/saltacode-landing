@@ -210,6 +210,11 @@ const assertions = [
   [/data-circuit-path="core"/, "central circuit trace"],
   [/data-circuit-node="core"/, "central circuit particles"],
   [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
+  [/data-client-carousel/, "progressively enhanced client carousel"],
+  [/class="client-viewport" role="region" aria-label="Carrusel de clientes de SaltaCode" tabindex="0"/, "focusable client carousel pause surface"],
+  [/data-client-motion-toggle aria-pressed="false" hidden/, "client carousel pause control"],
+  [/data-client-track/, "client carousel track"],
+  [/data-client-group/, "accessible client logo group"],
   [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
   [/Nuestro agente IA responderá al instante/, "agent assistance explanation"],
   [/href="mailto:saltacodear@gmail\.com"/, "email contact path"],
@@ -274,7 +279,7 @@ for (const lockup of staticLockups) {
 
 const themeImages = [...index.matchAll(/<img\b(?=[^>]*\bdata-theme-image\b)[^>]*>/g)];
 if (themeImages.length !== EXPECTED_CLIENTS.length + 3) {
-  throw new Error("Homepage theme images must include every client logo and all three brand marks.");
+  throw new Error("Homepage theme images must include every client logo and all three brand lockups.");
 }
 for (const [image] of themeImages) {
   if (!/\bdata-theme-src-light="\/_astro\/[^"]+"/.test(image) ||
@@ -288,6 +293,14 @@ verifySharedNavigation(notFound, "/", "404 page");
 
 const homeHeader = extractLandmark(index, "header");
 const notFoundHeader = extractLandmark(notFound, "header");
+if (
+  !/<a class="brand"[^>]*>[\s\S]*?<img\b(?=[^>]*data-theme-image)(?=[^>]*width="320")(?=[^>]*height="128")[^>]*>[\s\S]*?<\/a>/.test(
+    homeHeader,
+  ) ||
+  /<span>SaltaCode<\/span>/.test(homeHeader)
+) {
+  throw new Error("The navbar must render the official theme-aware SaltaCode lockup.");
+}
 if (!/<header\b[^>]*\bdata-scroll-header(?:\s|>)/.test(homeHeader)) {
   throw new Error("The homepage header must opt into scroll reveal behavior.");
 }
@@ -353,11 +366,14 @@ if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) {
   throw new Error("The clients heading must use the conservative historical wording.");
 }
 
-const clientList = index.match(/<ul class="container client-list"[^>]*>([\s\S]*?)<\/ul>/)?.[1];
+const clientList = index.match(/<ul class="client-group" data-client-group[^>]*>([\s\S]*?)<\/ul>/)?.[1];
 if (!clientList) {
-  throw new Error("The rendered client list is missing.");
+  throw new Error("The accessible client carousel group is missing.");
 }
 
+if ((index.match(/\bdata-client-group\b/g) ?? []).length !== 1 || /class="service-summary"/.test(index)) {
+  throw new Error("The homepage must render one client group instead of the former service summary.");
+}
 const clientImageTags = [...clientList.matchAll(/<img\b[^>]*>/g)].map((match) => match[0]);
 const renderedClientNames = clientImageTags.map((tag) =>
   (attributeValue(tag, "alt") ?? "").replace(/^Logo de /, ""),
@@ -378,7 +394,7 @@ for (const tag of clientImageTags) {
 }
 
 if (assetManifest.schemaVersion !== 1 || assetManifest.assets?.length !== 13) {
-  throw new Error("The theme-ready image manifest must contain the two brand and eight client assets.");
+  throw new Error("The theme-ready image manifest must contain the two brand and eleven client assets.");
 }
 
 let totalAssetVariantBytes = 0;
