@@ -39,12 +39,12 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 3 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline plus isolated attribution of the agent-first hero animation and the complete light/dark/system theme system. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 4 of the provisional local budgets is based on the repeatable 2026-08-24 Astro preview baseline plus isolated attribution of the agent-first hero animation, the complete light/dark/system theme system, and the approved mobile disclosure navigation. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
 | Resource or scenario | Version 3 limit | Gate |
 |---|---:|---|
 | Generated home HTML | <= 27 KiB raw | Deterministic build assertion |
-| Total emitted CSS | <= 18 KiB raw | Deterministic build assertion |
+| Total emitted CSS | <= 20 KiB raw | Deterministic build assertion |
 | Initial executable JavaScript | <= 5 KiB raw | Deterministic build assertion |
 | Total executable JavaScript | <= 14 KiB raw | Deterministic build assertion |
 | Emitted webfonts | 0 bytes | Deterministic build assertion |
@@ -65,6 +65,8 @@ The exact animated vectors are 26,527 raw bytes per theme. Before origin compres
 The final post-compression mobile lab used the same conditions and three cold runs per explicit theme. Light mode recorded 81,089 bytes in every run, 480/492/500 ms LCP, 31/35/58 ms TBT, and 0 CLS; dark mode recorded 78,725 bytes in every run, 488/500/504 ms LCP, 21/28/37 ms TBT, and 0 CLS. No run fetched the wrong theme variant, overflowed horizontally, or raised a runtime exception. This is local lab evidence only; public Cloudflare compression, field data, and Lighthouse remain release-stage checks.
 
 The responsive-navbar and client-carousel change uses the official themed brand lockup, moves the single static client section into the hero, removes the four duplicated service-summary cards, and progressively creates the second carousel group only in browsers that allow motion. The carousel uses a compositor-promoted 3D transform rather than a new dependency or hydrated island, pauses on keyboard focus, and stays static when reduced motion is preferred. Firefox-specific inspection found its native lazy-loading policy left an offscreen logo undecoded while the track was already moving; every small carousel logo now loads eagerly at low priority and decodes asynchronously. The former CSS mask and backface layer were replaced by a stationary gradient overlay so Firefox does not composite a moving masked surface. All eleven clients now share the deterministic theme palette, including Metalnor and Cocel. The current build is 26,825 bytes of HTML, 18,407 bytes of CSS, 4,813 bytes of initial JavaScript, and 13,113 bytes of total JavaScript, leaving 823, 25, 307, and 1,223 bytes of headroom respectively without raising a limit. The complete 26-variant image library fell from 249,650 to 210,412 bytes after normalizing the two exceptional logos.
+
+The approved mobile navigation replaces a 415px horizontal link row inside a 348px viewport with one native disclosure, four vertical 46px targets, the complete theme control, and the existing contact CTA. The exact attributed delta is +644 bytes of home HTML, +982 bytes of CSS, and +259 bytes of initial and total JavaScript; the resulting build is 27,469 bytes of HTML, 19,401 bytes of CSS, 5,072 bytes of initial JavaScript, and 13,372 bytes total. The CSS budget was reviewed from 18 to 20 KiB for this user-facing navigation rather than raised to mask an unexplained regression; the JavaScript and transfer budgets were not raised.
 
 The last complete Chrome 150 mobile lab before that markup-only cleanup used 390x844, 150 ms latency, 1.6 Mbps download, 750 Kbps upload, 4x CPU throttling, disabled cache, and three cold runs per explicit theme. Light mode transferred 67,656 bytes in every run with 480/484/564 ms LCP, 21/28/48 ms TBT, and 0 CLS; dark mode transferred 66,642 bytes in every run with 476/488/564 ms LCP, 20/24/47 ms TBT, and 0 CLS. Functional checks at 320px, 390px, and 1440px found no horizontal document overflow, wrong theme variant, duplicate accessible client group, or runtime exception. The cleanup was verified against the rebuilt served HTML and static budgets, but the full throttled lab was not rerun. These remain local lab results, not public field evidence.
 

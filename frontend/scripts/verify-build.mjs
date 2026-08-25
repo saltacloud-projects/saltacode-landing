@@ -13,7 +13,7 @@ const assetManifest = JSON.parse(
 
 const BUILD_BUDGETS = Object.freeze({
   indexHtmlBytes: 27 * 1024,
-  cssBytes: 18 * 1024,
+  cssBytes: 20 * 1024,
   initialExecutableJavaScriptBytes: 5 * 1024,
   totalExecutableJavaScriptBytes: 14 * 1024,
   socialImageBytes: 100 * 1024,

@@ -24,20 +24,32 @@ const homeFragment = (id: string) => `${homePath}#${id}`;
       />
     </a>
 
-    <nav class="header-navigation" aria-label="Navegación principal">
-      <ul class="primary-nav">
-        <li><a href={homeFragment("clientes")}>Nuestros clientes</a></li>
-        <li><a href={homeFragment("servicios")}>Servicios y productos</a></li>
-        <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
-        <li><a href={homeFragment("contacto")}>Contactanos</a></li>
-      </ul>
-    </nav>
+    <details class="header-menu" data-header-menu>
+      <summary class="menu-toggle">
+        <span class="visually-hidden">Menú de navegación</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path class="menu-icon-open" d="M4 7h16M4 12h16M4 17h16"></path>
+          <path class="menu-icon-close" d="m6 6 12 12M18 6 6 18"></path>
+        </svg>
+      </summary>
 
-    <div class="header-actions">
-      <ThemeSwitcher />
-      <a class="button button-small header-cta" href={homeFragment("contacto")}>
-        Hablar con un experto
-      </a>
-    </div>
+      <div class="header-menu-content">
+        <nav class="header-navigation" aria-label="Navegación principal">
+          <ul class="primary-nav">
+            <li><a href={homeFragment("clientes")}>Nuestros clientes</a></li>
+            <li><a href={homeFragment("servicios")}>Servicios y productos</a></li>
+            <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
+            <li><a href={homeFragment("contacto")}>Contactanos</a></li>
+          </ul>
+        </nav>
+
+        <div class="header-actions">
+          <ThemeSwitcher />
+          <a class="button button-small header-cta" href={homeFragment("contacto")}>
+            Hablar con un experto
+          </a>
+        </div>
+      </div>
+    </details>
   </div>
 </header>

@@ -2,6 +2,7 @@ const header = document.querySelector<HTMLElement>("[data-scroll-header]");
 
 if (header) {
   const revealOffset = 48;
+  const menu = header.querySelector<HTMLDetailsElement>("[data-header-menu]");
   let framePending = false;
 
   const syncVisibility = () => {
@@ -16,6 +17,14 @@ if (header) {
   };
 
   syncVisibility();
+  menu?.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", () => menu.removeAttribute("open"));
+  });
+  menu?.addEventListener("keydown", ({ key }) => {
+    if (key !== "Escape") return;
+    menu.removeAttribute("open");
+    menu.querySelector<HTMLElement>("summary")?.focus();
+  });
   window.addEventListener("scroll", scheduleSync, { passive: true });
   window.addEventListener("pageshow", syncVisibility);
 }
