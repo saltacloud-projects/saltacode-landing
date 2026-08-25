@@ -1,6 +1,5 @@
 ---
-import { brandImages } from "../data/image-assets";
-import ThemeImage from "./ThemeImage.astro";
+import AnimatedBrandLockup from "./AnimatedBrandLockup.astro";
 ---
 
 <section class="hero" aria-labelledby="hero-title">
@@ -60,14 +59,7 @@ import ThemeImage from "./ThemeImage.astro";
   </div>
 
   <div class="container hero-inner">
-    <ThemeImage
-      class="hero-mark"
-      variants={brandImages.mark}
-      width={116}
-      alt=""
-      loading="eager"
-      decoding="sync"
-    />
+    <AnimatedBrandLockup />
     <h1 id="hero-title">
       <span>Tecnología que impulsa</span>
       <span>tu crecimiento</span>

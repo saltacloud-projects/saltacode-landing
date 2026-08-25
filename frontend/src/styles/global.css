@@ -26,7 +26,7 @@
   --hero-veil-solid: light-dark(#fcfcff, #0e0d14);
   --hero-veil-strong: light-dark(rgb(252 252 255 / 94%), rgb(14 13 20 / 94%));
   --hero-veil-soft: light-dark(rgb(252 252 255 / 42%), rgb(14 13 20 / 44%));
-  --circuit-stroke: light-dark(rgb(105 67 244 / 36%), rgb(156 130 255 / 42%));
+  --circuit-stroke: light-dark(rgb(105 67 244 / 52%), rgb(156 130 255 / 58%));
   --node-ring: light-dark(rgb(255 255 255 / 88%), rgb(26 22 36 / 92%));
   --panel-glass: light-dark(rgb(255 255 255 / 94%), rgb(28 25 35 / 94%));
   --chip-glass: light-dark(rgb(255 255 255 / 88%), rgb(28 25 35 / 88%));
@@ -466,7 +466,7 @@ ul {
 
 .hero-circuit-path {
   fill: none;
-  opacity: 0.34;
+  opacity: 0.48;
   stroke: var(--circuit-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -484,8 +484,8 @@ ul {
   border-radius: 50%;
   background: var(--purple);
   box-shadow:
-    0 0 8px 3px rgb(103 65 245 / 58%),
-    0 0 22px 7px rgb(103 65 245 / 20%);
+    0 0 8px 3px rgb(103 65 245 / 68%),
+    0 0 22px 7px rgb(103 65 245 / 28%);
   opacity: 0;
   offset-anchor: center;
   offset-rotate: 0deg;
@@ -521,11 +521,31 @@ ul {
   text-align: center;
 }
 
-.hero-mark {
-  width: 58px;
-  height: 58px;
+.hero-brand {
+  display: block;
+  width: min(100%, 300px);
+  height: auto;
   margin: 0 auto 1.25rem;
-  object-fit: contain;
+  color: var(--ink);
+}
+
+.hero-brand-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: hero-brand-draw 720ms forwards;
+}
+
+.hero-brand-copy {
+  opacity: 0;
+  animation: hero-brand-copy 480ms 620ms forwards;
+}
+
+@keyframes hero-brand-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes hero-brand-copy {
+  to { opacity: 1; }
 }
 
 .hero h1 span {
@@ -1195,11 +1215,6 @@ ul {
     width: 100%;
   }
 
-  .hero-mark {
-    width: 52px;
-    height: 52px;
-  }
-
   .agent-symbol {
     width: 36px;
     height: 36px;
@@ -1233,6 +1248,13 @@ ul {
     box-shadow: 0 0 10px 2px rgb(103 65 245 / 28%);
     opacity: 0.8;
     transform: translate(-50%, -50%);
+  }
+
+  .hero-brand-draw,
+  .hero-brand-copy {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
   }
 }
 

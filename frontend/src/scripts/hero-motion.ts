@@ -20,7 +20,7 @@ export function startHeroMotion(motionRoot: HTMLElement): void {
     controls.push(
       animate(
         node,
-        { offsetDistance: ["0%", "100%"], opacity: [0.45, 1, 0.55] },
+        { offsetDistance: ["0%", "100%"], opacity: [0.62, 1, 0.68] },
         {
           duration: Number(node.dataset.duration ?? 18),
           delay: Number(node.dataset.delay ?? 0),
@@ -35,7 +35,7 @@ export function startHeroMotion(motionRoot: HTMLElement): void {
     controls.push(
       animate(
         path,
-        { opacity: [0.24, 0.58, 0.24] },
+        { opacity: [0.38, 0.72, 0.4] },
         { duration: 8 + index * 2, ease: "easeInOut", repeat: Infinity },
       ),
     );

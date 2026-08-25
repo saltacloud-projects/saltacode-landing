@@ -63,6 +63,13 @@ async function listBuildFiles(directory) {
 }
 
 const buildFiles = await listBuildFiles(dist);
+const emittedCss = (
+  await Promise.all(
+    buildFiles
+      .filter((file) => file.extension === ".css")
+      .map((file) => readFile(resolve(dist, file.path), "utf8")),
+  )
+).join("\n");
 const socialImage = buildFiles.find((file) => file.path === SOCIAL_IMAGE_PATH);
 if (!socialImage) {
   throw new Error(`Missing required build output: ${SOCIAL_IMAGE_PATH}`);
@@ -203,6 +210,12 @@ const assertions = [
   [/value="light" data-theme-choice/, "light theme choice"],
   [/value="dark" data-theme-choice/, "dark theme choice"],
   [/value="system" data-theme-choice/, "system theme choice"],
+  [
+    /<svg\b(?=[^>]*data-hero-brand)(?=[^>]*viewBox="0 0 370 152")(?=[^>]*width="370")(?=[^>]*height="152")(?=[^>]*aria-hidden="true")[^>]*>/,
+    "intrinsic-size inline animated Saltacode lockup",
+  ],
+  [/>SaltaCode<\/text>/, "vector brand name"],
+  [/>Innovación y Desarrollo<\/text>/, "vector brand tagline"],
   [/data-hero-motion aria-hidden="true"/, "decorative hero motion surface"],
   [/Escribí tu consulta para nuestro agente/, "agent-first hero prompt"],
   [/Nuestro agente IA responderá al instante/, "agent assistance explanation"],
@@ -216,9 +229,17 @@ for (const [pattern, label] of assertions) {
   }
 }
 
+if (
+  !emittedCss.includes(
+    ".hero-brand-draw,.hero-brand-copy{opacity:1;stroke-dashoffset:0;animation:none}",
+  )
+) {
+  throw new Error("The animated brand lockup must expose a static reduced-motion state.");
+}
+
 const themeImages = [...index.matchAll(/<img\b(?=[^>]*\bdata-theme-image\b)[^>]*>/g)];
-if (themeImages.length !== EXPECTED_CLIENTS.length + 3) {
-  throw new Error("Homepage theme images must include every client logo and the three brand marks.");
+if (themeImages.length !== EXPECTED_CLIENTS.length + 2) {
+  throw new Error("Homepage theme images must include every client logo and the header/footer brand marks.");
 }
 for (const [image] of themeImages) {
   if (!/\bdata-theme-src-light="\/_astro\/[^"]+"/.test(image) ||
