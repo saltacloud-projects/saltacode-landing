@@ -10,6 +10,7 @@ interface Props {
   class?: string;
   loading?: "eager" | "lazy";
   decoding?: "sync" | "async" | "auto";
+  fetchpriority?: "high" | "low" | "auto";
 }
 
 const {
@@ -20,6 +21,7 @@ const {
   class: className,
   loading = "lazy",
   decoding = "async",
+  fetchpriority,
 } = Astro.props;
 const transform = height === undefined ? { width } : { width, height };
 const [lightImage, darkImage] = await Promise.all([
@@ -38,4 +40,5 @@ const [lightImage, darkImage] = await Promise.all([
   alt={alt}
   loading={loading}
   decoding={decoding}
+  fetchpriority={fetchpriority}
 />

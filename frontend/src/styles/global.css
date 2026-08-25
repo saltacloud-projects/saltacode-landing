@@ -693,17 +693,22 @@ ul {
 }
 
 .client-viewport {
+  position: relative;
   overflow: hidden;
   contain: paint;
-  --client-fade: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-  mask-image: var(--client-fade);
-  -webkit-mask-image: var(--client-fade);
+}
+
+.client-viewport::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--hero-surface), transparent 8% 92%, var(--hero-surface));
+  content: "";
+  pointer-events: none;
 }
 
 .client-track {
   display: flex;
   width: max-content;
-  backface-visibility: hidden;
   transform: translate3d(0, 0, 0);
   will-change: transform;
 }
@@ -1270,9 +1275,11 @@ ul {
 
   .client-viewport {
     overflow-x: auto;
-    mask-image: none;
-    -webkit-mask-image: none;
     scrollbar-width: thin;
+  }
+
+  .client-viewport::after {
+    display: none;
   }
 
   .client-track {

@@ -33,7 +33,7 @@ The build gate also requires:
 - the canonical canvases above;
 - no variant larger than 32 KiB;
 - no more than 260 KiB for the complete 26-variant library;
-- lazy loading and explicit 180 × 80 rendered dimensions for all client logos.
+- eager low-priority loading, asynchronous decoding, and explicit 180 × 80 rendered dimensions for all animated client logos so Firefox never decodes an incoming logo mid-motion.
 - one accessible client group, pause on keyboard focus, and a non-animated reduced-motion fallback.
 
 ## Verified sources
@@ -42,7 +42,7 @@ The build gate also requires:
 - The animated hero lockup preserves the verified paths, gradient stops, vector wordmark, tagline, drawing order, easing, and delays from that commit's `index.html`, `assets/css/logo-animated.css`, and `assets/js/hero-logo-animated.js`. The historical 72,606-byte inline source was converted into hashed light/dark external assets, scoped animations, fixed dimensions, and dedicated static reduced-motion variants; it adds no font request and the selected response is compressed by the static server.
 - Metalnor uses the provided dark-surface logo and the official light-surface logo from the first-party `sistema-metalnor` working copy.
 - Cocel uses the provided variants verified against the first-party `website-cocel` working copy.
-- The nine historical client logos are converted to consistent monochrome surface variants without changing their geometry.
+- Every client, including Metalnor and Cocel, is converted to the shared monochrome palette without changing its geometry: `#74747D` on light surfaces and `#D8D8E0` on dark surfaces.
 - Finanx keeps its original source intact; the deterministic generator removes its uniform source background before producing the two monochrome surface variants.
 
 Generative AI is not used for logos. Verified official variants exist, and synthesizing a trademark would introduce brand and provenance risk rather than improve quality.

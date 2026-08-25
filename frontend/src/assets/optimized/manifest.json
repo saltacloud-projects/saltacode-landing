@@ -487,8 +487,8 @@
           },
           "output": {
             "path": "src/assets/optimized/client/metalnor-onLight.webp",
-            "bytes": 20920,
-            "sha256": "0348821c3675c7b9615474cae466e3901a5f9de920bdf95e8bbdab76818a5ec7",
+            "bytes": 6180,
+            "sha256": "4c72e4cb9ef4d9b9f8d23909d32831698aa9af9c5421a09762a991b1ed44ddde",
             "width": 360,
             "height": 160
           }
@@ -503,8 +503,8 @@
           },
           "output": {
             "path": "src/assets/optimized/client/metalnor-onDark.webp",
-            "bytes": 29520,
-            "sha256": "e3d6dbd6e11f6723870030a52fc5988e825059b8f3df843ac737264af2544560",
+            "bytes": 7596,
+            "sha256": "a15f9c8fa9b7ecae01205b67f8bbdff2b8cab6ac3670d1a9d2813ce815cd1bb2",
             "width": 360,
             "height": 160
           }
@@ -529,8 +529,8 @@
           },
           "output": {
             "path": "src/assets/optimized/client/cocel-onLight.webp",
-            "bytes": 6680,
-            "sha256": "fac92bb2213c05ca9401b2fa5e81a7c258548e485660bc757c1844647433096f",
+            "bytes": 4072,
+            "sha256": "b3fbf79f01b2e696cf84b2290d5896b7a5123213198f53ce02f1e0650e686d19",
             "width": 360,
             "height": 160
           }
@@ -545,8 +545,8 @@
           },
           "output": {
             "path": "src/assets/optimized/client/cocel-onDark.webp",
-            "bytes": 4022,
-            "sha256": "8a57d4f20948c4a40d5c085544b6d0e7a43637d6e6b16776c69d8ca8b3754e9e",
+            "bytes": 4056,
+            "sha256": "1964cfb286b92beef9da3576301a9af01aa9d9eda167428db9851d89fd0af6dc",
             "width": 360,
             "height": 160
           }

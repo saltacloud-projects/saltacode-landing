@@ -10,6 +10,7 @@ const manifestPath = resolve(outputRoot, "manifest.json");
 const checkOnly = process.argv.includes("--check");
 
 const clientCanvas = Object.freeze({ width: 360, height: 160, maxWidth: 320, maxHeight: 120 });
+const clientPalette = Object.freeze({ onLight: "#74747D", onDark: "#D8D8E0" });
 
 const assets = [
   {
@@ -44,8 +45,8 @@ const assets = [
     kind: "client",
     canvas: clientCanvas,
     variants: {
-      onLight: { source, color: "#74747D" },
-      onDark: { source, color: "#D8D8E0" },
+      onLight: { source, color: clientPalette.onLight },
+      onDark: { source, color: clientPalette.onDark },
     },
   })),
   {
@@ -55,12 +56,12 @@ const assets = [
     variants: {
       onLight: {
         source: "src/assets/clients/finanx.png",
-        color: "#74747D",
+        color: clientPalette.onLight,
         removeBackground: { color: "#013660", tolerance: 18, feather: 32 },
       },
       onDark: {
         source: "src/assets/clients/finanx.png",
-        color: "#D8D8E0",
+        color: clientPalette.onDark,
         removeBackground: { color: "#013660", tolerance: 18, feather: 32 },
       },
     },
@@ -70,8 +71,14 @@ const assets = [
     kind: "client",
     canvas: clientCanvas,
     variants: {
-      onLight: { source: "src/assets/clients/metalnor-on-light.png" },
-      onDark: { source: "src/assets/clients/metalnor-on-dark.webp" },
+      onLight: {
+        source: "src/assets/clients/metalnor-on-light.png",
+        color: clientPalette.onLight,
+      },
+      onDark: {
+        source: "src/assets/clients/metalnor-on-dark.webp",
+        color: clientPalette.onDark,
+      },
     },
   },
   {
@@ -79,8 +86,14 @@ const assets = [
     kind: "client",
     canvas: clientCanvas,
     variants: {
-      onLight: { source: "src/assets/clients/cocel-on-light.png" },
-      onDark: { source: "src/assets/clients/cocel-on-dark.png" },
+      onLight: {
+        source: "src/assets/clients/cocel-on-light.png",
+        color: clientPalette.onLight,
+      },
+      onDark: {
+        source: "src/assets/clients/cocel-on-dark.png",
+        color: clientPalette.onDark,
+      },
     },
   },
 ];
@@ -190,6 +203,9 @@ const drift = [];
 for (const asset of assets) {
   const manifestVariants = {};
   for (const [theme, variant] of Object.entries(asset.variants)) {
+    if (asset.kind === "client" && variant.color !== clientPalette[theme]) {
+      throw new Error(`${asset.id} ${theme} must use the shared client palette.`);
+    }
     const target = outputPath(asset, theme);
     const rendered = await renderVariant(asset, variant);
     const targetRelative = relative(frontendRoot, target);

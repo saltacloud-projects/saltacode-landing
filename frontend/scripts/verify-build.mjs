@@ -390,12 +390,13 @@ if (JSON.stringify(renderedClientNames) !== JSON.stringify(EXPECTED_CLIENTS)) {
 
 for (const tag of clientImageTags) {
   if (
-    attributeValue(tag, "loading") !== "lazy" ||
+    attributeValue(tag, "loading") !== "eager" ||
     attributeValue(tag, "decoding") !== "async" ||
+    attributeValue(tag, "fetchpriority") !== "low" ||
     attributeValue(tag, "width") !== "180" ||
     attributeValue(tag, "height") !== "80"
   ) {
-    throw new Error(`Client logo does not preserve lazy-loading and intrinsic dimensions: ${tag}`);
+    throw new Error(`Client logo does not preserve smooth-motion loading and dimensions: ${tag}`);
   }
 }
 

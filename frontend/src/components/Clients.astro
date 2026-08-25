@@ -29,8 +29,9 @@ import ThemeImage from "./ThemeImage.astro";
               width={180}
               height={80}
               alt={`Logo de ${client.name}`}
-              loading="lazy"
+              loading="eager"
               decoding="async"
+              fetchpriority="low"
             />
           </li>
         ))}
