@@ -7,11 +7,8 @@ from redis.exceptions import ConnectionError
 
 from app.config import Settings
 from app.main import create_app
-from app.rate_limit import (
-    RateLimitBackendError,
-    RateLimitDecision,
-    RedisFixedWindowRateLimiter,
-)
+from app.ports import RateLimitBackendError, RateLimitDecision
+from app.rate_limit import RedisFixedWindowRateLimiter
 
 
 class AtomicFakeRedis:

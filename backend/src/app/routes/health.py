@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from app.contracts import HealthStatus
 from app.dependencies import get_rate_limiter
-from app.rate_limit import RateLimiter
+from app.ports import RateLimiter
 
 router = APIRouter(prefix="/health", tags=["health"])
 

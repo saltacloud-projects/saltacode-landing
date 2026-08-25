@@ -1,8 +1,7 @@
 from fastapi import Request
 
 from app.config import Settings
-from app.gateway import AgentGateway
-from app.rate_limit import RateLimiter
+from app.ports import AgentGateway, RateLimiter
 
 
 def get_settings(request: Request) -> Settings:

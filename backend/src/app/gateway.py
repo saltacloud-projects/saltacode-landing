@@ -1,6 +1,5 @@
 import logging
 from collections.abc import AsyncIterator
-from typing import Protocol
 from uuid import UUID, uuid4
 
 import httpx2
@@ -25,17 +24,6 @@ class _ExecutionResponse(ContractModel):
     status: str = Field(pattern="^completed$")
     output: str = Field(min_length=1, max_length=16_000)
     tools_used: tuple[str, ...] = ()
-
-
-class AgentGateway(Protocol):
-    def stream(
-        self,
-        request: ChatRequest,
-        *,
-        correlation_id: str,
-    ) -> AsyncIterator[ChatStreamEvent]: ...
-
-    async def aclose(self) -> None: ...
 
 
 class UnavailableAgentGateway:

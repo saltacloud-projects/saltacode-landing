@@ -7,6 +7,8 @@ from typing import Protocol
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from app.ports import RateLimitBackendError, RateLimitDecision
+
 _ATOMIC_FIXED_WINDOW_SCRIPT = """
 local current = redis.call('INCR', KEYS[1])
 local ttl
@@ -22,25 +24,6 @@ else
 end
 return {current, ttl}
 """
-
-
-@dataclass(frozen=True, slots=True)
-class RateLimitDecision:
-    allowed: bool
-    remaining: int
-    retry_after_seconds: int
-
-
-class RateLimitBackendError(Exception):
-    """The limiter could not make an authoritative decision."""
-
-
-class RateLimiter(Protocol):
-    async def check(self, key: str) -> RateLimitDecision: ...
-
-    async def ready(self) -> bool: ...
-
-    async def aclose(self) -> None: ...
 
 
 class RedisEvalClient(Protocol):

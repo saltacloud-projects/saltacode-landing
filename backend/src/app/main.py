@@ -13,12 +13,9 @@ from app.errors import (
     unexpected_error_handler,
     validation_error_handler,
 )
-from app.gateway import AgentGateway, HttpAgentGateway, UnavailableAgentGateway
-from app.rate_limit import (
-    InMemoryFixedWindowRateLimiter,
-    RateLimiter,
-    RedisFixedWindowRateLimiter,
-)
+from app.gateway import HttpAgentGateway, UnavailableAgentGateway
+from app.ports import AgentGateway, RateLimiter
+from app.rate_limit import InMemoryFixedWindowRateLimiter, RedisFixedWindowRateLimiter
 from app.routes.chat import router as chat_router
 from app.routes.health import router as health_router
 

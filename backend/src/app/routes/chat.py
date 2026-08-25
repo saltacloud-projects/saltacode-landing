@@ -9,8 +9,7 @@ from app.config import Settings
 from app.contracts import ChatRequest, ChatStreamEvent, ProblemDetails
 from app.dependencies import get_agent_gateway, get_rate_limiter, get_settings
 from app.errors import ApiError
-from app.gateway import AgentGateway
-from app.rate_limit import RateLimitBackendError, RateLimiter
+from app.ports import AgentGateway, RateLimitBackendError, RateLimiter
 from app.security import client_rate_limit_key, enforce_allowed_origin, rate_limit_client_identity
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])

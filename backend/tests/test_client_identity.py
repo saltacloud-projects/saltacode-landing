@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.rate_limit import RateLimitDecision
+from app.ports import RateLimitDecision
 from app.security import client_rate_limit_key
 
 
