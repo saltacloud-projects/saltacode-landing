@@ -12,7 +12,7 @@ The repository candidate through `cbffd0f8` passes its local build, contract, co
 | Public BFF | PASS | Ruff, schema drift, **35 tests**, non-root image, Redis fail-closed behavior. |
 | Private agent seed | PASS as a scaffold | Ruff, **20 tests**, non-root image; real provider, RAG, and tool adapters intentionally remain absent. |
 | Infrastructure | PASS as a model | Shell syntax, production/sandbox Compose config, Tunnel ingress ordering, systemd templates, and preflight. No services were installed or promoted. |
-| Agentic layer | PASS | Six agents and eight skills validated. |
+| Agentic layer | PASS | Six agents and ten skills validated. |
 
 Passing this table proves repository and local candidate behavior only. It does not prove indexing, rankings, public redirects, field Core Web Vitals, provider ownership, or rollback readiness.
 

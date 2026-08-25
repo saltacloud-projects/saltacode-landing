@@ -54,6 +54,8 @@ Agent definitions live in `.codex/agents/`. Do not pin agent models; inherit the
 | `.agents/skills/ai-chat-boundary/SKILL.md` | AI chat, quote flow, external agent, privacy, or secret handling. |
 | `.agents/skills/cloudflare-release/SKILL.md` | Cloudflare preview, Pages configuration, production release, or rollback. |
 | `.agents/skills/delivery-checkpoint/SKILL.md` | Work-unit validation, commit, rollback, or agentic maintenance. |
+| `.agents/skills/clean-code/SKILL.md` | Maintainability audit, code smells, duplication, or behavior-preserving refactoring. |
+| `.agents/skills/clean-architecture/SKILL.md` | Dependency direction, boundaries, layering, ports, adapters, or architecture debt. |
 
 ## Quality contract
 

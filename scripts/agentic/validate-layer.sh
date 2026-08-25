@@ -40,6 +40,8 @@ skill_names=(
   ai-chat-boundary
   cloudflare-release
   delivery-checkpoint
+  clean-code
+  clean-architecture
 )
 
 for file in "${required_files[@]}"; do
