@@ -25,9 +25,9 @@
   --hero-wash-end: light-dark(rgb(252 252 255 / 74%), rgb(14 13 20 / 78%));
   --hero-veil-solid: light-dark(#fcfcff, #0e0d14);
   --hero-veil-core: light-dark(rgb(252 252 255 / 98%), rgb(14 13 20 / 97%));
-  --hero-veil-strong: light-dark(rgb(252 252 255 / 94%), rgb(14 13 20 / 94%));
-  --hero-veil-soft: light-dark(rgb(252 252 255 / 42%), rgb(14 13 20 / 44%));
-  --circuit-stroke: light-dark(rgb(105 67 244 / 52%), rgb(156 130 255 / 58%));
+  --hero-veil-strong: light-dark(rgb(252 252 255 / 82%), rgb(14 13 20 / 84%));
+  --hero-veil-soft: light-dark(rgb(252 252 255 / 18%), rgb(14 13 20 / 20%));
+  --circuit-stroke: light-dark(rgb(105 67 244 / 68%), rgb(156 130 255 / 74%));
   --node-ring: light-dark(rgb(255 255 255 / 88%), rgb(26 22 36 / 92%));
   --panel-glass: light-dark(rgb(255 255 255 / 94%), rgb(28 25 35 / 94%));
   --chip-glass: light-dark(rgb(255 255 255 / 88%), rgb(28 25 35 / 88%));
@@ -428,18 +428,18 @@ ul {
   inset: 0;
   background:
     radial-gradient(
-      ellipse 66% 62% at 50% 42%,
-      var(--hero-veil-core) 0 48%,
-      var(--hero-veil-strong) 68%,
-      var(--hero-veil-soft) 86%,
-      transparent 100%
+      ellipse 58% 56% at 50% 42%,
+      var(--hero-veil-core) 0 44%,
+      var(--hero-veil-strong) 62%,
+      var(--hero-veil-soft) 80%,
+      transparent 94%
     ),
     linear-gradient(
       90deg,
       var(--hero-veil-solid) 0,
-      var(--hero-veil-strong) 5%,
-      transparent 14% 86%,
-      var(--hero-veil-strong) 95%,
+      var(--hero-veil-strong) 3%,
+      transparent 10% 90%,
+      var(--hero-veil-strong) 97%,
       var(--hero-veil-solid) 100%
     );
   content: "";
@@ -464,7 +464,7 @@ ul {
 
 .hero-circuit-path {
   fill: none;
-  opacity: 0.48;
+  opacity: 0.62;
   stroke: var(--circuit-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -487,8 +487,8 @@ ul {
   border-radius: 50%;
   background: var(--purple);
   box-shadow:
-    0 0 8px 3px rgb(103 65 245 / 68%),
-    0 0 22px 7px rgb(103 65 245 / 28%);
+    0 0 8px 3px rgb(103 65 245 / 76%),
+    0 0 22px 7px rgb(103 65 245 / 36%);
   opacity: 0;
   offset-anchor: center;
   offset-rotate: 0deg;

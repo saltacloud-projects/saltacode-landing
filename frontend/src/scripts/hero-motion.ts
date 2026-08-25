@@ -35,7 +35,7 @@ export function startHeroMotion(motionRoot: HTMLElement): void {
     controls.push(
       animate(
         path,
-        { opacity: [0.38, 0.72, 0.4] },
+        { opacity: [0.56, 0.86, 0.6] },
         { duration: 8 + index * 2, ease: "easeInOut", repeat: Infinity },
       ),
     );
