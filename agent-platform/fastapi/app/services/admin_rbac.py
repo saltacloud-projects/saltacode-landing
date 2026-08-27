@@ -27,6 +27,10 @@ class AdminPermission(StrEnum):
     DOCUMENTS_TAXONOMY = "documents.taxonomy"
     DOCUMENTS_SETTINGS = "documents.settings"
     PANEL_USERS_MANAGE = "panel_users.manage"
+    RUNTIME_READ = "runtime.read"
+    RUNTIME_MANAGE = "runtime.manage"
+    CONNECTIONS_READ = "connections.read"
+    CONNECTIONS_MANAGE = "connections.manage"
 
 
 class AdminRbacService:

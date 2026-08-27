@@ -27,6 +27,12 @@ from app.models.agent_resource_binding import (  # noqa: F401
     AgentSourceBinding,
     AgentToolBinding,
 )
+from app.models.agent_runtime import (  # noqa: F401
+    AgentRuntimeConfig,
+    ChannelAgentRoute,
+    ChannelConnection,
+    ProviderConnection,
+)
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.authorized_user import AuthorizedUser  # noqa: F401
 

@@ -33,6 +33,7 @@ from app.core.temporal_context import (
 )
 from app.models.agent_profile import AgentProfile
 from app.schemas.tools import ToolExecutionContext
+from app.services.agent_runtime import ResolvedAgentRuntime
 from app.services.knowledge import knowledge_service
 from app.services.rag.retrieval import rag_retrieval_service
 from app.services.tools.registry import tool_registry
@@ -294,6 +295,7 @@ async def run_agent_loop(
     conversation_summary: str | None = None,
     rag_area_ids_override: set[uuid.UUID] | None = None,
     rag_allow_disabled: bool = False,
+    runtime: ResolvedAgentRuntime | None = None,
 ) -> AgentLoopResult:
     """
     Ejecuta el agent loop con function calling de OpenAI.
@@ -302,7 +304,8 @@ async def run_agent_loop(
     El loop continúa hasta que el LLM responde con texto o se
     alcanzan los límites de guardrails.
     """
-    if not settings.openai_api_key:
+    api_key = runtime.api_key if runtime is not None else settings.openai_api_key
+    if not api_key:
         return AgentLoopResult(
             response_text="El servicio de IA no está disponible en este momento.",
             status="error",
@@ -310,7 +313,27 @@ async def run_agent_loop(
 
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url=runtime.provider.base_url if runtime is not None else None,
+    )
+    max_iterations = (
+        runtime.config.max_iterations if runtime is not None else MAX_ITERATIONS
+    )
+    max_tool_calls = (
+        runtime.config.max_tool_calls if runtime is not None else MAX_TOOL_CALLS
+    )
+    loop_timeout_seconds = (
+        runtime.config.loop_timeout_seconds
+        if runtime is not None
+        else LOOP_TIMEOUT_SECONDS
+    )
+    tool_timeout_seconds = (
+        runtime.config.tool_timeout_seconds if runtime is not None else 60
+    )
+    tool_result_max_chars = (
+        runtime.config.tool_result_max_chars if runtime is not None else 16000
+    )
 
     execution_context = execution_context or ToolExecutionContext(
         request_id=request_id,
@@ -344,6 +367,7 @@ async def run_agent_loop(
             agent_id=resolved_agent_id,
             area_ids_override=rag_area_ids_override,
             allow_disabled=rag_allow_disabled,
+            runtime_config=runtime.config if runtime is not None else None,
         )
     except Exception as exc:
         logger.warning(
@@ -397,10 +421,10 @@ async def run_agent_loop(
     seen_calls: set[str] = set()
     loop_start = time.monotonic()
 
-    for iteration in range(1, MAX_ITERATIONS + 1):
+    for iteration in range(1, max_iterations + 1):
         # Check timeout global
         elapsed = time.monotonic() - loop_start
-        if elapsed > LOOP_TIMEOUT_SECONDS:
+        if elapsed > loop_timeout_seconds:
             logger.warning(
                 "agent_loop_timeout",
                 extra={
@@ -437,18 +461,24 @@ async def run_agent_loop(
         try:
             async with llm_semaphore:
                 response = await client.chat.completions.create(
-                    model=settings.openai_model,
+                    model=runtime.config.chat_model
+                    if runtime is not None
+                    else settings.openai_model,
                     messages=messages,
                     tools=openai_tools if openai_tools else None,
                     # Temperatura moderada: suficiente naturalidad/personalidad sin
                     # perder precisión al elegir herramientas y armar parámetros.
-                    temperature=0.5,
-                    max_tokens=2000,
+                    temperature=runtime.config.temperature
+                    if runtime is not None
+                    else 0.5,
+                    max_tokens=runtime.config.max_output_tokens
+                    if runtime is not None
+                    else 2000,
                 )
         except Exception as e:
             logger.error(
                 "agent_loop_llm_error",
-                extra={"request_id": request_id, "error": str(e)},
+                extra={"request_id": request_id, "error_type": type(e).__name__},
             )
             return AgentLoopResult(
                 response_text="Ocurrió un error al procesar tu consulta. Intentá de nuevo.",
@@ -501,7 +531,7 @@ async def run_agent_loop(
             total_tool_calls += 1
 
             # Guardrail: max tool calls
-            if total_tool_calls > MAX_TOOL_CALLS:
+            if total_tool_calls > max_tool_calls:
                 logger.warning(
                     "agent_loop_max_tool_calls",
                     extra={"request_id": request_id, "total": total_tool_calls},
@@ -575,7 +605,7 @@ async def run_agent_loop(
                         request_id,
                         context=execution_context,
                     ),
-                    timeout=60.0,
+                    timeout=float(tool_timeout_seconds),
                 )
             except asyncio.TimeoutError:
                 tool_invocations.append(
@@ -674,7 +704,7 @@ async def run_agent_loop(
                     # usuario igual recibe el `result` completo / archivos adjuntos;
                     # este recorte es solo para el contexto del modelo.
                     "tool_call_id": tool_call.id,
-                    "content": result_text[:16000],
+                    "content": result_text[:tool_result_max_chars],
                 }
             )
 
@@ -683,7 +713,7 @@ async def run_agent_loop(
         "agent_loop_max_iterations",
         extra={
             "request_id": request_id,
-            "iterations": MAX_ITERATIONS,
+            "iterations": max_iterations,
             "total_tool_calls": total_tool_calls,
         },
     )
@@ -695,7 +725,7 @@ async def run_agent_loop(
         files=files,
         tools_used=tools_used,
         tool_invocations=tool_invocations,
-        iterations=MAX_ITERATIONS,
+        iterations=max_iterations,
         total_tool_calls=total_tool_calls,
         status="max_iterations",
         rag_hits=rag_trace,

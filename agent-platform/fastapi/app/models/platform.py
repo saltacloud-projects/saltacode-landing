@@ -79,6 +79,15 @@ class ChatConversation(TimestampedModel):
     )
     channel: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     external_thread_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    route_key: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True
+    )
+    channel_route_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("channel_agent_routes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(30), default="active", nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     consent_version: Mapped[str | None] = mapped_column(String(80), nullable=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from dataclasses import dataclass
@@ -22,8 +23,15 @@ from app.models.tool_config import ToolConfig
 from app.schemas.executions import InternalExecutionRequest
 from app.schemas.tools import ToolExecutionContext
 from app.services.agent_loop import run_agent_loop
+from app.services.agent_runtime import (
+    AgentRuntimeUnavailable,
+    ResolvedAgentRuntime,
+    agent_runtime_resolver,
+)
 from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
+
+logger = logging.getLogger(__name__)
 
 
 class AgentNotReady(RuntimeError):
@@ -112,10 +120,6 @@ class ChatApplicationService:
                 "transcript consent is required for conversation history"
             )
 
-        existing = await self._existing_outcome(db, str(request.request_id))
-        if existing is not None:
-            return existing
-
         existing_execution = (
             await db.execute(
                 select(ChatExecution).where(
@@ -123,22 +127,53 @@ class ChatApplicationService:
                 )
             )
         ).scalar_one_or_none()
+        runtime: ResolvedAgentRuntime | None = None
+        resolved_route = None
+        if request.route_key is not None:
+            try:
+                resolved_route = await agent_runtime_resolver.resolve_route(
+                    db, "web", request.route_key, require_public=True
+                )
+            except AgentRuntimeUnavailable as exc:
+                raise AgentNotReady(str(exc)) from exc
+            runtime = resolved_route.runtime
+            resolved_profile = runtime.profile
+        else:
+            logger.warning("legacy_web_execution_without_route_key")
+            resolved_profile = (
+                await db.execute(
+                    select(AgentProfile).where(
+                        AgentProfile.slug == settings.default_agent_slug,
+                        AgentProfile.is_active == True,  # noqa: E712
+                        AgentProfile.is_public == True,  # noqa: E712
+                    )
+                )
+            ).scalar_one_or_none()
+            if resolved_profile is None:
+                raise AgentNotReady("the public agent profile is not active")
+            try:
+                runtime = await agent_runtime_resolver.resolve_agent(
+                    db, resolved_profile.id, require_public=True
+                )
+                resolved_profile = runtime.profile
+            except AgentRuntimeUnavailable:
+                logger.warning("legacy_default_agent_runtime_unavailable")
+
         if existing_execution is not None:
-            if existing_execution.status == "running":
-                raise ExecutionInProgress("this execution is already in progress")
             inbound = await db.get(ChatMessage, existing_execution.inbound_message_id)
             if inbound is None or inbound.content != request.input:
                 raise AgentNotReady("request id was already used with different input")
-            inbound.status = "accepted"
-            existing_execution.status = "running"
-            existing_execution.error_code = None
             execution = existing_execution
             conversation = await db.get(ChatConversation, execution.conversation_id)
             if conversation is None:
                 raise AgentNotReady("the stored conversation is unavailable")
-            profile = await db.get(AgentProfile, conversation.agent_id)
-            if profile is None or not profile.is_active or not profile.is_public:
-                raise AgentNotReady("the public agent profile is not active")
+            if conversation.agent_id != resolved_profile.id:
+                raise AgentNotReady("request id was already used on another route")
+            if request.route_key is not None and (
+                conversation.route_key != request.route_key
+                or conversation.channel_route_id != resolved_route.route.id
+            ):
+                raise AgentNotReady("request id was already used on another route")
             identity = (
                 (
                     await db.execute(
@@ -155,22 +190,27 @@ class ChatApplicationService:
                 raise AgentNotReady("the stored channel identity is unavailable")
             if identity.external_subject != str(request.session_id):
                 raise AgentNotReady("request id was already used by another session")
+            if existing_execution.status == "completed":
+                existing = await self._existing_outcome(db, str(request.request_id))
+                if existing is None:
+                    raise AgentNotReady("the stored execution outcome is unavailable")
+                return existing
+            if existing_execution.status == "running":
+                raise ExecutionInProgress("this execution is already in progress")
+            inbound.status = "accepted"
+            existing_execution.status = "running"
+            existing_execution.error_code = None
+            profile = resolved_profile
             conversation.transcript_consent = True
             conversation.consent_version = request.consent.version
-            history = await self._history(db, conversation.id)
+            history = await self._history(
+                db,
+                conversation.id,
+                runtime.config.history_message_limit if runtime else 20,
+            )
             await db.commit()
         else:
-            profile = (
-                await db.execute(
-                    select(AgentProfile).where(
-                        AgentProfile.slug == settings.default_agent_slug,
-                        AgentProfile.is_active == True,  # noqa: E712
-                        AgentProfile.is_public == True,  # noqa: E712
-                    )
-                )
-            ).scalar_one_or_none()
-            if profile is None:
-                raise AgentNotReady("the public agent profile is not active")
+            profile = resolved_profile
 
             identity = await self._resolve_identity(db, "web", str(request.session_id))
             conversation = await self._resolve_conversation(
@@ -180,8 +220,14 @@ class ChatApplicationService:
                 channel="web",
                 external_thread_id=str(request.session_id),
                 consent_version=request.consent.version,
+                route_key=request.route_key,
+                channel_route_id=resolved_route.route.id if resolved_route else None,
             )
-            history = await self._history(db, conversation.id)
+            history = await self._history(
+                db,
+                conversation.id,
+                runtime.config.history_message_limit if runtime else 20,
+            )
 
             inbound = ChatMessage(
                 conversation_id=conversation.id,
@@ -248,6 +294,7 @@ class ChatApplicationService:
                 conversation_summary=conversation.summary,
                 rag_area_ids_override=set(),
                 execution_context=context,
+                runtime=runtime,
             )
         except Exception:
             execution.status = "failed"
@@ -340,6 +387,8 @@ class ChatApplicationService:
         channel: str,
         external_thread_id: str,
         consent_version: str,
+        route_key: str | None = None,
+        channel_route_id: uuid.UUID | None = None,
     ) -> ChatConversation:
         conversation = (
             await db.execute(
@@ -351,6 +400,20 @@ class ChatApplicationService:
             )
         ).scalar_one_or_none()
         if conversation is not None:
+            if route_key is not None and conversation.route_key not in (
+                None,
+                route_key,
+            ):
+                raise AgentNotReady("session is already associated with another route")
+            if channel_route_id is not None and conversation.channel_route_id not in (
+                None,
+                channel_route_id,
+            ):
+                raise AgentNotReady("session is already associated with another route")
+            conversation.route_key = route_key or conversation.route_key
+            conversation.channel_route_id = (
+                channel_route_id or conversation.channel_route_id
+            )
             conversation.transcript_consent = True
             conversation.consent_version = consent_version
             return conversation
@@ -361,13 +424,15 @@ class ChatApplicationService:
             external_thread_id=external_thread_id,
             transcript_consent=True,
             consent_version=consent_version,
+            route_key=route_key,
+            channel_route_id=channel_route_id,
         )
         db.add(conversation)
         await db.flush()
         return conversation
 
     async def _history(
-        self, db: AsyncSession, conversation_id: uuid.UUID
+        self, db: AsyncSession, conversation_id: uuid.UUID, limit: int = 20
     ) -> list[dict[str, str]]:
         rows = list(
             (
@@ -378,7 +443,7 @@ class ChatApplicationService:
                         ChatMessage.status == "completed",
                     )
                     .order_by(ChatMessage.created_at.desc())
-                    .limit(20)
+                    .limit(limit)
                 )
             )
             .scalars()

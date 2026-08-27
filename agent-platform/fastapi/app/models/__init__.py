@@ -10,6 +10,12 @@ from app.models.agent_resource_binding import (
     AgentSourceBinding,
     AgentToolBinding,
 )
+from app.models.agent_runtime import (
+    AgentRuntimeConfig,
+    ChannelAgentRoute,
+    ChannelConnection,
+    ProviderConnection,
+)
 from app.models.audit_log import AuditLog
 from app.models.authorized_user import AuthorizedUser
 from app.models.conversation_message import ConversationMessage

@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # encryption key remains outside the database and admin panel.
     credential_encryption_key_file: str = "/run/agent-secrets/source_master.key"
     default_agent_slug: str = "saltacode"
+    agent_web_route_key: str = "saltacode-landing"
+    agent_web_external_account_id: str = ""
     retention_sweep_interval_seconds: int = 21_600
 
     # ---------------------------------------------------------------------------

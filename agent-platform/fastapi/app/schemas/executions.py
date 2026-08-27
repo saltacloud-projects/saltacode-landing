@@ -19,6 +19,12 @@ class InternalExecutionRequest(BaseModel):
     input: str = Field(min_length=1, max_length=4_000)
     locale: Literal["es-AR", "es", "en"] = "es-AR"
     consent: TranscriptConsent
+    route_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,119}$",
+    )
 
 
 class InternalExecutionResponse(BaseModel):

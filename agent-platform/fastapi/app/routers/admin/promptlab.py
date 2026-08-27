@@ -8,7 +8,7 @@ import time
 import uuid
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,7 @@ from app.services.agent_loop import (
     run_agent_loop,
 )
 from app.services.agent_profile import agent_profile_service
+from app.services.agent_runtime import AgentRuntimeUnavailable, agent_runtime_resolver
 from app.services.knowledge import knowledge_service
 from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
@@ -53,6 +54,7 @@ class PromptPreviewRequest(BaseModel):
     prompt_domain_override: str | None = None
     prompt_guardrails_override: str | None = None
     directives_override: str | None = None
+    agent_id: str | None = None
 
 
 class PromptPreviewResponse(BaseModel):
@@ -68,6 +70,7 @@ class ChatMessage(BaseModel):
 
 
 class TestAgentRequest(BaseModel):
+    agent_id: str | None = None
     message: str = Field(min_length=1)
     conversation_history: list[
         ChatMessage
@@ -118,14 +121,25 @@ class PromptStructureResponse(BaseModel):
 
 
 @router.get("/prompt-structure", response_model=PromptStructureResponse)
-async def prompt_structure(db: AsyncSession = Depends(get_db)):
+async def prompt_structure(
+    agent_id: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Devuelve la estructura completa del system prompt desglosada por secciones,
     indicando el origen de cada una (perfil, knowledge_block, codigo, memoria).
     """
     # Build the same request-scoped inputs and use the same compositor as runtime.
     temporal_context = build_temporal_context()
-    profile = await agent_profile_service.get_active_profile(db, redis=None)
+    profile = (
+        await agent_profile_service.get_profile(
+            db, profile_id=agent_id, active_only=False, redis=None
+        )
+        if agent_id
+        else await agent_profile_service.get_active_profile(db, redis=None)
+    )
+    if agent_id and profile is None:
+        raise HTTPException(status_code=404, detail="Agent profile not found")
     resolved_knowledge = await knowledge_service.build_resolved_knowledge(
         db,
         temporal_context,
@@ -188,7 +202,15 @@ async def prompt_preview(
     Arma y retorna el system prompt completo tal como lo vería el LLM.
     Permite overrides parciales para previsualizar cambios antes de guardarlos.
     """
-    persisted_profile = await agent_profile_service.get_active_profile(db, redis=None)
+    persisted_profile = (
+        await agent_profile_service.get_profile(
+            db, profile_id=data.agent_id, active_only=False, redis=None
+        )
+        if data.agent_id
+        else await agent_profile_service.get_active_profile(db, redis=None)
+    )
+    if data.agent_id and persisted_profile is None:
+        raise HTTPException(status_code=404, detail="Agent profile not found")
     profile = None
     if persisted_profile:
         # Overrides are preview-only. Use a plain detached value object so the
@@ -280,7 +302,16 @@ async def test_agent(
         )
 
     # Cargar perfil y tools como haría el pipeline
-    profile = await agent_profile_service.get_active_profile(db, redis=None)
+    runtime = None
+    if data.agent_id:
+        try:
+            runtime = await agent_runtime_resolver.resolve_agent(db, data.agent_id)
+        except AgentRuntimeUnavailable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        profile = runtime.profile
+    else:
+        logger.warning("legacy_promptlab_execution_without_agent_id")
+        profile = await agent_profile_service.get_active_profile(db, redis=None)
     from app.services.tools.dynamic import sync_http_api_tools
 
     await sync_http_api_tools(db)
@@ -337,6 +368,7 @@ async def test_agent(
         rag_area_ids_override=rag_area_ids,
         rag_allow_disabled=True,
         execution_context=execution_context,
+        runtime=runtime,
     )
     duration_ms = int((time.monotonic() - start) * 1000)
 

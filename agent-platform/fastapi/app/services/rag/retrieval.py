@@ -28,11 +28,19 @@ class RagRetrievalService:
         agent_id: uuid.UUID | str | None = None,
         area_ids_override: set[uuid.UUID] | None = None,
         allow_disabled: bool = False,
+        runtime_config=None,
     ) -> list[RagHit]:
         settings_row = await rag_settings_service.get(db)
         if (
             settings_row is None
-            or (not settings_row.enabled and not allow_disabled)
+            or (
+                not (
+                    runtime_config.rag_enabled
+                    if runtime_config is not None
+                    else settings_row.enabled
+                )
+                and not allow_disabled
+            )
             or not query.strip()
         ):
             return []
@@ -65,7 +73,27 @@ class RagRetrievalService:
             dimensions=settings_row.embedding_dimensions,
             request_id=request_id,
         )
-        candidate_limit = max(settings_row.retrieval_top_k * 4, 20)
+        top_k = (
+            runtime_config.rag_retrieval_top_k
+            if runtime_config is not None
+            else settings_row.retrieval_top_k
+        )
+        min_score = (
+            runtime_config.rag_min_relevance_score
+            if runtime_config is not None
+            else settings_row.min_relevance_score
+        )
+        vector_weight = (
+            runtime_config.rag_vector_weight
+            if runtime_config is not None
+            else settings_row.vector_weight
+        )
+        lexical_weight = (
+            runtime_config.rag_lexical_weight
+            if runtime_config is not None
+            else settings_row.lexical_weight
+        )
+        candidate_limit = max(top_k * 4, 20)
         distance = DocumentChunk.embedding.cosine_distance(query_embedding)
         common_filters = (
             DocumentChunk.is_retrievable == True,  # noqa: E712
@@ -136,17 +164,17 @@ class RagRetrievalService:
 
         scored: list[tuple[float, dict]] = []
         for chunk_id, record in records.items():
-            score = settings_row.vector_weight * vector_scores.get(
+            score = vector_weight * vector_scores.get(
                 chunk_id, 0.0
-            ) + settings_row.lexical_weight * lexical_scores.get(chunk_id, 0.0)
-            if score >= settings_row.min_relevance_score:
+            ) + lexical_weight * lexical_scores.get(chunk_id, 0.0)
+            if score >= min_score:
                 scored.append((score, record))
         scored.sort(key=lambda item: item[0], reverse=True)
 
         hits: list[RagHit] = []
         per_document: defaultdict[uuid.UUID, int] = defaultdict(int)
         for score, record in scored:
-            if len(hits) >= settings_row.retrieval_top_k:
+            if len(hits) >= top_k:
                 break
             if per_document[record["document_id"]] >= 3:
                 continue
