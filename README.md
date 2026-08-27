@@ -1,6 +1,6 @@
 # SaltaCode Platform
 
-SaltaCode's landing platform combines a static-first Astro frontend, a public FastAPI BFF, versioned chat contracts, and a separate channel-neutral agent platform. The marketing surface remains indexable without client JavaScript and the chat is isolated from the critical rendering path.
+SaltaCode's landing platform combines a static-first Astro frontend, a public FastAPI BFF, versioned chat contracts, and a channel-neutral agent platform in one repository. The marketing surface remains indexable without client JavaScript and the chat is isolated from the critical rendering path.
 
 ## Architecture
 
@@ -20,14 +20,14 @@ browser -> frontend static origin and same-origin /api proxy
 - Cloudflare Tunnel remains host-managed; there is no host Nginx or Caddy requirement.
 - The browser never receives provider keys or the internal agent token.
 - The BFF owns origin checks, rate limiting, consent, a signed HttpOnly chat session, contract validation, and SSE adaptation.
-- The separate agent repository owns agents, multi-channel history, encrypted sources, tool policies, WhatsApp, RAG, and provider orchestration.
+- `agent-platform/` owns agents, multi-channel history, encrypted sources, tool policies, WhatsApp, RAG, and provider orchestration as an independent deployable unit.
 
 ## Local integrated stack
 
-The default agent checkout is the isolated worktree at:
+The agent platform is a normal versioned folder in this repository:
 
 ```text
-/data/ssd512/proyectos/agente-metalnor-worktrees/agent-platform
+agent-platform/
 ```
 
 Start the complete local stack:
@@ -53,12 +53,6 @@ Stop both stacks with:
 ./scripts/local/down.sh
 ```
 
-Override the agent checkout only when necessary:
-
-```bash
-AGENT_PLATFORM_ROOT=/path/to/agent-platform ./scripts/local/up.sh
-```
-
 ## Validation
 
 ```bash
@@ -71,9 +65,16 @@ pnpm test
   && uv run ruff check . && uv run pytest \
   && uv run python scripts/export_contracts.py --check)
 
+(cd agent-platform/fastapi && uv sync --locked && uv run ruff format --check app tests \
+  && uv run ruff check app tests)
+
+(cd agent-platform/frontend && npm ci && npm run build \
+  && npm audit --audit-level=moderate)
+
 bash scripts/agentic/validate-layer.sh
 docker compose --env-file .env.sandbox.local \
   -f compose.yml -f compose.sandbox.yml config --quiet
+(cd agent-platform && docker compose --env-file .env.platform.local config --quiet)
 ```
 
 ## Repository map
@@ -82,8 +83,9 @@ docker compose --env-file .env.sandbox.local \
 |---|---|
 | `frontend/` | Astro, TypeScript, static SEO surface, optimized assets, lazy chat client, and same-origin proxy. |
 | `backend/` | Public FastAPI BFF, signed session, SSE contract, origin checks, correlation, and shared rate limiting. |
+| `agent-platform/` | Neutral agent API, administration panel, sources, tools, histories, migrations, and its container stack. |
 | `contracts/chat/v1/` | Versioned browser-to-BFF JSON Schemas. |
-| `compose.yml` | Site/BFF/Redis topology connected to the external private agent network. |
+| `compose.yml` | Site/BFF/Redis topology connected to the private agent service network. |
 | `infrastructure/` | Host-managed Tunnel templates and site release verification. |
 | `.codex/`, `.agents/skills/` | Scoped agents and reusable project skills. |
 | `docs/discovery/` | Dated evidence snapshots and explicitly unknown external state. |

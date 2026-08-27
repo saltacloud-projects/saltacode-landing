@@ -16,7 +16,7 @@ Redis is intentionally ephemeral, so rollback starts with empty public rate-limi
 
 ## Agent rollback
 
-Use the agent repository's own release receipt and operation contract. An agent rollback must preserve its database and history, restore the authenticated internal execution contract, and must not rebuild the landing or change Cloudflare.
+Use `agent-platform/`'s own release receipt and operation contract. An agent rollback must preserve its database and history, restore the authenticated internal execution contract, and must not rebuild the landing or change Cloudflare.
 
 ## Provider rollback
 

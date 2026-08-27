@@ -1,12 +1,12 @@
 # Self-hosted site infrastructure
 
-This repository deploys only the indexable landing, public BFF, and ephemeral rate-limit Redis. The separate agent repository owns its API, panel, stores, migrations, and rollback lifecycle.
+This infrastructure unit deploys only the indexable landing, public BFF, and ephemeral rate-limit Redis. The repository-owned `agent-platform/` unit keeps its own API, panel, stores, migrations, and rollback lifecycle.
 
 ```text
 Cloudflare Tunnel on the host
   /* -> 127.0.0.1:18080 -> frontend -> /api proxy -> backend
                                                |-> private Redis
-                                               `-> external agent platform bridge
+                                               `-> agent-platform service bridge
 ```
 
 There is no host Nginx or Caddy requirement. The agent panel container uses Nginx only as its internal static SPA server and API reverse proxy.
@@ -19,7 +19,7 @@ The BFF-to-agent bearer token and BFF session-signing secret are separate 32+ ch
 
 ## Files
 
-- `../compose.yml`: site/BFF/Redis topology and external agent bridge.
+- `../compose.yml`: site/BFF/Redis topology and private agent service bridge.
 - `../compose.sandbox.yml`: local overlay.
 - `env/*.example`: non-secret deployment interpolation.
 - `cloudflare/*.example`: ordered host-managed Tunnel routes.
@@ -51,6 +51,6 @@ SALTACODE_PUBLIC_BASE_URL=https://saltacode.com.ar \
   infrastructure/scripts/verify-public.sh
 ```
 
-The deploy script builds locally, starts only Redis/frontend/backend with `--wait`, verifies the served result, records immutable release receipts, and rolls back only those site components after a failed probe. It never deploys or rolls back the external agent, removes volumes, changes the Tunnel, or alters DNS.
+The deploy script builds locally, starts only Redis/frontend/backend with `--wait`, verifies the served result, records immutable release receipts, and rolls back only those site components after a failed probe. It never deploys or rolls back `agent-platform/`, removes volumes, changes the Tunnel, or alters DNS.
 
 Do not cut over production until local checks, an authorized public preview, canonical redirects, robots, sitemap, real 404 behavior, contact paths, performance gates, agent availability, and external rollback evidence all pass.

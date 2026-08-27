@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-agent_root="${AGENT_PLATFORM_ROOT:-/data/ssd512/proyectos/agente-metalnor-worktrees/agent-platform}"
+agent_root="${root}/agent-platform"
 lan_ip="$(hostname -I | awk '{print $1}')"
 admin_email="$(sed -n 's/^ADMIN_INITIAL_EMAIL=//p' "$agent_root/.env.platform.local")"
 

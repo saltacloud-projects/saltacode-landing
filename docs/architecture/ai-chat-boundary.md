@@ -1,17 +1,17 @@
 # AI chat boundary
 
-Keep the landing page responsible for presentation and consent, an edge/backend layer responsible for trust enforcement, and the existing external agent responsible for conversation and quote workflows.
+Keep the landing page responsible for presentation and consent, the BFF responsible for trust enforcement, and the repository-owned `agent-platform/` service responsible for conversation and quote workflows.
 
 ## Boundary
 
 ```text
 Browser chat island
   -> same-origin edge/backend endpoint
-     -> authenticated external agent API
+     -> authenticated agent platform API
         -> approved business and quotation systems
 ```
 
-The browser must never call the external agent with provider secrets or privileged credentials.
+The browser must never call the agent platform with provider secrets or privileged credentials.
 
 ## Responsibilities
 
@@ -37,4 +37,4 @@ Render primary marketing content without the chat bundle. Load the chat island a
 
 ## Security and privacy gates
 
-Before production, verify the final privacy text, deletion workflow, retention job, provider key rotation, public abuse limits, alerting, WhatsApp credentials and access policy, and failure-mode behavior. HTTP acceptance alone does not prove the external agent completed a quote or delivered a message.
+Before production, verify the final privacy text, deletion workflow, retention job, provider key rotation, public abuse limits, alerting, WhatsApp credentials and access policy, and failure-mode behavior. HTTP acceptance alone does not prove the agent platform completed a quote or delivered a message.

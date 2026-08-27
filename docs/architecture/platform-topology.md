@@ -35,7 +35,7 @@ The frontend same-origin proxy prevents browser CORS coupling and streams SSE wi
 |---|---|---|
 | `frontend` | Static files, cache/security headers, real 404, lazy chat client, same-origin API streaming proxy. | Session signing, provider keys, rate policy, agent tools. |
 | `backend` | Browser validation, signed session, consent, origin policy, correlation, rate limit, and agent contract adaptation. | Marketing rendering, model execution, API source credentials. |
-| external agent platform | Agents, principals, channel identities, histories, executions, encrypted sources, tools, WhatsApp adapter, RAG, and model/provider orchestration. | Direct public browser trust or landing rendering. |
+| `agent-platform/` service | Agents, principals, channel identities, histories, executions, encrypted sources, tools, WhatsApp adapter, RAG, and model/provider orchestration. | Direct public browser trust or landing rendering. |
 | site Redis | Ephemeral public rate-limit counters. | Durable transcript or agent data. |
 | agent PostgreSQL/Redis | Durable platform state and internal coordination. | Public ingress. |
 
@@ -45,6 +45,6 @@ Published frontend and panel containers have a dedicated non-internal ingress br
 
 ## Deployment boundary
 
-The SaltaCode repository releases the site, BFF, and site Redis. The agent repository releases its API, panel, database migrations, bootstrap, optional worker, and private stores independently. A site rollback must not reset agent history; an agent rollback must not rebuild the indexable landing.
+The SaltaCode repository owns two independent release units. The site unit releases the frontend, BFF, and site Redis; `agent-platform/` releases its API, panel, database migrations, bootstrap, optional worker, and private stores. A site rollback must not reset agent history; an agent rollback must not rebuild the indexable landing.
 
 Production, DNS, Cloudflare, Search Console, analytics, and field Core Web Vitals remain unknown until independently verified.

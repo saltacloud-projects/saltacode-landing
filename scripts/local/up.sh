@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-agent_root="${AGENT_PLATFORM_ROOT:-/data/ssd512/proyectos/agente-metalnor-worktrees/agent-platform}"
+agent_root="${root}/agent-platform"
 cd "$root"
 ./scripts/local/init.sh
 "$agent_root/scripts/platform/up.sh"
