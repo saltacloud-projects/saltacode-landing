@@ -21,6 +21,7 @@ from app.models.conversation_message import ConversationMessage
 from app.models.rag import OrganizationArea
 from app.models.tool_config import ToolConfig
 from app.routers.admin.auth import require_admin, require_permission
+from app.schemas.tools import ToolExecutionContext
 from app.services.admin_rbac import AdminPermission
 from app.services.agent_loop import (
     _build_agent_system_prompt,
@@ -29,8 +30,8 @@ from app.services.agent_loop import (
     run_agent_loop,
 )
 from app.services.agent_profile import agent_profile_service
-from app.services.governance import governance_service
 from app.services.knowledge import knowledge_service
+from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
 
 router = APIRouter(
@@ -128,6 +129,7 @@ async def prompt_structure(db: AsyncSession = Depends(get_db)):
     resolved_knowledge = await knowledge_service.build_resolved_knowledge(
         db,
         temporal_context,
+        agent_id=profile.id if profile else None,
     )
     knowledge = knowledge_service.compose_resolved_knowledge(resolved_knowledge)
     composed_sections = build_agent_system_prompt_sections(
@@ -211,7 +213,11 @@ async def prompt_preview(
     if data.directives_override is not None:
         knowledge = data.directives_override
     else:
-        knowledge = await knowledge_service.build_all_knowledge(db, temporal_context)
+        knowledge = await knowledge_service.build_all_knowledge(
+            db,
+            temporal_context,
+            agent_id=persisted_profile.id if persisted_profile else None,
+        )
 
     system_prompt = _build_agent_system_prompt(profile, knowledge, temporal_context)
     placeholders = list(temporal_context.keys())
@@ -279,10 +285,18 @@ async def test_agent(
 
     await sync_http_api_tools(db)
     runtime_tools = set(tool_registry.list_tools())
-    available_tools = await governance_service.get_available_tools_for_user(
-        db=db,
-        user_id=agent_user_id,
-        runtime_registered_tools=runtime_tools,
+    execution_context = ToolExecutionContext(
+        request_id=request_id,
+        channel="whatsapp",
+        principal_id=str(agent_user_id),
+        agent_id=str(profile.id) if profile else None,
+        external_subject=phone,
+        scopes={"tools:read", "tools:write"},
+    )
+    available_tools = await tool_policy_service.available_tools(
+        db,
+        execution_context,
+        runtime_tools,
     )
     all_tool_configs_result = await db.execute(
         select(ToolConfig).where(ToolConfig.is_enabled == True)  # noqa: E712
@@ -322,6 +336,7 @@ async def test_agent(
         conversation_summary=None,
         rag_area_ids_override=rag_area_ids,
         rag_allow_disabled=True,
+        execution_context=execution_context,
     )
     duration_ms = int((time.monotonic() - start) * 1000)
 

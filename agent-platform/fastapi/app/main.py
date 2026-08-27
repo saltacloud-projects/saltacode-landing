@@ -15,6 +15,7 @@ from app.core.logging import setup_logging
 
 # Routers
 from app.routers import health, internal
+from app.routers.admin.agent_resources import router as admin_agent_resources_router
 from app.routers.admin.audit import router as admin_audit_router
 from app.routers.admin.auth import router as admin_auth_router
 from app.routers.admin.config import router as admin_config_router
@@ -211,3 +212,4 @@ app.include_router(admin_promptlab_router, prefix="/api/admin/promptlab")
 app.include_router(admin_documents_router, prefix="/api/admin/documents")
 app.include_router(admin_panel_users_router, prefix="/api/admin/panel-users")
 app.include_router(admin_sources_router, prefix="/api/admin/sources")
+app.include_router(admin_agent_resources_router, prefix="/api/admin/agents")

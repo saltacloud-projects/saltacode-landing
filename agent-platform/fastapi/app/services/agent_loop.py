@@ -318,6 +318,9 @@ async def run_agent_loop(
         principal_id=str(user_id) if user_id else None,
         external_subject=phone,
     )
+    resolved_agent_id = execution_context.agent_id or (
+        str(profile.id) if profile is not None else None
+    )
 
     # Construir tool definitions para OpenAI
     openai_tools = _build_openai_tools(available_tools, tool_configs)
@@ -326,7 +329,9 @@ async def run_agent_loop(
     # Conocimiento dinámico: carga TODOS los knowledge_blocks habilitados de la DB,
     # resuelve placeholders y los concatena. El código no conoce las keys específicas.
     temporal_context = build_temporal_context()
-    knowledge = await knowledge_service.build_all_knowledge(db, temporal_context)
+    knowledge = await knowledge_service.build_all_knowledge(
+        db, temporal_context, agent_id=resolved_agent_id
+    )
 
     # Recuperación automática: nunca es una tool y falla en modo degradado.
     rag_hits = []
@@ -336,6 +341,7 @@ async def run_agent_loop(
             query=user_message,
             user_id=user_id,
             request_id=request_id,
+            agent_id=resolved_agent_id,
             area_ids_override=rag_area_ids_override,
             allow_disabled=rag_allow_disabled,
         )

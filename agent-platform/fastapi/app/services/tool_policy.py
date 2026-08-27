@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+import logging
+import uuid
+
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent_resource_binding import AgentSourceBinding, AgentToolBinding
 from app.models.integration_source import IntegrationSource
 from app.models.tool_config import ToolConfig
 from app.schemas.tools import ToolExecutionContext
+
+logger = logging.getLogger(__name__)
 
 
 class ToolPolicyService:
@@ -17,15 +23,37 @@ class ToolPolicyService:
         context: ToolExecutionContext,
         runtime_registered_tools: set[str],
     ) -> list[dict]:
-        rows = (
-            await db.execute(
-                select(ToolConfig, IntegrationSource)
-                .outerjoin(
-                    IntegrationSource, ToolConfig.source_id == IntegrationSource.id
+        stmt = (
+            select(ToolConfig, IntegrationSource)
+            .outerjoin(IntegrationSource, ToolConfig.source_id == IntegrationSource.id)
+            .where(ToolConfig.is_enabled == True)  # noqa: E712
+        )
+        if context.agent_id is not None:
+            try:
+                agent_id = uuid.UUID(context.agent_id)
+            except ValueError:
+                logger.warning("tool_policy_invalid_agent_id")
+                return []
+            stmt = (
+                stmt.join(
+                    AgentToolBinding,
+                    AgentToolBinding.tool_id == ToolConfig.id,
                 )
-                .where(ToolConfig.is_enabled == True)  # noqa: E712
+                .outerjoin(
+                    AgentSourceBinding,
+                    (AgentSourceBinding.source_id == ToolConfig.source_id)
+                    & (AgentSourceBinding.agent_id == agent_id),
+                )
+                .where(
+                    AgentToolBinding.agent_id == agent_id,
+                    or_(
+                        ToolConfig.source_id.is_(None),
+                        AgentSourceBinding.id.is_not(None),
+                    ),
+                )
             )
-        ).all()
+        # ``agent_id=None`` is a temporary compatibility path for legacy callers.
+        rows = (await db.execute(stmt)).all()
         available: list[dict] = []
         for tool, source in rows:
             if tool.tool_name not in runtime_registered_tools:

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rag import Document, DocumentChunk, DocumentVersion
+from app.services.agent_resources import agent_resource_service
 from app.services.rag.access import get_user_area_ids
 from app.services.rag.embeddings import embedding_service
 from app.services.rag.settings import rag_settings_service
@@ -24,6 +25,7 @@ class RagRetrievalService:
         query: str,
         user_id: uuid.UUID | None,
         request_id: str,
+        agent_id: uuid.UUID | str | None = None,
         area_ids_override: set[uuid.UUID] | None = None,
         allow_disabled: bool = False,
     ) -> list[RagHit]:
@@ -39,6 +41,21 @@ class RagRetrievalService:
             if area_ids_override is not None
             else await get_user_area_ids(db, user_id)
         )
+        if agent_id is not None:
+            try:
+                parsed_agent_id = (
+                    agent_id if isinstance(agent_id, uuid.UUID) else uuid.UUID(agent_id)
+                )
+            except ValueError:
+                logger.warning(
+                    "rag_retrieval_invalid_agent_id",
+                    extra={"request_id": request_id},
+                )
+                return []
+            assigned_area_ids = await agent_resource_service.assigned_area_ids(
+                db, parsed_agent_id
+            )
+            area_ids = set(area_ids) & assigned_area_ids
         if not area_ids:
             return []
 

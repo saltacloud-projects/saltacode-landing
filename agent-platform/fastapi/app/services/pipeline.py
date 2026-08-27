@@ -497,6 +497,7 @@ class PipelineService:
                         request_id=request_id,
                         channel="whatsapp",
                         principal_id=str(user_id) if user_id else None,
+                        agent_id=str(profile.id) if profile is not None else None,
                         external_subject=phone,
                         scopes={"tools:read", "tools:write"},
                     )

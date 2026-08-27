@@ -27,9 +27,10 @@ async def test_agent_loop_injects_rag_evidence_and_returns_trace(monkeypatch):
     )
     search = AsyncMock(return_value=[hit])
     monkeypatch.setattr("app.services.agent_loop.rag_retrieval_service.search", search)
+    knowledge = AsyncMock(return_value="")
     monkeypatch.setattr(
         "app.services.agent_loop.knowledge_service.build_all_knowledge",
-        AsyncMock(return_value=""),
+        knowledge,
     )
     create = AsyncMock(
         return_value=SimpleNamespace(
@@ -45,6 +46,13 @@ async def test_agent_loop_injects_rag_evidence_and_returns_trace(monkeypatch):
     fake_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
+    profile = SimpleNamespace(
+        id=uuid4(),
+        name="",
+        prompt_identity="",
+        prompt_domain="",
+        prompt_guardrails="",
+    )
 
     with patch("openai.AsyncOpenAI", return_value=fake_client):
         result = await run_agent_loop(
@@ -52,7 +60,7 @@ async def test_agent_loop_injects_rag_evidence_and_returns_trace(monkeypatch):
             conversation_history=[],
             available_tools=[],
             tool_configs={},
-            profile=None,
+            profile=profile,
             user_id=uuid4(),
             phone="549test",
             request_id="req-rag",
@@ -65,6 +73,8 @@ async def test_agent_loop_injects_rag_evidence_and_returns_trace(monkeypatch):
     assert result.rag_hits[0]["chunk_id"] == str(hit.chunk_id)
     assert result.rag_hits[0]["reference_code"] == "DOC-AABBCCDD"
     assert search.await_args.kwargs["area_ids_override"] == {area_id}
+    assert search.await_args.kwargs["agent_id"] == str(profile.id)
+    assert knowledge.await_args.kwargs["agent_id"] == str(profile.id)
     sent_messages = create.await_args.kwargs["messages"]
     assert "EVIDENCIA_RAG_NO_CONFIABLE" in sent_messages[-1]["content"]
     assert "no los muestres al usuario" in sent_messages[-1]["content"]

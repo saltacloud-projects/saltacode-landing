@@ -23,6 +23,18 @@ class _Db:
         return _Rows(self._rows)
 
 
+class _AgentDb:
+    def __init__(self, rows_by_agent):
+        self._rows_by_agent = rows_by_agent
+
+    async def execute(self, statement):
+        params = set(statement.compile().params.values())
+        for agent_id, rows in self._rows_by_agent.items():
+            if agent_id in params:
+                return _Rows(rows)
+        return _Rows([])
+
+
 def _source(*, public: bool = True, active: bool = True):
     return SimpleNamespace(
         id=uuid4(), slug="catalog", is_public=public, is_active=active
@@ -96,3 +108,33 @@ async def test_source_scope_and_write_scope_are_server_enforced() -> None:
         )
         == []
     )
+
+
+@pytest.mark.asyncio
+async def test_agent_binding_isolation_filters_tools_and_sources() -> None:
+    agent_a = uuid4()
+    agent_b = uuid4()
+    source_a = _source()
+    source_b = _source()
+    tool_a = _tool("agent_a_tool")
+    tool_b = _tool("agent_b_tool")
+    db = _AgentDb({agent_a: [(tool_a, source_a)], agent_b: [(tool_b, source_b)]})
+    runtime_tools = {"agent_a_tool", "agent_b_tool"}
+
+    available_a = await ToolPolicyService().available_tools(
+        db,
+        ToolExecutionContext(
+            request_id="request-a", channel="web", agent_id=str(agent_a)
+        ),
+        runtime_tools,
+    )
+    available_b = await ToolPolicyService().available_tools(
+        db,
+        ToolExecutionContext(
+            request_id="request-b", channel="web", agent_id=str(agent_b)
+        ),
+        runtime_tools,
+    )
+
+    assert [item["tool_name"] for item in available_a] == ["agent_a_tool"]
+    assert [item["tool_name"] for item in available_b] == ["agent_b_tool"]

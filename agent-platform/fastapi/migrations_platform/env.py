@@ -2,33 +2,40 @@
 Agent Platform — Alembic env.py
 Configuración de migraciones con SQLAlchemy async (asyncpg).
 """
+
 import asyncio
 import os
 import sys
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from alembic import context
 
 # Asegurar que /app está en el path para importar app.*
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings  # noqa: E402
 from app.core.database import Base  # noqa: E402
+from app.models.admin_role import AdminRole  # noqa: F401
+from app.models.admin_user import AdminUser  # noqa: F401
+from app.models.agent_profile import AgentProfile  # noqa: F401
+from app.models.agent_resource_binding import (  # noqa: F401
+    AgentKnowledgeBlockBinding,
+    AgentOrganizationAreaBinding,
+    AgentSourceBinding,
+    AgentToolBinding,
+)
+from app.models.audit_log import AuditLog  # noqa: F401
+from app.models.authorized_user import AuthorizedUser  # noqa: F401
 
 # Importar TODOS los modelos para que Alembic los detecte en --autogenerate
 from app.models.base import TimestampedModel  # noqa: F401
-from app.models.authorized_user import AuthorizedUser  # noqa: F401
-from app.models.usage_record import UsageRecord  # noqa: F401
-from app.models.audit_log import AuditLog  # noqa: F401
-from app.models.tool_config import ToolConfig  # noqa: F401
 from app.models.conversation_message import ConversationMessage  # noqa: F401
-from app.models.agent_profile import AgentProfile  # noqa: F401
-from app.models.message_status import MessageStatus  # noqa: F401
 from app.models.integration_source import IntegrationSource  # noqa: F401
+from app.models.knowledge_block import KnowledgeBlock  # noqa: F401
+from app.models.message_status import MessageStatus  # noqa: F401
 from app.models.platform import (  # noqa: F401
     ChannelIdentity,
     ChatConversation,
@@ -36,9 +43,6 @@ from app.models.platform import (  # noqa: F401
     ChatMessage,
     Principal,
 )
-from app.models.knowledge_block import KnowledgeBlock  # noqa: F401
-from app.models.admin_user import AdminUser  # noqa: F401
-from app.models.admin_role import AdminRole  # noqa: F401
 from app.models.rag import (  # noqa: F401
     AuthorizedUserArea,
     Document,
@@ -51,6 +55,8 @@ from app.models.rag import (  # noqa: F401
     OrganizationArea,
     RagSettings,
 )
+from app.models.tool_config import ToolConfig  # noqa: F401
+from app.models.usage_record import UsageRecord  # noqa: F401
 
 config = context.config
 

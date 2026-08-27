@@ -14,6 +14,7 @@ class ToolInvokeRequest(BaseModel):
     channel: str = "api"
     principal_id: str | None = None
     conversation_id: str | None = None
+    agent_id: str | None = None
     external_subject: str | None = None
     scopes: list[str] = Field(default_factory=list)
     allowed_source_ids: list[str] = Field(default_factory=list)

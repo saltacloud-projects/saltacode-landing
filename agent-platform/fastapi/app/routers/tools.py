@@ -40,6 +40,7 @@ async def invoke_tool(
         channel=req.channel,
         principal_id=req.principal_id,
         conversation_id=req.conversation_id,
+        agent_id=req.agent_id,
         external_subject=req.external_subject,
         scopes=set(req.scopes),
         allowed_source_ids=set(req.allowed_source_ids),
