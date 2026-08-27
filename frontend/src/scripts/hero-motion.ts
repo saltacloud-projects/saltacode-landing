@@ -1,12 +1,5 @@
-import { animate } from "motion/mini";
-
-interface PlaybackControl {
-  pause: () => void;
-  play: () => void;
-}
-
 export function startHeroMotion(motionRoot: HTMLElement): void {
-  const controls: PlaybackControl[] = [];
+  const controls: Animation[] = [];
 
   motionRoot.querySelectorAll<HTMLElement>("[data-circuit-node]").forEach((node) => {
     const circuitName = node.dataset.circuitNode;
@@ -17,28 +10,22 @@ export function startHeroMotion(motionRoot: HTMLElement): void {
     if (!pathData) return;
 
     node.style.offsetPath = `path("${pathData}")`;
-    controls.push(
-      animate(
-        node,
-        { offsetDistance: ["0%", "100%"], opacity: [0.62, 1, 0.68] },
-        {
-          duration: Number(node.dataset.duration ?? 18),
-          delay: Number(node.dataset.delay ?? 0),
-          ease: "linear",
-          repeat: Infinity,
-        },
-      ),
-    );
+    controls.push(node.animate(
+      { offsetDistance: ["0%", "100%"], opacity: [0.62, 1, 0.68] },
+      {
+        duration: Number(node.dataset.duration ?? 18) * 1_000,
+        delay: Number(node.dataset.delay ?? 0) * 1_000,
+        easing: "linear",
+        iterations: Infinity,
+      },
+    ));
   });
 
   motionRoot.querySelectorAll<SVGPathElement>(".hero-circuit-path").forEach((path, index) => {
-    controls.push(
-      animate(
-        path,
-        { opacity: [0.56, 0.86, 0.6] },
-        { duration: 8 + index * 2, ease: "easeInOut", repeat: Infinity },
-      ),
-    );
+    controls.push(path.animate(
+      { opacity: [0.56, 0.86, 0.6] },
+      { duration: (8 + index * 2) * 1_000, easing: "ease-in-out", iterations: Infinity },
+    ));
   });
 
   motionRoot.dataset.motionActive = "true";

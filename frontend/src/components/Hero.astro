@@ -82,11 +82,9 @@ const circuitNodes = [
       concretas de tu negocio.
     </p>
 
-    <div
+    <form
       class="agent-preview"
-      role="group"
-      aria-label="Acceso a consultas para el futuro asistente con inteligencia artificial"
-      aria-describedby="agent-helper"
+      data-chat-launcher
     >
       <span class="agent-symbol" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
@@ -94,13 +92,24 @@ const circuitNodes = [
           <path d="M18.4 15.8c.3 1.8.9 2.4 2.6 2.7-1.7.3-2.3.9-2.6 2.5-.3-1.6-.9-2.2-2.6-2.5 1.7-.3 2.3-.9 2.6-2.7Z"></path>
         </svg>
       </span>
-      <span class="agent-placeholder">¿Qué necesitás resolver en tu empresa?</span>
-      <a class="agent-send" href="#contacto" aria-label="Consultar con un experto de SaltaCode">
+      <label class="visually-hidden" for="agent-question">¿Qué necesitás resolver?</label>
+      <input
+        class="agent-input"
+        id="agent-question"
+        name="question"
+        type="text"
+        maxlength="280"
+        autocomplete="off"
+        enterkeyhint="send"
+        aria-describedby="agent-helper"
+        placeholder="¿Qué necesitás resolver en tu empresa?"
+      />
+      <button class="agent-send" type="submit" aria-label="Abrir vista previa del chat">
         <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" focusable="false">
           <path d="m4 5 16-2-6.8 17-2.4-6.8L4 10.5 4 5Zm7.2 6.3 5-5.1-8.8 2 4 1.6-.2 1.5Z"></path>
         </svg>
-      </a>
-    </div>
+      </button>
+    </form>
     <p class="agent-helper" id="agent-helper">
       Contanos el contexto y te orientamos sobre el servicio y el próximo paso.
     </p>

@@ -1,30 +1,24 @@
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+const chatLauncher = document.querySelector<HTMLFormElement>("[data-chat-launcher]");
+if (chatLauncher) chatLauncher.onsubmit = (event) => {
+  event.preventDefault();
+  void import("./chat-preview").then(({ openChatPreview }) => openChatPreview(chatLauncher));
+};
+
 function initializeClientCarousel(): void {
-  const carousel = document.querySelector<HTMLElement>("[data-client-carousel]");
-  if (!carousel || carousel.dataset.animated !== undefined) return;
-
-  const track = carousel.querySelector<HTMLElement>("[data-client-track]");
-  const group = carousel.querySelector<HTMLElement>("[data-client-group]");
-  if (!track || !group) return;
-
-  const clone = group.cloneNode(true) as HTMLElement;
-  clone.removeAttribute("data-client-group");
-  clone.removeAttribute("aria-label");
-  clone.setAttribute("aria-hidden", "true");
-  clone.querySelectorAll<HTMLImageElement>("img").forEach((image) => {
-    image.alt = "";
+  void import("./client-carousel").then(({ initializeClientCarousel: startClientCarousel }) => {
+    startClientCarousel();
   });
-  track.append(clone);
-  carousel.dataset.animated = "";
 }
 
-async function initializeHeroMotion(): Promise<void> {
+function initializeHeroMotion(): void {
   const motionRoot = document.querySelector<HTMLElement>("[data-hero-motion]");
-  if (!motionRoot || !motionRoot.isConnected || reducedMotion.matches) return;
+  if (!motionRoot || reducedMotion.matches) return;
 
-  const { startHeroMotion } = await import("./hero-motion");
-  if (!reducedMotion.matches) startHeroMotion(motionRoot);
+  void import("./hero-motion").then(({ startHeroMotion }) => {
+    if (!reducedMotion.matches) startHeroMotion(motionRoot);
+  });
 }
 
 if (!reducedMotion.matches) {
@@ -33,7 +27,7 @@ if (!reducedMotion.matches) {
   if ("requestIdleCallback" in window) {
     window.requestIdleCallback(initializeHeroMotion, { timeout: 1_200 });
   } else {
-    globalThis.setTimeout(initializeHeroMotion, 0);
+    setTimeout(initializeHeroMotion, 0);
   }
 }
 

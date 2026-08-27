@@ -378,6 +378,14 @@ if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) {
   throw new Error("The clients heading must use the conservative historical wording.");
 }
 
+if (
+  !/<form\b[^>]*class="agent-preview"[^>]*data-chat-launcher[^>]*>/.test(index) ||
+  !/<input\b[^>]*name="question"[^>]*type="text"[^>]*>/.test(index) ||
+  !/<button\b[^>]*class="agent-send"[^>]*type="submit"[^>]*>/.test(index)
+) {
+  throw new Error("The hero chat launcher must remain a semantic form with a text field and submit button.");
+}
+
 if (/<p class="eyebrow">Nuestros clientes<\/p>/.test(index) || /data-client-motion-toggle/.test(index)) {
   throw new Error("The client carousel must not duplicate its heading or render a visible motion button.");
 }
