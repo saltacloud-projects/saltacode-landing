@@ -12,12 +12,22 @@ Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
 
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import UUID
 
 import httpx
+from pydantic import ValidationError
 
 from app.config import settings
 from app.core.concurrency import whatsapp_semaphore
+from app.models.agent_runtime import ChannelConnection
+from app.schemas.agent_runtime import WhatsAppCredentials
+from app.services.credentials import (
+    CredentialDecryptError,
+    CredentialStoreUnavailable,
+    credential_cipher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +42,22 @@ _MD_HEADER = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _MD_BULLET = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
 _MD_BOLD = re.compile(r"\*{1,3}(\S.*?\S|\S)\*{1,3}")
 _MULTI_BLANK = re.compile(r"\n{3,}")
+
+
+class WhatsAppConnectionUnavailable(RuntimeError):
+    """Raised when a persisted WhatsApp connection cannot be used safely."""
+
+
+@dataclass(frozen=True)
+class WhatsAppConnectionContext:
+    """Request-scoped delivery credentials; secret fields are excluded from repr."""
+
+    connection_id: UUID | None
+    phone_number_id: str
+    access_token: str = field(repr=False)
+    verify_token: str = field(repr=False)
+    app_secret: str = field(repr=False)
+    route_key: str | None = None
 
 
 def sanitize_whatsapp_text(text: str) -> str:
@@ -58,17 +84,72 @@ def sanitize_whatsapp_text(text: str) -> str:
 
 
 class WhatsAppService:
-    def verify_webhook(self, mode: str, token: str, challenge: str) -> str | None:
+    def resolve_connection(
+        self, connection: ChannelConnection, *, route_key: str
+    ) -> WhatsAppConnectionContext:
+        """Decrypt and validate a persisted WhatsApp connection for one request."""
+        if connection.channel != "whatsapp" or not connection.is_active:
+            raise WhatsAppConnectionUnavailable("whatsapp connection is unavailable")
+        phone_number_id = (connection.external_account_id or "").strip()
+        if not phone_number_id:
+            raise WhatsAppConnectionUnavailable(
+                "whatsapp external account is not configured"
+            )
+        try:
+            raw = credential_cipher.decrypt(connection.encrypted_credentials)
+            credentials = WhatsAppCredentials.model_validate(raw)
+        except (
+            CredentialDecryptError,
+            CredentialStoreUnavailable,
+            ValidationError,
+        ) as exc:
+            raise WhatsAppConnectionUnavailable(
+                "whatsapp credentials are unavailable"
+            ) from exc
+        return WhatsAppConnectionContext(
+            connection_id=connection.id,
+            phone_number_id=phone_number_id,
+            access_token=credentials.access_token,
+            verify_token=credentials.verify_token,
+            app_secret=credentials.app_secret,
+            route_key=route_key,
+        )
+
+    @staticmethod
+    def _delivery_context(
+        connection: WhatsAppConnectionContext | None,
+    ) -> WhatsAppConnectionContext | None:
+        if connection is not None:
+            return connection
+        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+            return None
+        return WhatsAppConnectionContext(
+            connection_id=None,
+            phone_number_id=settings.whatsapp_phone_number_id,
+            access_token=settings.whatsapp_token,
+            verify_token=settings.whatsapp_verify_token,
+            app_secret=settings.whatsapp_app_secret,
+        )
+
+    def verify_webhook(
+        self,
+        mode: str,
+        token: str,
+        challenge: str,
+        *,
+        verify_token: str | None = None,
+    ) -> str | None:
         """
         Verifica el webhook de Meta. Retorna el challenge si es válido, None si no.
         Meta llama a este endpoint con GET al configurar o actualizar el webhook.
         """
-        if mode == "subscribe" and token == settings.whatsapp_verify_token:
+        expected_token = (
+            verify_token if verify_token is not None else settings.whatsapp_verify_token
+        )
+        if mode == "subscribe" and token == expected_token:
             logger.info("whatsapp_webhook_verified")
             return challenge
-        logger.warning(
-            "whatsapp_webhook_verification_failed", extra={"token_received": token}
-        )
+        logger.warning("whatsapp_webhook_verification_failed")
         return None
 
     def parse_inbound(self, payload: dict) -> dict | None:
@@ -228,13 +309,20 @@ class WhatsAppService:
         return phone
 
     async def upload_media(
-        self, file_bytes: bytes, filename: str, mime_type: str, request_id: str = ""
+        self,
+        file_bytes: bytes,
+        filename: str,
+        mime_type: str,
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> str | None:
         """
         Sube un archivo al media storage de WhatsApp Business Cloud API.
         Retorna el media_id si fue exitoso, None si falló.
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             logger.warning(
                 "whatsapp_send_skipped",
                 extra={
@@ -244,8 +332,8 @@ class WhatsAppService:
             )
             return None
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/media"
-        headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/media"
+        headers = {"Authorization": f"Bearer {delivery.access_token}"}
         async with whatsapp_semaphore, httpx.AsyncClient(timeout=30.0) as client:
             try:
                 resp = await client.post(
@@ -271,7 +359,6 @@ class WhatsAppService:
                     "whatsapp_media_upload_error",
                     extra={
                         "status": e.response.status_code,
-                        "body": e.response.text,
                         "request_id": request_id,
                     },
                 )
@@ -284,10 +371,17 @@ class WhatsAppService:
                 return None
 
     async def upload_media_path(
-        self, file_path: Path, filename: str, mime_type: str, request_id: str = ""
+        self,
+        file_path: Path,
+        filename: str,
+        mime_type: str,
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> str | None:
         """Sube un archivo persistido usando streaming multipart."""
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             logger.warning(
                 "whatsapp_send_skipped",
                 extra={
@@ -296,8 +390,8 @@ class WhatsAppService:
                 },
             )
             return None
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/media"
-        headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/media"
+        headers = {"Authorization": f"Bearer {delivery.access_token}"}
         try:
             with file_path.open("rb") as file_handle:
                 async with (
@@ -342,12 +436,15 @@ class WhatsAppService:
         filename: str,
         caption: str = "",
         request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> bool:
         """
         Envía un documento (archivo) al número indicado via Graph API usando un media_id previamente subido.
         Retorna True si fue exitoso.
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             logger.warning(
                 "whatsapp_send_skipped",
                 extra={
@@ -357,9 +454,9 @@ class WhatsAppService:
             )
             return False
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         normalized_phone = self._normalize_phone(phone)
@@ -392,7 +489,6 @@ class WhatsAppService:
                     extra={
                         "phone": phone,
                         "status": e.response.status_code,
-                        "body": e.response.text,
                     },
                 )
                 return False
@@ -400,18 +496,25 @@ class WhatsAppService:
                 logger.error("whatsapp_request_error", extra={"error": str(e)})
                 return False
 
-    async def mark_as_read(self, message_id: str, request_id: str = "") -> None:
+    async def mark_as_read(
+        self,
+        message_id: str,
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
+    ) -> None:
         """
         Marca el mensaje del usuario como leído (doble ✓ azul).
         Se envía al inicio del pipeline para señalar al usuario que el mensaje
         fue recibido y se está procesando, reduciendo la percepción de latencia.
         Falla silenciosamente — no es crítico para el flujo.
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             return
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         body = {
@@ -425,7 +528,12 @@ class WhatsAppService:
         except Exception:
             pass  # silencioso — no bloquea el pipeline
 
-    async def show_typing(self, message_id: str) -> None:
+    async def show_typing(
+        self,
+        message_id: str,
+        *,
+        connection: WhatsAppConnectionContext | None = None,
+    ) -> None:
         """
         Envía indicador de escritura ("escribiendo...") al usuario.
         Meta Cloud API requiere el message_id del último mensaje recibido.
@@ -434,11 +542,12 @@ class WhatsAppService:
 
         Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/typing-indicators
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             return
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         body = {
@@ -454,19 +563,26 @@ class WhatsAppService:
             pass  # silencioso
 
     async def send_image_message(
-        self, phone: str, media_id: str, caption: str = "", request_id: str = ""
+        self,
+        phone: str,
+        media_id: str,
+        caption: str = "",
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> bool:
         """
         Envía una imagen al número indicado via Graph API usando un media_id previamente subido.
         La imagen se muestra inline en el chat (sin necesidad de descargar).
         Retorna True si fue exitoso.
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             return False
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         normalized_phone = self._normalize_phone(phone)
@@ -495,7 +611,6 @@ class WhatsAppService:
                     extra={
                         "phone": phone,
                         "status": e.response.status_code,
-                        "body": e.response.text,
                     },
                 )
                 return False
@@ -511,6 +626,8 @@ class WhatsAppService:
         header_image_id: str | None = None,
         body_params: list[str] | None = None,
         request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> str | None:
         """
         Envía un message template pre-aprobado por Meta.
@@ -531,12 +648,13 @@ class WhatsAppService:
 
         Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-message-templates
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             return None
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         normalized_phone = self._normalize_phone(phone)
@@ -597,7 +715,6 @@ class WhatsAppService:
                         "phone": phone,
                         "template": template_name,
                         "status": e.response.status_code,
-                        "body": e.response.text,
                         "request_id": request_id,
                     },
                 )
@@ -607,7 +724,12 @@ class WhatsAppService:
                 return None
 
     async def send_text_message(
-        self, phone: str, text: str, request_id: str = ""
+        self,
+        phone: str,
+        text: str,
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> str | None:
         """
         Envía un mensaje de texto al número indicado via Graph API.
@@ -615,7 +737,8 @@ class WhatsAppService:
         falló o si WhatsApp está deshabilitado. El wamid permite correlacionar las
         respuestas citadas del usuario con el mensaje al que responden.
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             logger.warning(
                 "whatsapp_send_skipped",
                 extra={
@@ -625,9 +748,9 @@ class WhatsAppService:
             )
             return None
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         normalized_phone = self._normalize_phone(phone)
@@ -663,7 +786,6 @@ class WhatsAppService:
                     extra={
                         "phone": phone,
                         "status": e.response.status_code,
-                        "body": e.response.text,
                     },
                 )
                 return None
@@ -678,6 +800,8 @@ class WhatsAppService:
         buttons: list[dict],
         footer_text: str | None = None,
         request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> bool:
         """
         Envía un mensaje con botones de respuesta rápida (máx 3 botones).
@@ -692,12 +816,13 @@ class WhatsAppService:
 
         Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-reply-buttons
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             return False
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         normalized_phone = self._normalize_phone(phone)
@@ -745,7 +870,6 @@ class WhatsAppService:
                     extra={
                         "phone": phone,
                         "status": e.response.status_code,
-                        "body": e.response.text,
                         "request_id": request_id,
                     },
                 )
@@ -763,6 +887,8 @@ class WhatsAppService:
         header_text: str | None = None,
         footer_text: str | None = None,
         request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
     ) -> bool:
         """
         Envía un mensaje interactivo tipo 'list' de WhatsApp.
@@ -780,7 +906,8 @@ class WhatsAppService:
 
         Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-list-messages
         """
-        if not settings.whatsapp_token or not settings.whatsapp_phone_number_id:
+        delivery = self._delivery_context(connection)
+        if delivery is None:
             logger.warning(
                 "whatsapp_send_skipped",
                 extra={
@@ -790,9 +917,9 @@ class WhatsAppService:
             )
             return False
 
-        url = f"{GRAPH_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
+        url = f"{GRAPH_API_BASE}/{delivery.phone_number_id}/messages"
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Authorization": f"Bearer {delivery.access_token}",
             "Content-Type": "application/json",
         }
         normalized_phone = self._normalize_phone(phone)
@@ -837,7 +964,6 @@ class WhatsAppService:
                     extra={
                         "phone": phone,
                         "status": e.response.status_code,
-                        "body": e.response.text,
                         "request_id": request_id,
                     },
                 )

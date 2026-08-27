@@ -35,9 +35,13 @@ class ResolvedAgentRuntime:
 
 
 @dataclass(frozen=True)
-class ResolvedAgentRoute:
+class ResolvedChannelRoute:
     route: ChannelAgentRoute
     connection: ChannelConnection
+
+
+@dataclass(frozen=True)
+class ResolvedAgentRoute(ResolvedChannelRoute):
     runtime: ResolvedAgentRuntime
 
 
@@ -159,14 +163,12 @@ class AgentRuntimeResolver:
             raise AgentRuntimeUnavailable("provider credentials are unavailable")
         return ResolvedAgentRuntime(profile, config, provider, api_key)
 
-    async def resolve_route(
+    async def resolve_channel_route(
         self,
         db: AsyncSession,
         channel: str,
         route_key: str,
-        *,
-        require_public: bool = False,
-    ) -> ResolvedAgentRoute:
+    ) -> ResolvedChannelRoute:
         row = (
             await db.execute(
                 select(ChannelAgentRoute, ChannelConnection)
@@ -187,10 +189,26 @@ class AgentRuntimeResolver:
         route, connection = row
         if connection.channel != route.channel:
             raise AgentRuntimeUnavailable("channel route is inconsistent")
+        return ResolvedChannelRoute(route, connection)
+
+    async def resolve_route(
+        self,
+        db: AsyncSession,
+        channel: str,
+        route_key: str,
+        *,
+        require_public: bool = False,
+    ) -> ResolvedAgentRoute:
+        channel_route = await self.resolve_channel_route(db, channel, route_key)
         runtime = await self.resolve_agent(
-            db, route.agent_id, allow_inactive=False, require_public=require_public
+            db,
+            channel_route.route.agent_id,
+            allow_inactive=False,
+            require_public=require_public,
         )
-        return ResolvedAgentRoute(route, connection, runtime)
+        return ResolvedAgentRoute(
+            channel_route.route, channel_route.connection, runtime
+        )
 
 
 connection_service = ConnectionService()

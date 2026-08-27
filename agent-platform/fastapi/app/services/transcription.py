@@ -18,6 +18,8 @@ from openai import AsyncOpenAI
 
 from app.config import settings
 from app.core.concurrency import llm_semaphore
+from app.services.agent_runtime import ResolvedAgentRuntime
+from app.services.whatsapp import WhatsAppConnectionContext
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,13 @@ class TranscriptionService:
     Usa Meta Graph API para descargar el audio y OpenAI Whisper para transcribir.
     """
 
-    async def download_audio(self, media_id: str, request_id: str = "") -> bytes | None:
+    async def download_audio(
+        self,
+        media_id: str,
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
+    ) -> bytes | None:
         """
         Descarga el audio de Meta Cloud API dado su media_id.
 
@@ -46,7 +54,10 @@ class TranscriptionService:
 
         Retorna los bytes del audio, o None si falla.
         """
-        if not settings.whatsapp_token:
+        access_token = (
+            connection.access_token if connection else settings.whatsapp_token
+        )
+        if not access_token:
             logger.warning(
                 "transcription_download_skipped",
                 extra={
@@ -57,7 +68,7 @@ class TranscriptionService:
             return None
 
         graph_url = f"https://graph.facebook.com/v21.0/{media_id}"
-        auth_headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
+        auth_headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -106,7 +117,6 @@ class TranscriptionService:
                 extra={
                     "media_id": media_id,
                     "status": e.response.status_code,
-                    "body": e.response.text[:200],
                     "request_id": request_id,
                 },
             )
@@ -114,11 +124,21 @@ class TranscriptionService:
         except Exception as e:
             logger.error(
                 "transcription_download_error",
-                extra={"media_id": media_id, "error": str(e), "request_id": request_id},
+                extra={
+                    "media_id": media_id,
+                    "error_type": type(e).__name__,
+                    "request_id": request_id,
+                },
             )
             return None
 
-    async def transcribe(self, audio_bytes: bytes, request_id: str = "") -> str | None:
+    async def transcribe(
+        self,
+        audio_bytes: bytes,
+        request_id: str = "",
+        *,
+        runtime: ResolvedAgentRuntime | None = None,
+    ) -> str | None:
         """
         Transcribe bytes de audio usando OpenAI Whisper.
 
@@ -128,7 +148,13 @@ class TranscriptionService:
 
         Retorna el texto transcripto, o None si falla.
         """
-        if not settings.openai_api_key:
+        api_key = runtime.api_key if runtime else settings.openai_api_key
+        model = (
+            runtime.config.transcription_model
+            if runtime
+            else settings.openai_whisper_model
+        )
+        if not api_key:
             logger.warning(
                 "transcription_skipped",
                 extra={
@@ -138,13 +164,16 @@ class TranscriptionService:
             )
             return None
 
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client_options = {"api_key": api_key}
+        if runtime and runtime.provider.base_url:
+            client_options["base_url"] = runtime.provider.base_url
+        client = AsyncOpenAI(**client_options)
 
         try:
             # Whisper requiere un tuple (filename, bytes, mime_type) como file
             async with llm_semaphore:
                 response = await client.audio.transcriptions.create(
-                    model=settings.openai_whisper_model,
+                    model=model,
                     file=(_AUDIO_FILENAME, audio_bytes, _AUDIO_MIME),
                     language="es",  # Forzar español para mayor precisión en contextos en español
                     response_format="text",
@@ -173,22 +202,30 @@ class TranscriptionService:
         except Exception as e:
             logger.error(
                 "transcription_error",
-                extra={"error": str(e), "request_id": request_id},
-                exc_info=True,
+                extra={"error_type": type(e).__name__, "request_id": request_id},
             )
             return None
 
     async def download_and_transcribe(
-        self, media_id: str, request_id: str = ""
+        self,
+        media_id: str,
+        request_id: str = "",
+        *,
+        connection: WhatsAppConnectionContext | None = None,
+        runtime: ResolvedAgentRuntime | None = None,
     ) -> str | None:
         """
         Descarga y transcribe en un solo paso.
         Retorna el texto transcripto o None si algún paso falla.
         """
-        audio_bytes = await self.download_audio(media_id, request_id=request_id)
+        audio_bytes = await self.download_audio(
+            media_id, request_id=request_id, connection=connection
+        )
         if audio_bytes is None:
             return None
-        return await self.transcribe(audio_bytes, request_id=request_id)
+        return await self.transcribe(
+            audio_bytes, request_id=request_id, runtime=runtime
+        )
 
 
 transcription_service = TranscriptionService()

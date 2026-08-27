@@ -64,6 +64,8 @@ class ChatApplicationService:
         assistant_content: str,
         tools_used: list[str],
         display_name: str | None = None,
+        route_key: str | None = None,
+        channel_route_id: uuid.UUID | None = None,
     ) -> None:
         """Dual-write the existing WhatsApp flow into the neutral history."""
         if await self._existing_outcome(db, request_id) is not None:
@@ -81,6 +83,8 @@ class ChatApplicationService:
             channel="whatsapp",
             external_thread_id=external_subject,
             consent_version="whatsapp-existing-history-v1",
+            route_key=route_key,
+            channel_route_id=channel_route_id,
         )
         inbound = ChatMessage(
             conversation_id=conversation.id,
@@ -109,6 +113,34 @@ class ChatApplicationService:
                 tools_used=list(tools_used),
             )
         )
+
+    async def load_whatsapp_context(
+        self,
+        db: AsyncSession,
+        *,
+        agent_id: uuid.UUID,
+        external_subject: str,
+        limit: int,
+        route_key: str,
+        channel_route_id: uuid.UUID,
+    ) -> tuple[list[dict[str, str]], str | None]:
+        """Load only the neutral conversation owned by this agent and route."""
+        conversation = (
+            await db.execute(
+                select(ChatConversation).where(
+                    ChatConversation.agent_id == agent_id,
+                    ChatConversation.channel == "whatsapp",
+                    ChatConversation.external_thread_id == external_subject,
+                )
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            return [], None
+        if conversation.route_key not in (None, route_key):
+            raise AgentNotReady("WhatsApp identity belongs to another route")
+        if conversation.channel_route_id not in (None, channel_route_id):
+            raise AgentNotReady("WhatsApp identity belongs to another route")
+        return await self._history(db, conversation.id, limit), conversation.summary
 
     async def execute_web(
         self,
