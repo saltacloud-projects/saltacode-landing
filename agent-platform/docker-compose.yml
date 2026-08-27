@@ -11,6 +11,7 @@ x-agent-environment: &agent-environment
   ADMIN_INITIAL_EMAIL: ${ADMIN_INITIAL_EMAIL}
   ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
   ADMIN_FRONTEND_URL: ${ADMIN_FRONTEND_URL:-http://localhost:23000}
+  CREDENTIAL_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/source_master_key
   CREDENTIAL_ENCRYPTION_KEY_FILE: /run/agent-secrets/source_master.key
   DEFAULT_AGENT_SLUG: ${DEFAULT_AGENT_SLUG:-saltacode}
   RETENTION_SWEEP_INTERVAL_SECONDS: ${RETENTION_SWEEP_INTERVAL_SECONDS:-21600}
@@ -40,6 +41,13 @@ x-api-base: &api-base
     - no-new-privileges:true
   cap_drop:
     - ALL
+  cap_add:
+    # Entrypoint-only capabilities: read the host-owned 0600 source, install an
+    # appuser-owned copy, then drop uid/gid before the long-running command.
+    - CHOWN
+    - DAC_READ_SEARCH
+    - SETGID
+    - SETUID
 
 services:
   postgres:
