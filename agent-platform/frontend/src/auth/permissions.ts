@@ -26,16 +26,11 @@ export function hasPermission(user: AdminUser | null, permission: string): boole
 }
 
 export function defaultPanelPath(user: AdminUser | null): string {
-  if (hasPermission(user, PERMISSIONS.DASHBOARD_READ)) return "/";
-  if (hasPermission(user, PERMISSIONS.DOCUMENTS_READ)) return "/documents";
-  if (hasPermission(user, PERMISSIONS.PROFILES_READ)) return "/profiles";
-  if (hasPermission(user, PERMISSIONS.KNOWLEDGE_READ)) return "/knowledge";
-  if (hasPermission(user, PERMISSIONS.TOOLS_READ)) return "/tools";
-  if (hasPermission(user, PERMISSIONS.SOURCES_READ)) return "/sources";
-  if (hasPermission(user, PERMISSIONS.USERS_READ)) return "/users";
-  if (hasPermission(user, PERMISSIONS.CONVERSATIONS_READ)) return "/conversations";
-  if (hasPermission(user, PERMISSIONS.AUDIT_READ)) return "/audit";
-  if (hasPermission(user, PERMISSIONS.PROMPTLAB_USE)) return "/promptlab";
+  if (hasPermission(user, PERMISSIONS.PROFILES_READ)) return "/agents";
+  if (hasPermission(user, PERMISSIONS.DOCUMENTS_READ)) return "/shared/documents";
+  if (hasPermission(user, PERMISSIONS.SOURCES_READ)) return "/shared/sources";
+  if (hasPermission(user, PERMISSIONS.KNOWLEDGE_READ)) return "/shared/knowledge";
+  if (hasPermission(user, PERMISSIONS.TOOLS_READ)) return "/shared/tools";
   if (hasPermission(user, PERMISSIONS.PANEL_USERS_MANAGE)) return "/panel-users";
   return "/login";
 }

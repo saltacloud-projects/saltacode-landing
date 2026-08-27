@@ -3,6 +3,7 @@ import { LoaderCircle, MessageSquare, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 
 interface Conversation {
   id: string;
@@ -33,6 +34,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function ConversationsPage() {
+  const { selectedAgent } = useAgentWorkspace();
   const { user } = useAuth();
   const canDelete = hasPermission(user, PERMISSIONS.CONVERSATIONS_MANAGE);
   const [items, setItems] = useState<Conversation[]>([]);
@@ -79,6 +81,7 @@ export default function ConversationsPage() {
         <div><h2 className="text-xl font-semibold">Conversaciones</h2><p className="text-sm text-[var(--text-muted)]">Historial unificado de web, WhatsApp y futuros canales.</p></div>
         <div className="ml-auto flex gap-2"><select className="rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm" value={channel} onChange={(event) => setChannel(event.target.value)}><option value="">Todos los canales</option><option value="web">Web</option><option value="whatsapp">WhatsApp</option><option value="api">API</option></select><button onClick={load} aria-label="Actualizar" className="rounded border border-[var(--border-color)] p-2"><RefreshCw size={17} /></button></div>
       </header>
+      {selectedAgent && <p className="mb-4 rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">Compatibilidad: el backend todavía devuelve conversaciones de todos los agentes. Cada fila muestra su agente real; esta vista no aplica un filtro de servidor para {selectedAgent.name}.</p>}
 
       <div className="grid min-h-[65vh] gap-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
         <section className="overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)]">

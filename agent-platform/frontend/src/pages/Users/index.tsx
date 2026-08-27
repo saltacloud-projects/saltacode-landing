@@ -23,7 +23,7 @@ function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (
 
 const HELP = "text-xs text-[var(--text-muted)]";
 
-export default function UsersPage() {
+export default function UsersPage({ embedded = false }: { embedded?: boolean }) {
   const { user: adminUser } = useAuth();
   const canEdit = hasPermission(adminUser, PERMISSIONS.ALL);
   const [users, setUsers] = useState<User[]>([]);
@@ -152,7 +152,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <UsersIcon size={22} className="text-[var(--accent)]" />
-          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Usuarios WhatsApp</h2>
+          <h2 className={`${embedded ? "text-base" : "text-xl"} font-semibold text-[var(--text-primary)]`}>Acceso global de WhatsApp</h2>
           <span className="text-sm text-[var(--text-muted)]">({users.length})</span>
         </div>
         {canEdit && <button onClick={() => setShowCreate(true)}
@@ -161,7 +161,7 @@ export default function UsersPage() {
         </button>}
       </div>
       <p className={`${HELP} mb-4`}>
-        Usuarios autorizados a interactuar con el agente por WhatsApp. Solo los usuarios activos pueden enviar mensajes.
+        Usuarios autorizados a usar WhatsApp. Esta lista todavía es compartida por toda la plataforma.
       </p>
 
       {/* Modal crear usuario */}

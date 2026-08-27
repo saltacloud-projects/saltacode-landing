@@ -4,6 +4,8 @@ import {
   Search, Settings2, Trash2, Upload, X, XCircle,
 } from "lucide-react";
 import { api, download } from "../../api/client";
+import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
+import { useAgentResourceLibrary } from "../../agents/useAgentResourceLibrary";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 
@@ -38,8 +40,11 @@ function statusStyle(value: string) {
   return "bg-amber-500/15 text-amber-400";
 }
 
-export default function DocumentsPage() {
+export default function DocumentsPage({ scope = "agent" }: { scope?: "agent" | "library" }) {
   const { user } = useAuth();
+  const { selectedAgent } = useAgentWorkspace();
+  const agentId = scope === "agent" ? selectedAgent?.id : undefined;
+  const areaResources = useAgentResourceLibrary<Area>(agentId, "document-areas", "/documents/areas");
   const canManage = hasPermission(user, PERMISSIONS.DOCUMENTS_MANAGE);
   const canManageTaxonomy = hasPermission(user, PERMISSIONS.DOCUMENTS_TAXONOMY);
   const canManageSettings = hasPermission(user, PERMISSIONS.DOCUMENTS_SETTINGS);
@@ -78,10 +83,10 @@ export default function DocumentsPage() {
       api<Area[]>("/documents/areas"), api<Folder[]>("/documents/folders"), api<RagSettings>("/documents/settings"),
     ]);
     setAreas(areaRows); setFolders(folderRows); setSettings(settingRow);
-    if (areaRows.length) {
+    if (!agentId && areaRows.length) {
       setAreaId((current) => current || areaRows.find((area) => area.is_general)?.id || areaRows[0].id);
     }
-  }, []);
+  }, [agentId]);
 
   const loadDocuments = useCallback(async (requestedOffset = offset) => {
     const params = new URLSearchParams({ limit: "50", offset: String(requestedOffset) });
@@ -90,11 +95,16 @@ export default function DocumentsPage() {
     if (folderId) params.set("folder_id", folderId);
     if (statusFilter) params.set("status", statusFilter);
     if (includeDeleted) params.set("include_deleted", "true");
+    if (agentId && !areaId) {
+      setDocuments({ items: [], total: 0, limit: 50, offset: 0 });
+      setStats(null);
+      return;
+    }
     const [list, summary] = await Promise.all([
-      api<DocumentList>(`/documents/?${params}`), api<Stats>("/documents/stats"),
+      api<DocumentList>(`/documents/?${params}`), agentId ? Promise.resolve(null) : api<Stats>("/documents/stats"),
     ]);
     setDocuments(list); setStats(summary); setOffset(requestedOffset);
-  }, [query, areaId, folderId, statusFilter, includeDeleted, offset]);
+  }, [agentId, query, areaId, folderId, statusFilter, includeDeleted, offset]);
 
   useEffect(() => {
     Promise.all([loadStatic(), loadDocuments()]).catch((e) => setError(e.message)).finally(() => setLoading(false));
@@ -104,6 +114,15 @@ export default function DocumentsPage() {
     if (!loading) loadDocuments(0).catch((e) => setError(e.message));
   }, [areaId, folderId, statusFilter, includeDeleted]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const visibleAreas = agentId ? areaResources.assigned : areas;
+  useEffect(() => {
+    if (!agentId || areaResources.loading) return;
+    setAreaId((current) => visibleAreas.some((area) => area.id === current)
+      ? current
+      : visibleAreas.find((area) => area.is_general)?.id || visibleAreas[0]?.id || "");
+    setFolderId((current) => current && folders.some((folder) => folder.id === current && visibleAreas.some((area) => area.id === folder.area_id)) ? current : "");
+  }, [agentId, areaResources.loading, folders, visibleAreas]);
+
   useEffect(() => {
     const timer = window.setInterval(
       () => loadDocuments().catch(() => undefined),
@@ -112,7 +131,7 @@ export default function DocumentsPage() {
     return () => window.clearInterval(timer);
   }, [stats?.queue_depth, loadDocuments]);
 
-  const visibleFolders = useMemo(() => folders.filter((folder) => !areaId || folder.area_id === areaId), [folders, areaId]);
+  const visibleFolders = useMemo(() => folders.filter((folder) => (!areaId || folder.area_id === areaId) && (!agentId || visibleAreas.some((area) => area.id === folder.area_id))), [folders, areaId, agentId, visibleAreas]);
   const folderPath = useCallback((folder: Folder): string => {
     const parent = folders.find((item) => item.id === folder.parent_id);
     return parent ? `${folderPath(parent)} / ${folder.name}` : folder.name;
@@ -314,15 +333,17 @@ export default function DocumentsPage() {
       data-testid="replace-file-input"
     />
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-xl font-bold">Documentos RAG</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Originales persistentes, versionado e indexación automática.</p></div>
+      <div><h2 className="text-xl font-bold">{agentId ? `Documentos de ${selectedAgent?.name}` : "Biblioteca documental RAG"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">{agentId ? "Documentos disponibles dentro de las áreas asignadas al agente." : "Originales persistentes, versionado e indexación compartida."}</p></div>
       <div className="flex gap-2">
         <button className={`${BUTTON} border border-[var(--border-color)]`} onClick={refresh}><RefreshCw size={16} />Actualizar</button>
-        {canManageSettings && settings && <button className={`${BUTTON} ${settings.enabled ? "bg-emerald-600 text-white" : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-color)]"}`} onClick={toggleEnabled}><Settings2 size={16} />RAG {settings.enabled ? "activo" : "inactivo"}</button>}
+        {!agentId && canManageSettings && settings && <button className={`${BUTTON} ${settings.enabled ? "bg-emerald-600 text-white" : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-color)]"}`} onClick={toggleEnabled}><Settings2 size={16} />RAG {settings.enabled ? "activo" : "inactivo"}</button>}
       </div>
     </div>
 
-    {error && <div className="flex items-center gap-2 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"><XCircle size={16} />{error}</div>}
+    {(error || areaResources.error) && <div className="flex items-center gap-2 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400" role="alert"><XCircle size={16} />{error || areaResources.error}</div>}
     {notice && <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}
+
+    {agentId && <section className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4"><div className="flex flex-wrap items-baseline justify-between gap-2"><div><h3 className="font-semibold">Áreas asignadas</h3><p className="text-xs text-[var(--text-muted)]">Los documentos siguen siendo recursos compartidos; la asignación controla qué áreas consulta este agente.</p></div><span className="text-xs text-[var(--text-muted)]">{areaResources.assigned.length} de {areaResources.library.length}</span></div>{areaResources.loading ? <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Cargando áreas…</p> : <div className="mt-3 grid gap-3 md:grid-cols-2"><div><h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Asignadas</h4><div className="flex flex-wrap gap-2">{areaResources.assigned.map((area) => <span key={area.id} className="inline-flex items-center gap-2 rounded-full border border-[var(--border-color)] px-3 py-1.5 text-sm">{area.name}{canManageTaxonomy && <button aria-label={`Desasignar ${area.name}`} onClick={() => areaResources.unassign(area.id)} disabled={areaResources.busyId === area.id} className="text-amber-300"><X size={13} /></button>}</span>)}{areaResources.assigned.length === 0 && <span className="text-sm text-[var(--text-muted)]">Sin áreas asignadas.</span>}</div></div><div><h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Disponibles</h4><div className="flex flex-wrap gap-2">{areaResources.available.map((area) => <button key={area.id} onClick={() => areaResources.assign(area.id)} disabled={!canManageTaxonomy || areaResources.busyId === area.id} className="rounded-full border border-[var(--accent)]/40 px-3 py-1.5 text-sm text-[var(--accent)] disabled:opacity-50"><Plus size={13} className="mr-1 inline" />{area.name}</button>)}{areaResources.available.length === 0 && <span className="text-sm text-[var(--text-muted)]">No quedan áreas disponibles.</span>}</div></div></div>}</section>}
 
     {stats && <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
       {[["Documentos", stats.documents_total], ["Publicados", stats.published], ["Procesando", stats.processing], ["Fallidos", stats.failed], ["Eliminados", stats.deleted], ["Chunks", stats.chunks], ["Almacenado", formatBytes(stats.storage_bytes)]].map(([label, value]) =>
@@ -333,12 +354,12 @@ export default function DocumentsPage() {
       <section className="space-y-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="min-w-48 flex-1 text-xs text-[var(--text-secondary)]">Área
-            <select className={`${INPUT} mt-1`} value={areaId} onChange={(e) => { setAreaId(e.target.value); setFolderId(""); }}><option value="">Todas</option>{areas.filter((a) => a.is_active).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select>
+            <select className={`${INPUT} mt-1`} value={areaId} onChange={(e) => { setAreaId(e.target.value); setFolderId(""); }}><option value="">{agentId ? "Seleccionar área" : "Todas"}</option>{visibleAreas.filter((a) => a.is_active).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select>
           </label>
           <label className="min-w-56 flex-1 text-xs text-[var(--text-secondary)]">Carpeta
             <select className={`${INPUT} mt-1`} value={folderId} onChange={(e) => setFolderId(e.target.value)}><option value="">Todas / raíz del área</option>{visibleFolders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder)}</option>)}</select>
           </label>
-          {canManageTaxonomy && <><button className={`${BUTTON} border border-[var(--border-color)]`} onClick={createArea}><Plus size={15} />Área</button><button title="Editar área" className={`${BUTTON} border border-[var(--border-color)] px-2`} onClick={updateArea} disabled={!areaId}><Pencil size={15} /></button><button title="Eliminar área" className={`${BUTTON} border border-[var(--border-color)] px-2 text-red-400`} onClick={deleteArea} disabled={!areaId || areas.find((area) => area.id === areaId)?.is_general}><Trash2 size={15} /></button><button className={`${BUTTON} border border-[var(--border-color)]`} onClick={createFolder} disabled={!areaId}><FolderPlus size={15} />Carpeta</button><button title="Editar carpeta" className={`${BUTTON} border border-[var(--border-color)] px-2`} onClick={updateFolder} disabled={!folderId}><Pencil size={15} /></button><button title="Eliminar carpeta" className={`${BUTTON} border border-[var(--border-color)] px-2 text-red-400`} onClick={deleteFolder} disabled={!folderId}><Trash2 size={15} /></button></>}
+          {!agentId && canManageTaxonomy && <><button className={`${BUTTON} border border-[var(--border-color)]`} onClick={createArea}><Plus size={15} />Área</button><button title="Editar área" className={`${BUTTON} border border-[var(--border-color)] px-2`} onClick={updateArea} disabled={!areaId}><Pencil size={15} /></button><button title="Eliminar área" className={`${BUTTON} border border-[var(--border-color)] px-2 text-red-400`} onClick={deleteArea} disabled={!areaId || areas.find((area) => area.id === areaId)?.is_general}><Trash2 size={15} /></button><button className={`${BUTTON} border border-[var(--border-color)]`} onClick={createFolder} disabled={!areaId}><FolderPlus size={15} />Carpeta</button><button title="Editar carpeta" className={`${BUTTON} border border-[var(--border-color)] px-2`} onClick={updateFolder} disabled={!folderId}><Pencil size={15} /></button><button title="Eliminar carpeta" className={`${BUTTON} border border-[var(--border-color)] px-2 text-red-400`} onClick={deleteFolder} disabled={!folderId}><Trash2 size={15} /></button></>}
         </div>
 
         {canManage && <div className="rounded-lg border border-dashed border-[var(--border-color)] p-4">
@@ -388,11 +409,11 @@ export default function DocumentsPage() {
           <button className={`${BUTTON} mt-2 w-full bg-[var(--accent)] text-white`} onClick={testSearch} disabled={searching || !searchText.trim()}>{searching ? <LoaderCircle className="animate-spin" size={16} /> : <Search size={16} />}Probar</button>
           <div className="mt-4 space-y-3">{hits.map((hit, index) => <article key={`${hit.reference_code}-${index}`} className="rounded border border-[var(--border-color)] p-3"><div className="flex justify-between gap-2 text-xs"><span className="font-semibold text-[var(--accent)]">{hit.reference_code} · v{hit.version_number}</span><span>{Math.round(hit.score * 100)}%</span></div><p className="mt-1 text-sm font-medium">{hit.title}</p><p className="mt-2 line-clamp-5 whitespace-pre-wrap text-xs text-[var(--text-secondary)]">{hit.content}</p><p className="mt-2 text-xs text-[var(--text-muted)]">{hit.location_label || (hit.page_number ? `Página ${hit.page_number}` : "Sin ubicación")}</p></article>)}</div>
         </section>
-        {settings && <section className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4 text-xs text-[var(--text-secondary)]"><div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Settings2 size={16} />Configuración activa</h3>{canManageSettings && <button className="text-[var(--accent)] hover:underline" onClick={() => setSettingsDraft({ ...settings })}>Ajustar</button>}</div><dl className="grid grid-cols-2 gap-2"><dt>Embeddings</dt><dd className="text-right">{settings.embedding_model}</dd><dt>Dimensiones</dt><dd className="text-right">{settings.embedding_dimensions}</dd><dt>OCR / visión</dt><dd className="text-right">{settings.ocr_enabled ? settings.vision_model : "Desactivado"}</dd><dt>Top K</dt><dd className="text-right">{settings.retrieval_top_k}</dd><dt>Retención</dt><dd className="text-right">{settings.retention_days} días</dd><dt>Cola</dt><dd className="text-right">{stats?.queue_depth || 0}</dd><dt>Worker</dt><dd className={`text-right ${stats?.worker_last_activity && Date.now() - new Date(stats.worker_last_activity).getTime() < 90000 ? "text-emerald-400" : "text-red-400"}`}>{stats?.worker_last_activity && Date.now() - new Date(stats.worker_last_activity).getTime() < 90000 ? "Activo" : "Sin heartbeat"}</dd></dl></section>}
+        {!agentId && settings && <section className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4 text-xs text-[var(--text-secondary)]"><div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Settings2 size={16} />Configuración compartida</h3>{canManageSettings && <button className="text-[var(--accent)] hover:underline" onClick={() => setSettingsDraft({ ...settings })}>Ajustar</button>}</div><dl className="grid grid-cols-2 gap-2"><dt>Embeddings</dt><dd className="text-right">{settings.embedding_model}</dd><dt>Dimensiones</dt><dd className="text-right">{settings.embedding_dimensions}</dd><dt>OCR / visión</dt><dd className="text-right">{settings.ocr_enabled ? settings.vision_model : "Desactivado"}</dd><dt>Top K</dt><dd className="text-right">{settings.retrieval_top_k}</dd><dt>Retención</dt><dd className="text-right">{settings.retention_days} días</dd><dt>Cola</dt><dd className="text-right">{stats?.queue_depth || 0}</dd><dt>Worker</dt><dd className={`text-right ${stats?.worker_last_activity && Date.now() - new Date(stats.worker_last_activity).getTime() < 90000 ? "text-emerald-400" : "text-red-400"}`}>{stats?.worker_last_activity && Date.now() - new Date(stats.worker_last_activity).getTime() < 90000 ? "Activo" : "Sin heartbeat"}</dd></dl></section>}
       </aside>
     </div>
 
-    {editingDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-xl rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-5"><div className="mb-4 flex items-center justify-between"><h3 className="font-semibold">Editar {editingDocument.reference_code}</h3><button onClick={() => setEditingDocument(null)}><X size={18} /></button></div><div className="grid gap-3 md:grid-cols-2"><label className="text-xs text-[var(--text-secondary)] md:col-span-2">Título<input className={`${INPUT} mt-1`} value={editingDocument.title} onChange={(e) => setEditingDocument({ ...editingDocument, title: e.target.value })} /></label><label className="text-xs text-[var(--text-secondary)] md:col-span-2">Carpeta<select className={`${INPUT} mt-1`} value={editingDocument.folder_id} onChange={(e) => setEditingDocument({ ...editingDocument, folder_id: e.target.value })}>{folders.map((folder) => <option key={folder.id} value={folder.id}>{areas.find((area) => area.id === folder.area_id)?.name} / {folderPath(folder)}</option>)}</select></label><label className="text-xs text-[var(--text-secondary)]">Código interno<input className={`${INPUT} mt-1`} value={editingDocument.internal_code || ""} onChange={(e) => setEditingDocument({ ...editingDocument, internal_code: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)]">Responsable<input className={`${INPUT} mt-1`} value={editingDocument.responsible || ""} onChange={(e) => setEditingDocument({ ...editingDocument, responsible: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)]">Vigente desde<input type="date" className={`${INPUT} mt-1`} value={editingDocument.effective_from || ""} onChange={(e) => setEditingDocument({ ...editingDocument, effective_from: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)]">Vigente hasta<input type="date" className={`${INPUT} mt-1`} value={editingDocument.effective_to || ""} onChange={(e) => setEditingDocument({ ...editingDocument, effective_to: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)] md:col-span-2">Descripción<textarea className={`${INPUT} mt-1 min-h-20`} value={editingDocument.description || ""} onChange={(e) => setEditingDocument({ ...editingDocument, description: e.target.value || null })} /></label></div><div className="mt-4 flex justify-end gap-2"><button className={`${BUTTON} border border-[var(--border-color)]`} onClick={() => setEditingDocument(null)}>Cancelar</button><button className={`${BUTTON} bg-[var(--accent)] text-white`} onClick={saveDocument}>Guardar</button></div></div></div>}
+    {editingDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-xl rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-5"><div className="mb-4 flex items-center justify-between"><h3 className="font-semibold">Editar {editingDocument.reference_code}</h3><button onClick={() => setEditingDocument(null)}><X size={18} /></button></div><div className="grid gap-3 md:grid-cols-2"><label className="text-xs text-[var(--text-secondary)] md:col-span-2">Título<input className={`${INPUT} mt-1`} value={editingDocument.title} onChange={(e) => setEditingDocument({ ...editingDocument, title: e.target.value })} /></label><label className="text-xs text-[var(--text-secondary)] md:col-span-2">Carpeta<select className={`${INPUT} mt-1`} value={editingDocument.folder_id} onChange={(e) => setEditingDocument({ ...editingDocument, folder_id: e.target.value })}>{folders.filter((folder) => !agentId || visibleAreas.some((area) => area.id === folder.area_id)).map((folder) => <option key={folder.id} value={folder.id}>{areas.find((area) => area.id === folder.area_id)?.name} / {folderPath(folder)}</option>)}</select></label><label className="text-xs text-[var(--text-secondary)]">Código interno<input className={`${INPUT} mt-1`} value={editingDocument.internal_code || ""} onChange={(e) => setEditingDocument({ ...editingDocument, internal_code: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)]">Responsable<input className={`${INPUT} mt-1`} value={editingDocument.responsible || ""} onChange={(e) => setEditingDocument({ ...editingDocument, responsible: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)]">Vigente desde<input type="date" className={`${INPUT} mt-1`} value={editingDocument.effective_from || ""} onChange={(e) => setEditingDocument({ ...editingDocument, effective_from: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)]">Vigente hasta<input type="date" className={`${INPUT} mt-1`} value={editingDocument.effective_to || ""} onChange={(e) => setEditingDocument({ ...editingDocument, effective_to: e.target.value || null })} /></label><label className="text-xs text-[var(--text-secondary)] md:col-span-2">Descripción<textarea className={`${INPUT} mt-1 min-h-20`} value={editingDocument.description || ""} onChange={(e) => setEditingDocument({ ...editingDocument, description: e.target.value || null })} /></label></div><div className="mt-4 flex justify-end gap-2"><button className={`${BUTTON} border border-[var(--border-color)]`} onClick={() => setEditingDocument(null)}>Cancelar</button><button className={`${BUTTON} bg-[var(--accent)] text-white`} onClick={saveDocument}>Guardar</button></div></div></div>}
 
     {versionDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-2xl rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-5"><div className="mb-4 flex items-center justify-between"><div><h3 className="font-semibold">Versiones de {versionDocument.title}</h3><p className="text-xs text-[var(--text-muted)]">{versionDocument.reference_code}</p></div><button onClick={() => setVersionDocument(null)}><X size={18} /></button></div><div className="max-h-96 overflow-auto"><table className="w-full text-sm"><thead className="text-left text-xs text-[var(--text-muted)]"><tr><th className="py-2">Versión</th><th>Archivo</th><th>Estado</th><th>Contenido</th><th></th></tr></thead><tbody>{versions.map((version) => <tr key={version.id} className="border-t border-[var(--border-color)]"><td className="py-3">v{version.version_number}{version.id === versionDocument.current_version?.id ? " · vigente" : ""}</td><td className="max-w-56 truncate" title={version.original_filename}>{version.original_filename}</td><td><span className={`rounded px-2 py-1 text-xs ${statusStyle(version.status)}`}>{version.status}</span></td><td className="text-xs text-[var(--text-secondary)]">{version.page_count} pág. · {version.chunk_count} chunks</td><td><button title="Descargar versión" className="rounded p-2 hover:bg-[var(--bg-hover)]" onClick={() => download(`/documents/${versionDocument.id}/download?version_id=${version.id}`, version.original_filename)}><Download size={15} /></button></td></tr>)}</tbody></table></div></div></div>}
 

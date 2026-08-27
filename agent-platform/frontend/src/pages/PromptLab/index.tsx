@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Eye, Send, Search, AlertTriangle, Loader2 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
+import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 
 interface PromptPreviewResponse {
   system_prompt: string;
@@ -47,6 +48,7 @@ function Pill({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function PromptLabPage() {
+  const { selectedAgent } = useAgentWorkspace();
   // --- Preview del system prompt ---
   const [prompt, setPrompt] = useState<PromptPreviewResponse | null>(null);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
@@ -129,6 +131,7 @@ export default function PromptLabPage() {
           Inspeccioná el system prompt real, probá el agente y buscá en el historial de conversaciones.
         </p>
       </div>
+      {selectedAgent && <p className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">Compatibilidad: PromptLab todavía resuelve el agente default del servidor y no acepta agent_id. Las pruebas no deben interpretarse como una ejecución garantizada de {selectedAgent.name}.</p>}
 
       {/* Paneles superiores: Preview + Test */}
       <div className="flex flex-col gap-6 lg:flex-row">
