@@ -27,6 +27,7 @@ Configuration uses the `SALTACODE_` prefix:
 SALTACODE_APP_ENV=development
 SALTACODE_ALLOWED_ORIGINS=http://localhost:4321
 SALTACODE_AGENT_AI_BASE_URL=http://agent-platform:8000
+SALTACODE_AGENT_ROUTE_KEY=saltacode-landing
 SALTACODE_AGENT_INTERNAL_TOKEN_FILE=/run/secrets/agent_internal_token
 SALTACODE_SESSION_SIGNING_SECRET_FILE=/run/secrets/session_signing_secret
 SALTACODE_RATE_LIMIT_BACKEND=memory
@@ -38,6 +39,10 @@ SALTACODE_RATE_LIMIT_WINDOW_SECONDS=60
 `POST /internal/v1/executions` endpoint. The adapter applies separate connection and response
 timeouts, forwards `X-Correlation-ID`, validates response identity and shape, and converts private
 transport/authentication/protocol failures into safe public SSE errors.
+
+`SALTACODE_AGENT_ROUTE_KEY` identifies the persisted web channel route resolved by the private
+platform. It is configured only on the server: browsers cannot choose an agent ID or route. The
+backend fails closed when the private adapter is enabled without an explicit route key.
 
 The private service requires a shared bearer token. Containers must receive it through
 `SALTACODE_AGENT_INTERNAL_TOKEN_FILE`; the expected Compose secret path is

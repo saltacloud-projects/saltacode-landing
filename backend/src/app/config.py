@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     allowed_origins: str = "http://localhost:4321"
     agent_ai_base_url: str | None = None
+    agent_route_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,119}$",
+    )
     agent_internal_token: SecretStr | None = Field(default=None, min_length=32)
     agent_internal_token_file: Path | None = None
     session_signing_secret: SecretStr | None = Field(default=None, min_length=32)
@@ -87,6 +93,9 @@ class Settings(BaseSettings):
                 raise ValueError("production requires the agent internal token file")
             if self.resolve_agent_internal_token() is None:
                 raise ValueError("agent AI base URL requires an internal token")
+
+        if self.agent_ai_base_url is not None and self.agent_route_key is None:
+            raise ValueError("agent AI base URL requires an agent route key")
 
         if self.app_env == "production":
             missing: list[str] = []

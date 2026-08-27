@@ -144,6 +144,7 @@ jobs:
           SALTACODE_APP_ENV=production
           SALTACODE_ALLOWED_ORIGINS=https://saltacode.com.ar
           SALTACODE_AGENT_INTERNAL_TOKEN_SOURCE_FILE=${token_file}
+          SALTACODE_AGENT_ROUTE_KEY=saltacode-landing
           SALTACODE_AGENT_INTERNAL_TOKEN_GID=${token_gid}
           SALTACODE_AGENT_ENVIRONMENT=production
           SALTACODE_RATE_LIMIT_BACKEND=redis

@@ -61,11 +61,13 @@ class HttpAgentGateway:
         self,
         *,
         base_url: str,
+        route_key: str,
         connect_timeout_seconds: float,
         response_timeout_seconds: float,
         internal_token: str | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
+        self._route_key = route_key
         headers = {"Accept": "application/json"}
         if internal_token is not None:
             headers["Authorization"] = f"Bearer {internal_token}"
@@ -101,6 +103,7 @@ class HttpAgentGateway:
                     "session_id": str(request.session_id),
                     "input": request.message,
                     "locale": request.locale,
+                    "route_key": self._route_key,
                     "consent": {"granted": True, "version": request.privacy_version},
                 },
                 headers={"X-Correlation-ID": correlation_id},

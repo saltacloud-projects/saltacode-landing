@@ -17,7 +17,11 @@ async def collect(events: AsyncIterator[ChatStreamEvent]) -> list[ChatStreamEven
 
 
 def test_app_uses_http_gateway_when_agent_base_url_is_configured() -> None:
-    settings = Settings(app_env="test", agent_ai_base_url="http://agent-ai:8001")
+    settings = Settings(
+        app_env="test",
+        agent_ai_base_url="http://agent-ai:8001",
+        agent_route_key="saltacode-landing",
+    )
 
     with TestClient(create_app(settings)) as client:
         assert isinstance(client.app.state.agent_gateway, HttpAgentGateway)
@@ -42,6 +46,7 @@ async def test_http_gateway_maps_execution_to_public_events() -> None:
             "session_id": str(request.session_id),
             "input": request.message,
             "locale": "es-AR",
+            "route_key": "saltacode-landing",
             "consent": {"granted": True, "version": "privacy-v1"},
         }
         return httpx2.Response(
@@ -57,6 +62,7 @@ async def test_http_gateway_maps_execution_to_public_events() -> None:
 
     gateway = HttpAgentGateway(
         base_url="http://agent-ai:8001",
+        route_key="saltacode-landing",
         connect_timeout_seconds=1,
         response_timeout_seconds=10,
         internal_token="x" * 32,
@@ -88,6 +94,7 @@ async def test_http_gateway_safely_maps_private_http_failures(status_code: int) 
 
     gateway = HttpAgentGateway(
         base_url="http://agent-ai:8001",
+        route_key="saltacode-landing",
         connect_timeout_seconds=1,
         response_timeout_seconds=10,
         transport=httpx2.MockTransport(handler),
@@ -117,6 +124,7 @@ async def test_http_gateway_safely_maps_timeout() -> None:
 
     gateway = HttpAgentGateway(
         base_url="http://agent-ai:8001",
+        route_key="saltacode-landing",
         connect_timeout_seconds=1,
         response_timeout_seconds=1,
         transport=httpx2.MockTransport(handler),

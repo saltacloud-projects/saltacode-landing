@@ -28,6 +28,7 @@ def test_production_accepts_redis_and_secret_file(tmp_path) -> None:
     settings = Settings(
         app_env="production",
         agent_ai_base_url="http://agent-ai:8001",
+        agent_route_key="saltacode-landing",
         agent_internal_token_file=token_file,
         session_signing_secret_file=session_file,
         rate_limit_backend="redis",
@@ -55,13 +56,24 @@ def test_agent_ai_base_url_rejects_embedded_credentials() -> None:
 
 def test_agent_ai_base_url_requires_token_outside_tests() -> None:
     with pytest.raises(ValidationError, match="requires an internal token"):
-        Settings(agent_ai_base_url="http://agent-ai:8001")
+        Settings(agent_ai_base_url="http://agent-ai:8001", agent_route_key="saltacode-landing")
+
+
+def test_agent_ai_base_url_requires_route_key() -> None:
+    with pytest.raises(ValidationError, match="requires an agent route key"):
+        Settings(app_env="test", agent_ai_base_url="http://agent-ai:8001")
+
+
+def test_agent_route_key_rejects_unsafe_values() -> None:
+    with pytest.raises(ValidationError):
+        Settings(app_env="test", agent_route_key="SaltaCode Landing")
 
 
 def test_agent_internal_token_file_fails_closed_when_missing(tmp_path) -> None:
     with pytest.raises(ValidationError, match="file is unreadable"):
         Settings(
             agent_ai_base_url="http://agent-ai:8001",
+            agent_route_key="saltacode-landing",
             agent_internal_token_file=tmp_path / "missing",
         )
 
@@ -73,6 +85,7 @@ def test_agent_internal_token_file_fails_closed_when_short(tmp_path) -> None:
     with pytest.raises(ValidationError, match="at least 32 characters"):
         Settings(
             agent_ai_base_url="http://agent-ai:8001",
+            agent_route_key="saltacode-landing",
             agent_internal_token_file=token_file,
         )
 
@@ -83,6 +96,7 @@ def test_agent_internal_token_file_is_resolved_without_newline(tmp_path) -> None
 
     settings = Settings(
         agent_ai_base_url="http://agent-ai:8001",
+        agent_route_key="saltacode-landing",
         agent_internal_token_file=token_file,
     )
 

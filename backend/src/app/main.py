@@ -27,6 +27,7 @@ def _build_agent_gateway(settings: Settings) -> AgentGateway:
         return UnavailableAgentGateway()
     return HttpAgentGateway(
         base_url=settings.agent_ai_base_url,
+        route_key=settings.agent_route_key or "",
         connect_timeout_seconds=settings.agent_ai_connect_timeout_seconds,
         response_timeout_seconds=settings.agent_ai_response_timeout_seconds,
         internal_token=settings.resolve_agent_internal_token(),
