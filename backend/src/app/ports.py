@@ -2,13 +2,13 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.contracts import ChatRequest, ChatStreamEvent
+from app.contracts import AgentRequest, ChatStreamEvent
 
 
 class AgentGateway(Protocol):
     def stream(
         self,
-        request: ChatRequest,
+        request: AgentRequest,
         *,
         correlation_id: str,
     ) -> AsyncIterator[ChatStreamEvent]: ...

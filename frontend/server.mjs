@@ -6,11 +6,16 @@ import { extname, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
+import { Readable } from "node:stream";
 
 const port = Number.parseInt(process.env.PORT ?? "8080", 10);
 const host = process.env.HOST ?? "0.0.0.0";
 const moduleDirectory = fileURLToPath(new URL(".", import.meta.url));
 const staticRoot = resolve(process.env.STATIC_ROOT ?? resolve(moduleDirectory, "dist"));
+const backendUrl = process.env.BACKEND_URL ? new URL(process.env.BACKEND_URL) : null;
+if (backendUrl && (!['http:', 'https:'].includes(backendUrl.protocol) || backendUrl.username || backendUrl.password)) {
+  throw new Error("BACKEND_URL must be an HTTP(S) origin without credentials.");
+}
 
 function inlineExecutableSources(markup) {
   return [...markup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
@@ -182,12 +187,70 @@ async function sendNotFound(request, response) {
   await sendFile(request, response, fallback.filePath, fallback.fileStat.size, ".html");
 }
 
+async function readProxyBody(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 16_384) throw new Error("request_too_large");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function proxyBackendRequest(request, response, requestUrl) {
+  if (!backendUrl) {
+    response.statusCode = 503;
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/problem+json; charset=utf-8");
+    sendBody(request, response, JSON.stringify({ code: "backend_unavailable", detail: "The service is not configured." }));
+    return;
+  }
+  const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, backendUrl);
+  let body;
+  try { body = ["GET", "HEAD"].includes(request.method ?? "GET") ? undefined : await readProxyBody(request); }
+  catch {
+    response.statusCode = 413;
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/problem+json; charset=utf-8");
+    sendBody(request, response, JSON.stringify({ code: "request_too_large", detail: "The request is too large." }));
+    return;
+  }
+  const headers = {};
+  for (const name of ["content-type", "origin", "x-correlation-id", "cf-connecting-ip"]) {
+    const value = request.headers[name];
+    if (typeof value === "string") headers[name] = value;
+  }
+  if (request.headers.cookie) headers.cookie = request.headers.cookie;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 75_000);
+  let upstream;
+  try {
+    upstream = await fetch(target, { method: request.method, headers, body, redirect: "manual", signal: controller.signal });
+  } catch {
+    clearTimeout(timeout);
+    response.statusCode = 502;
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/problem+json; charset=utf-8");
+    sendBody(request, response, JSON.stringify({ code: "backend_unavailable", detail: "The service is temporarily unavailable." }));
+    return;
+  }
+  clearTimeout(timeout);
+  response.statusCode = upstream.status;
+  for (const name of ["content-type", "cache-control", "x-content-type-options", "x-ratelimit-remaining", "x-correlation-id", "retry-after", "set-cookie"]) {
+    const value = upstream.headers.get(name);
+    if (value) response.setHeader(name, value);
+  }
+  if (!upstream.body || request.method === "HEAD") { response.end(); return; }
+  await pipeline(Readable.fromWeb(upstream.body), response);
+}
+
 async function handleRequest(request, response) {
   setSecurityHeaders(request, response);
 
-  if (request.method !== "GET" && request.method !== "HEAD") {
+  if (!["GET", "HEAD", "POST", "OPTIONS"].includes(request.method ?? "")) {
     response.statusCode = 405;
-    response.setHeader("Allow", "GET, HEAD");
+    response.setHeader("Allow", "GET, HEAD, POST, OPTIONS");
     response.setHeader("Content-Type", "text/plain; charset=utf-8");
     sendBody(request, response, "Method Not Allowed\n");
     return;
@@ -202,6 +265,19 @@ async function handleRequest(request, response) {
     response.statusCode = 400;
     response.setHeader("Content-Type", "text/plain; charset=utf-8");
     sendBody(request, response, "Bad Request\n");
+    return;
+  }
+
+  if (pathname.startsWith("/api/")) {
+    await proxyBackendRequest(request, response, requestUrl);
+    return;
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    response.statusCode = 405;
+    response.setHeader("Allow", "GET, HEAD");
+    response.setHeader("Content-Type", "text/plain; charset=utf-8");
+    sendBody(request, response, "Method Not Allowed\n");
     return;
   }
 
@@ -249,7 +325,7 @@ const server = createServer((request, response) => {
   handleRequest(request, response).catch((error) => {
     console.error(error);
     if (!response.headersSent) {
-      setSecurityHeaders(response);
+      setSecurityHeaders(request, response);
       response.statusCode = 500;
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "text/plain; charset=utf-8");

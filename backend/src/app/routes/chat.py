@@ -6,14 +6,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import TypeAdapter
 
 from app.config import Settings
-from app.contracts import ChatRequest, ChatStreamEvent, ProblemDetails
-from app.dependencies import get_agent_gateway, get_rate_limiter, get_settings
+from app.contracts import AgentRequest, ChatRequest, ChatStreamEvent, ProblemDetails
+from app.dependencies import get_agent_gateway, get_rate_limiter, get_session_manager, get_settings
 from app.errors import ApiError
 from app.ports import AgentGateway, RateLimitBackendError, RateLimiter
 from app.security import client_rate_limit_key, enforce_allowed_origin, rate_limit_client_identity
+from app.session import SignedSessionManager
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
-
 _STREAM_EVENT_SCHEMA = TypeAdapter(ChatStreamEvent).json_schema()
 
 
@@ -58,9 +58,9 @@ async def create_chat_message(
     settings: Annotated[Settings, Depends(get_settings)],
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     gateway: Annotated[AgentGateway, Depends(get_agent_gateway)],
+    sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
 ) -> StreamingResponse:
     enforce_allowed_origin(request, settings)
-
     client_identity = rate_limit_client_identity(request)
     try:
         decision = await rate_limiter.check(client_rate_limit_key(client_identity))
@@ -80,10 +80,16 @@ async def create_chat_message(
             headers={"Retry-After": str(decision.retry_after_seconds)},
         )
 
-    correlation_id = request.state.correlation_id
-    events = gateway.stream(payload, correlation_id=correlation_id)
-    return StreamingResponse(
-        _encoded_stream(events),
+    session = sessions.resolve(request.cookies.get(settings.session_cookie_name))
+    agent_request = AgentRequest(
+        session_id=session.session_id,
+        client_message_id=payload.client_message_id,
+        message=payload.message,
+        locale=payload.locale,
+        privacy_version=payload.privacy_version,
+    )
+    response = StreamingResponse(
+        _encoded_stream(gateway.stream(agent_request, correlation_id=request.state.correlation_id)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-store",
@@ -91,3 +97,13 @@ async def create_chat_message(
             "X-RateLimit-Remaining": str(decision.remaining),
         },
     )
+    response.set_cookie(
+        key=settings.session_cookie_name,
+        value=session.cookie_value,
+        max_age=settings.session_cookie_max_age_seconds,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+        path="/api/v1/chat",
+    )
+    return response

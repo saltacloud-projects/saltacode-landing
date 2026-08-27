@@ -3,31 +3,12 @@ name: saltacode-sandbox
 services:
   frontend:
     restart: "no"
-    labels:
-      com.saltacode.environment: sandbox
-
+    labels: {com.saltacode.environment: sandbox}
   backend:
     restart: "no"
     environment:
       SALTACODE_APP_ENV: development
-      SALTACODE_ALLOWED_ORIGINS: ${SALTACODE_ALLOWED_ORIGINS:-http://localhost:4321}
-    labels:
-      com.saltacode.environment: sandbox
-
+    labels: {com.saltacode.environment: sandbox}
   redis:
     restart: "no"
-    labels:
-      com.saltacode.environment: sandbox
-
-  agent-ai:
-    restart: "no"
-    # The seed intentionally reports not-ready until real provider/RAG/tool adapters exist.
-    # Sandbox startup validates process liveness while preserving fail-closed execution behavior.
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/live', timeout=2)"
-    labels:
-      com.saltacode.environment: sandbox
+    labels: {com.saltacode.environment: sandbox}

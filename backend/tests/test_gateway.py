@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 
 from app.config import Settings
-from app.contracts import ChatRequest, ChatStreamEvent
+from app.contracts import AgentRequest, ChatStreamEvent
 from app.gateway import HttpAgentGateway
 from app.main import create_app
 
@@ -25,10 +25,11 @@ def test_app_uses_http_gateway_when_agent_base_url_is_configured() -> None:
 
 @pytest.mark.asyncio
 async def test_http_gateway_maps_execution_to_public_events() -> None:
-    request = ChatRequest(
+    request = AgentRequest(
         session_id=uuid4(),
         client_message_id=uuid4(),
         message="Necesito un presupuesto.",
+        privacy_version="privacy-v1",
     )
 
     async def handler(http_request: httpx2.Request) -> httpx2.Response:
@@ -41,6 +42,7 @@ async def test_http_gateway_maps_execution_to_public_events() -> None:
             "session_id": str(request.session_id),
             "input": request.message,
             "locale": "es-AR",
+            "consent": {"granted": True, "version": "privacy-v1"},
         }
         return httpx2.Response(
             200,
@@ -74,10 +76,11 @@ async def test_http_gateway_maps_execution_to_public_events() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status_code", [401, 429, 503])
 async def test_http_gateway_safely_maps_private_http_failures(status_code: int) -> None:
-    request = ChatRequest(
+    request = AgentRequest(
         session_id=uuid4(),
         client_message_id=uuid4(),
         message="private prompt",
+        privacy_version="privacy-v1",
     )
 
     def handler(_request: httpx2.Request) -> httpx2.Response:
@@ -102,10 +105,11 @@ async def test_http_gateway_safely_maps_private_http_failures(status_code: int) 
 
 @pytest.mark.asyncio
 async def test_http_gateway_safely_maps_timeout() -> None:
-    request = ChatRequest(
+    request = AgentRequest(
         session_id=uuid4(),
         client_message_id=uuid4(),
         message="private prompt",
+        privacy_version="privacy-v1",
     )
 
     def handler(http_request: httpx2.Request) -> httpx2.Response:

@@ -67,7 +67,7 @@ The repository now implements the approved platform foundation:
 
 - `frontend/`: Astro with strict TypeScript and pnpm, static-first output, and no default client hydration.
 - `backend/`: FastAPI with uv as the public same-origin BFF and SSE boundary.
-- `agent-ai/`: private FastAPI/uv orchestration seed; no public browser endpoint.
+- External agent platform: separate repository/worktree joined through the private `saltacode_agent_bridge`; no public browser endpoint.
 - `contracts/`: versioned public chat schemas.
 - `compose.yml`: locally built application containers plus a private ephemeral Redis rate limiter.
 - `infrastructure/`: host-managed `cloudflared` path routing to loopback origins, without Nginx or Caddy.

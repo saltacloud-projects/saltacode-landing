@@ -1,15 +1,15 @@
 # Saltacode public BFF
 
 This service is the public, same-origin boundary between the Astro frontend and the private
-`agent-ai` service. Browser clients never call an LLM provider or the private agent directly.
+agent platform. Browser clients never call an LLM provider or the private agent directly.
 
 ```text
-browser -> public BFF -> private agent-ai -> authorized providers and tools
+browser -> signed-session BFF -> private agent platform -> authorized sources and providers
 ```
 
-The current scaffold intentionally has no provider credentials, database, or transcript
-persistence. Its default gateway emits a typed `agent_unavailable` SSE event until the private
-agent adapter is implemented.
+The BFF owns the browser session with an HMAC-signed HttpOnly cookie, requires explicit transcript
+consent, validates the versioned request, rate limits the client, and adapts the private agent
+response to SSE. Durable history belongs to the agent platform, not this service.
 
 ## Local development
 
@@ -26,8 +26,9 @@ Configuration uses the `SALTACODE_` prefix:
 ```dotenv
 SALTACODE_APP_ENV=development
 SALTACODE_ALLOWED_ORIGINS=http://localhost:4321
-SALTACODE_AGENT_AI_BASE_URL=http://agent-ai:8001
+SALTACODE_AGENT_AI_BASE_URL=http://agent-platform:8000
 SALTACODE_AGENT_INTERNAL_TOKEN_FILE=/run/secrets/agent_internal_token
+SALTACODE_SESSION_SIGNING_SECRET_FILE=/run/secrets/session_signing_secret
 SALTACODE_RATE_LIMIT_BACKEND=memory
 SALTACODE_RATE_LIMIT_REQUESTS=20
 SALTACODE_RATE_LIMIT_WINDOW_SECONDS=60
@@ -75,7 +76,8 @@ malformed or multi-value headers and otherwise falls back to the ASGI client add
 trust `X-Forwarded-For`. Keeping the origin loopback-only is therefore part of the security contract.
 
 SSE responses use `Cache-Control: no-store`, do not echo prompts, and carry a correlation ID.
-The BFF does not log or persist request bodies.
+The BFF does not log or persist request bodies. The browser cannot choose or forge the agent
+session identifier because it is recovered only from the signed cookie.
 
 Versioned JSON Schemas live in `../contracts/chat/v1/`. Regenerate them with:
 

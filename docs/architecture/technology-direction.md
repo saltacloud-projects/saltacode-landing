@@ -9,7 +9,7 @@ Use Astro for the indexable landing surface, FastAPI for explicit HTTP boundarie
 | Frontend | Astro with strict TypeScript, pnpm, static output, and zero default client JavaScript. |
 | Static origin | A small non-root Node server provides health, cache/security headers, and real 404 responses. |
 | Public API | FastAPI with uv provides the same-origin BFF and versioned SSE chat boundary. |
-| Private AI | A separate FastAPI/uv `agent-ai` seed exposes only authenticated internal execution endpoints. |
+| Private AI | A separate FastAPI/uv agent platform exposes an authenticated internal execution endpoint and owns multi-channel history, encrypted sources, tools, RAG, and provider adapters. |
 | Contracts | Browser-facing schemas are versioned under `contracts/chat/v1/` and checked for drift. |
 | Abuse control | A private, ephemeral Redis instance provides atomic shared rate limiting and fails closed. |
 | Orchestration | Compose builds application images locally and isolates origin, agent, rate-limit, and egress networks. |

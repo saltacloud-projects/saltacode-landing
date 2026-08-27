@@ -1,3 +1,4 @@
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,7 @@ from app.ports import AgentGateway, RateLimiter
 from app.rate_limit import InMemoryFixedWindowRateLimiter, RedisFixedWindowRateLimiter
 from app.routes.chat import router as chat_router
 from app.routes.health import router as health_router
+from app.session import SignedSessionManager
 
 
 def _build_agent_gateway(settings: Settings) -> AgentGateway:
@@ -75,12 +77,14 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.rate_limiter = rate_limiter or _build_rate_limiter(resolved_settings)
     app.state.agent_gateway = agent_gateway or _build_agent_gateway(resolved_settings)
+    session_secret = resolved_settings.resolve_session_signing_secret() or secrets.token_urlsafe(48)
+    app.state.session_manager = SignedSessionManager(session_secret)
 
     app.middleware("http")(correlation_middleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=sorted(resolved_settings.allowed_origin_set),
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-Correlation-ID"],
         expose_headers=["X-Correlation-ID", "X-RateLimit-Remaining"],

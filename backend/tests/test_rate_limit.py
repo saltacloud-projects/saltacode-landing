@@ -90,10 +90,11 @@ def test_redis_outage_returns_safe_http_failures() -> None:
     settings = Settings(app_env="test")
     message = "private-message-that-must-not-be-echoed"
     request = {
-        "session_id": str(uuid4()),
         "client_message_id": str(uuid4()),
         "message": message,
         "locale": "es-AR",
+        "transcript_consent": True,
+        "privacy_version": "privacy-v1",
     }
 
     with TestClient(create_app(settings, rate_limiter=UnavailableRateLimiter())) as client:

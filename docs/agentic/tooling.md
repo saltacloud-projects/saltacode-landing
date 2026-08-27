@@ -31,9 +31,6 @@ pnpm test
   && uv run ruff check . && uv run pytest \
   && uv run python scripts/export_contracts.py --check)
 
-(cd agent-ai && uv sync --locked --all-groups && uv run ruff format --check . \
-  && uv run ruff check . && uv run pytest)
-
 bash scripts/agentic/validate-layer.sh
 ```
 

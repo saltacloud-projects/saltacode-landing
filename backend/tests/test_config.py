@@ -21,12 +21,15 @@ def test_redis_url_rejects_non_redis_scheme() -> None:
 
 def test_production_accepts_redis_and_secret_file(tmp_path) -> None:
     token_file = tmp_path / "agent-token"
+    session_file = tmp_path / "session-secret"
+    session_file.write_text(f"{'s' * 32}\n", encoding="utf-8")
     token_file.write_text(f"{'x' * 32}\n", encoding="utf-8")
 
     settings = Settings(
         app_env="production",
         agent_ai_base_url="http://agent-ai:8001",
         agent_internal_token_file=token_file,
+        session_signing_secret_file=session_file,
         rate_limit_backend="redis",
         redis_url="redis://redis:6379/0",
     )

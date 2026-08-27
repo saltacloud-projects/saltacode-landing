@@ -5,10 +5,11 @@ from fastapi.testclient import TestClient
 
 def payload() -> dict[str, str]:
     return {
-        "session_id": str(uuid4()),
         "client_message_id": str(uuid4()),
         "message": "Necesito información sobre sus servicios.",
         "locale": "es-AR",
+        "transcript_consent": True,
+        "privacy_version": "privacy-v1",
     }
 
 
@@ -82,3 +83,24 @@ def test_openapi_describes_sse_and_problem_contracts(client: TestClient) -> None
     assert "x-sse-event-schema" in success
     for status in ("400", "403", "422", "429", "503"):
         assert set(operation["responses"][status]["content"]) == {"application/problem+json"}
+
+
+def test_chat_session_is_owned_by_signed_http_only_cookie(client: TestClient) -> None:
+    first = client.post("/api/v1/chat", json=payload())
+    cookie = first.cookies.get("saltacode_chat_session")
+    assert first.status_code == 200
+    assert cookie is not None
+    assert "HttpOnly" in first.headers["set-cookie"]
+
+    second = client.post("/api/v1/chat", json=payload())
+    assert second.cookies.get("saltacode_chat_session") == cookie
+
+
+def test_forged_chat_session_is_rotated(client: TestClient) -> None:
+    client.cookies.set("saltacode_chat_session", "00000000-0000-4000-8000-000000000000.invalid")
+    response = client.post("/api/v1/chat", json=payload())
+    assert response.status_code == 200
+    assert (
+        response.cookies.get("saltacode_chat_session")
+        != "00000000-0000-4000-8000-000000000000.invalid"
+    )

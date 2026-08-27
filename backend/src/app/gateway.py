@@ -6,10 +6,10 @@ import httpx2
 from pydantic import Field, ValidationError
 
 from app.contracts import (
+    AgentRequest,
     ChatDeltaEvent,
     ChatDoneEvent,
     ChatErrorEvent,
-    ChatRequest,
     ChatStartedEvent,
     ChatStreamEvent,
     ContractModel,
@@ -27,11 +27,11 @@ class _ExecutionResponse(ContractModel):
 
 
 class UnavailableAgentGateway:
-    """Safe placeholder used until the private agent-ai adapter exists."""
+    """Safe fallback used when the private agent platform is not configured."""
 
     async def stream(
         self,
-        _request: ChatRequest,
+        _request: AgentRequest,
         *,
         correlation_id: str,
     ) -> AsyncIterator[ChatStreamEvent]:
@@ -55,7 +55,7 @@ class UnavailableAgentGateway:
 
 
 class HttpAgentGateway:
-    """HTTP adapter for the private, authenticated agent-ai execution API."""
+    """HTTP adapter for the private, authenticated agent execution API."""
 
     def __init__(
         self,
@@ -86,7 +86,7 @@ class HttpAgentGateway:
 
     async def stream(
         self,
-        request: ChatRequest,
+        request: AgentRequest,
         *,
         correlation_id: str,
     ) -> AsyncIterator[ChatStreamEvent]:
@@ -101,6 +101,7 @@ class HttpAgentGateway:
                     "session_id": str(request.session_id),
                     "input": request.message,
                     "locale": request.locale,
+                    "consent": {"granted": True, "version": request.privacy_version},
                 },
                 headers={"X-Correlation-ID": correlation_id},
             )

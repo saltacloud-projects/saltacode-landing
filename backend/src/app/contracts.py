@@ -13,10 +13,19 @@ ChatMessage = Annotated[str, StringConstraints(min_length=1, max_length=4_000)]
 
 
 class ChatRequest(ContractModel):
+    client_message_id: UUID
+    message: ChatMessage
+    locale: Literal["es-AR", "es", "en"] = "es-AR"
+    transcript_consent: Literal[True]
+    privacy_version: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+
+
+class AgentRequest(ContractModel):
     session_id: UUID
     client_message_id: UUID
     message: ChatMessage
     locale: Literal["es-AR", "es", "en"] = "es-AR"
+    privacy_version: str = Field(min_length=1, max_length=80)
 
 
 class ChatStartedEvent(ContractModel):

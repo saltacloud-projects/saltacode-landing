@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     agent_ai_base_url: str | None = None
     agent_internal_token: SecretStr | None = Field(default=None, min_length=32)
     agent_internal_token_file: Path | None = None
+    session_signing_secret: SecretStr | None = Field(default=None, min_length=32)
+    session_signing_secret_file: Path | None = None
+    session_cookie_name: str = "saltacode_chat_session"
+    session_cookie_max_age_seconds: int = Field(default=2_592_000, ge=300, le=31_536_000)
     agent_ai_connect_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     agent_ai_response_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
     rate_limit_backend: Literal["memory", "redis"] = "memory"
@@ -72,6 +76,8 @@ class Settings(BaseSettings):
     def enforce_production_rate_limiter(self) -> "Settings":
         if self.agent_internal_token is not None and self.agent_internal_token_file is not None:
             raise ValueError("configure either agent internal token or token file, not both")
+        if self.session_signing_secret is not None and self.session_signing_secret_file is not None:
+            raise ValueError("configure either session signing secret or secret file, not both")
 
         if self.rate_limit_backend == "redis" and self.redis_url is None:
             raise ValueError("Redis rate-limit backend requires a Redis URL")
@@ -84,6 +90,8 @@ class Settings(BaseSettings):
 
         if self.app_env == "production":
             missing: list[str] = []
+            if self.session_signing_secret_file is None:
+                missing.append("a session signing secret file")
             if self.rate_limit_backend != "redis":
                 missing.append("a shared rate-limit backend")
             if self.agent_ai_base_url is None:
@@ -109,6 +117,19 @@ class Settings(BaseSettings):
         if len(token) < 32:
             raise ValueError("agent internal token file must contain at least 32 characters")
         return token
+
+    def resolve_session_signing_secret(self) -> str | None:
+        if self.session_signing_secret is not None:
+            return self.session_signing_secret.get_secret_value()
+        if self.session_signing_secret_file is None:
+            return None
+        try:
+            secret = self.session_signing_secret_file.read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise ValueError("session signing secret file is unreadable") from error
+        if len(secret) < 32:
+            raise ValueError("session signing secret file must contain at least 32 characters")
+        return secret
 
     @property
     def allowed_origin_set(self) -> frozenset[str]:

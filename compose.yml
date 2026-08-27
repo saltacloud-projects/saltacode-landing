@@ -4,10 +4,8 @@ x-runtime-defaults: &runtime-defaults
   init: true
   restart: unless-stopped
   read_only: true
-  security_opt:
-    - no-new-privileges:true
-  cap_drop:
-    - ALL
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
   stop_grace_period: 20s
   tmpfs:
     - /tmp:rw,noexec,nosuid,nodev,size=64m
@@ -19,14 +17,15 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    environment:
+      BACKEND_URL: http://backend:8000
     ports:
       - "${SALTACODE_FRONTEND_BIND_ADDRESS:-127.0.0.1}:${SALTACODE_FRONTEND_PORT:-18080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 3s
       retries: 5
@@ -34,14 +33,9 @@ services:
     pids_limit: 128
     deploy:
       resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
-          pids: 128
-    networks:
-      - frontend_origin
-    labels:
-      com.saltacode.component: frontend
+        limits: {cpus: "0.50", memory: 256M, pids: 128}
+    networks: [ingress, frontend_backend]
+    labels: {com.saltacode.component: frontend}
 
   backend:
     <<: *runtime-defaults
@@ -51,9 +45,10 @@ services:
       dockerfile: Dockerfile
     environment:
       SALTACODE_APP_ENV: ${SALTACODE_APP_ENV:-development}
-      SALTACODE_ALLOWED_ORIGINS: ${SALTACODE_ALLOWED_ORIGINS:-http://localhost:4321}
-      SALTACODE_AGENT_AI_BASE_URL: http://agent-ai:8001
+      SALTACODE_ALLOWED_ORIGINS: ${SALTACODE_ALLOWED_ORIGINS:-http://localhost:18080}
+      SALTACODE_AGENT_AI_BASE_URL: http://agent-platform:8000
       SALTACODE_AGENT_INTERNAL_TOKEN_FILE: /run/secrets/agent_internal_token
+      SALTACODE_SESSION_SIGNING_SECRET_FILE: /run/secrets/session_signing_secret
       SALTACODE_RATE_LIMIT_BACKEND: ${SALTACODE_RATE_LIMIT_BACKEND:-redis}
       SALTACODE_REDIS_URL: ${SALTACODE_REDIS_URL:-redis://redis:6379/0}
       SALTACODE_RATE_LIMIT_REQUESTS: ${SALTACODE_RATE_LIMIT_REQUESTS:-20}
@@ -63,13 +58,9 @@ services:
         condition: service_healthy
         restart: true
     ports:
-      - "127.0.0.1:${SALTACODE_BACKEND_PORT:-18081}:8000"
+      - "${SALTACODE_BACKEND_BIND_ADDRESS:-127.0.0.1}:${SALTACODE_BACKEND_PORT:-18081}:8000"
     healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
       interval: 15s
       timeout: 3s
       retries: 5
@@ -77,53 +68,20 @@ services:
     pids_limit: 192
     deploy:
       resources:
-        limits:
-          cpus: "1.00"
-          memory: 512M
-          pids: 192
-    networks:
-      - backend_origin
-      - backend_agent
-      - rate_limit
-    secrets:
-      - agent_internal_token
-    group_add:
-      - "${SALTACODE_AGENT_INTERNAL_TOKEN_GID:?set SALTACODE_AGENT_INTERNAL_TOKEN_GID}"
-    labels:
-      com.saltacode.component: backend
+        limits: {cpus: "1.00", memory: 512M, pids: 192}
+    networks: [frontend_backend, agent_bridge, rate_limit]
+    secrets: [agent_internal_token, session_signing_secret]
+    group_add: ["${SALTACODE_SECRET_GID:-1000}"]
+    labels: {com.saltacode.component: backend}
 
   redis:
     <<: *runtime-defaults
     image: ${SALTACODE_REDIS_IMAGE:?set SALTACODE_REDIS_IMAGE to an immutable digest}
     user: "${SALTACODE_REDIS_UID:-999}:${SALTACODE_REDIS_GID:-999}"
-    # Safe only while rate_limit stays internal and Redis has no published port.
-    command:
-      - redis-server
-      - --bind
-      - 0.0.0.0
-      - --protected-mode
-      - "no"
-      - --save
-      - ""
-      - --appendonly
-      - "no"
-      - --dir
-      - /tmp
-      - --maxmemory
-      - 96mb
-      - --maxmemory-policy
-      - noeviction
-      - --loglevel
-      - warning
-    expose:
-      - "6379"
+    command: ["redis-server", "--bind", "0.0.0.0", "--protected-mode", "no", "--save", "", "--appendonly", "no", "--dir", "/tmp", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction", "--loglevel", "warning"]
+    expose: ["6379"]
     healthcheck:
-      test:
-        - CMD
-        - redis-cli
-        - -h
-        - 127.0.0.1
-        - ping
+      test: ["CMD", "redis-cli", "-h", "127.0.0.1", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -133,77 +91,31 @@ services:
     pids_limit: 96
     deploy:
       resources:
-        limits:
-          cpus: "0.50"
-          memory: 128M
-          pids: 96
-    networks:
-      - rate_limit
-    labels:
-      com.saltacode.component: rate-limit
-
-  agent-ai:
-    <<: *runtime-defaults
-    image: localhost/saltacode/agent-ai:${SALTACODE_RELEASE:-dev}
-    build:
-      context: ./agent-ai
-      dockerfile: Dockerfile
-    expose:
-      - "8001"
-    environment:
-      SALTACODE_AGENT_ENVIRONMENT: ${SALTACODE_AGENT_ENVIRONMENT:-development}
-      SALTACODE_AGENT_INTERNAL_TOKEN_FILE: /run/secrets/agent_internal_token
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=2)"
-      interval: 15s
-      timeout: 3s
-      retries: 5
-      start_period: 20s
-    pids_limit: 384
-    deploy:
-      resources:
-        limits:
-          cpus: "2.00"
-          memory: 2G
-          pids: 384
-    networks:
-      - backend_agent
-      - agent_egress
-    secrets:
-      - agent_internal_token
-    group_add:
-      - "${SALTACODE_AGENT_INTERNAL_TOKEN_GID:?set SALTACODE_AGENT_INTERNAL_TOKEN_GID}"
-    labels:
-      com.saltacode.component: agent-ai
+        limits: {cpus: "0.50", memory: 128M, pids: 96}
+    networks: [rate_limit]
+    labels: {com.saltacode.component: rate-limit}
 
 networks:
-  frontend_origin:
+  ingress:
     ipam:
       config:
-        - subnet: ${SALTACODE_FRONTEND_ORIGIN_SUBNET:-10.248.241.0/28}
-  backend_origin:
-    ipam:
-      config:
-        - subnet: ${SALTACODE_BACKEND_ORIGIN_SUBNET:-10.248.241.16/28}
-  backend_agent:
+        - subnet: 10.248.242.64/28
+  frontend_backend:
     internal: true
     ipam:
       config:
-        - subnet: ${SALTACODE_BACKEND_AGENT_SUBNET:-10.248.241.32/28}
+        - subnet: 10.248.242.32/28
   rate_limit:
     internal: true
     ipam:
       config:
-        - subnet: ${SALTACODE_RATE_LIMIT_SUBNET:-10.248.241.48/28}
-  agent_egress:
-    ipam:
-      config:
-        - subnet: ${SALTACODE_AGENT_EGRESS_SUBNET:-10.248.241.64/28}
+        - subnet: 10.248.242.48/28
+  agent_bridge:
+    external: true
+    name: saltacode_agent_bridge
 
 secrets:
   agent_internal_token:
     file: ${SALTACODE_AGENT_INTERNAL_TOKEN_SOURCE_FILE:?set SALTACODE_AGENT_INTERNAL_TOKEN_SOURCE_FILE}
+  session_signing_secret:
+    file: ${SALTACODE_SESSION_SIGNING_SECRET_SOURCE_FILE:?set SALTACODE_SESSION_SIGNING_SECRET_SOURCE_FILE}

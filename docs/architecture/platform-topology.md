@@ -1,51 +1,50 @@
 # Platform topology and trust boundaries
 
-The platform uses two loopback origins behind a host-managed Cloudflare Tunnel. The AI service and Redis are private Compose services. No application or provider state has been deployed by creating this scaffold.
+The site and the agent are independent Compose projects joined only through a named private bridge and a shared internal bearer token file. Cloudflare Tunnel remains a host-managed production concern.
 
-## Request paths
+## Request path
 
 ```text
-Internet
-  -> Cloudflare
-    -> host cloudflared
-      /api/* -> 127.0.0.1:18081 -> backend:8000
-                                        |-> agent-ai:8001
-                                        `-> redis:6379
-      /*     -> 127.0.0.1:18080 -> frontend:8080
+Internet -> Cloudflare -> host cloudflared
+  /* -> frontend:8080
+          | static Astro assets
+          ` /api/* proxy -> backend:8000
+                                |-> redis:6379
+                                `-> agent-platform:8000
+                                         |-> PostgreSQL
+                                         |-> agent Redis
+                                         `-> approved providers and API sources
 ```
 
-Ingress rules are ordered: `/api/*` must precede the frontend fallback, and the final Tunnel rule returns 404. The apex/`www` redirect remains a provider concern that must be inspected and tested before cutover.
+The frontend same-origin proxy prevents browser CORS coupling and streams SSE without buffering. The BFF is still the public security boundary; the agent API is never a browser target.
 
 ## Trust boundaries
 
 | Boundary | Contract |
 |---|---|
-| Browser to frontend | Static, indexable HTML; no provider secret and no required chat JavaScript. |
-| Browser to BFF | Same-origin `/api/v1/chat`, exact-origin allowlist, versioned schema, SSE, safe problem responses, and no prompt persistence. |
-| Tunnel to BFF | Loopback-only origin; validated `CF-Connecting-IP` is trusted only while Cloudflare is the sole public ingress. |
-| BFF to agent | Private network, authenticated internal endpoint, file-mounted bearer token, correlation propagation, and fail-closed errors. |
-| BFF to Redis | Private rate-limit network, atomic fixed-window decisions, no host port, no persistence, and fail-closed outage behavior. |
-| Agent to providers | Separate egress network; provider, RAG, and tool adapters are not implemented in the seed. |
+| Browser to frontend | Static, indexable HTML; lazy chat code; no provider or agent secret. |
+| Frontend proxy to BFF | Same-origin `/api/v1/chat`, bounded body, streamed response, forwarded cookie/origin/correlation only. |
+| Browser contract at BFF | Exact-origin allowlist, versioned schema, explicit transcript consent, safe problem responses, rate limit, and signed HttpOnly session. |
+| BFF to agent | Private named bridge, authenticated internal endpoint, file-mounted token, server-owned session identity, correlation propagation, and fail-closed errors. |
+| BFF to Redis | Internal rate-limit network, atomic fixed-window decisions, no host port, no persistence, and fail-closed outage behavior. |
+| Agent to sources | Source-bound allowlist, encrypted credentials, TLS, no redirects or ambient proxies, SSRF checks, bounded responses, channel/risk/confirmation/idempotency policy. |
 
-## Runtime responsibilities
+## Runtime ownership
 
 | Component | Owns | Does not own |
 |---|---|---|
-| `cloudflared` on host | Public ingress and ordered path routing. | Static files, application auth, or chat business logic. |
-| `frontend` | Static files, cache/security headers, health, and real 404 behavior. | API proxying or secrets. |
-| `backend` | Public validation, origin policy, correlation, rate limiting, and SSE adaptation. | Model credentials in browser code or transcript storage. |
-| `agent-ai` | Private orchestration ports and internal execution contract. | Public ingress; provider/RAG/tool behavior remains intentionally absent. |
-| `redis` | Ephemeral shared rate-limit counters. | Durable application data or published access. |
+| `frontend` | Static files, cache/security headers, real 404, lazy chat client, same-origin API streaming proxy. | Session signing, provider keys, rate policy, agent tools. |
+| `backend` | Browser validation, signed session, consent, origin policy, correlation, rate limit, and agent contract adaptation. | Marketing rendering, model execution, API source credentials. |
+| external agent platform | Agents, principals, channel identities, histories, executions, encrypted sources, tools, WhatsApp adapter, RAG, and model/provider orchestration. | Direct public browser trust or landing rendering. |
+| site Redis | Ephemeral public rate-limit counters. | Durable transcript or agent data. |
+| agent PostgreSQL/Redis | Durable platform state and internal coordination. | Public ingress. |
 
-## Deployment and rollback boundary
+## Network model
 
-- `deploy-site.sh` owns the frontend, backend, and ephemeral Redis release.
-- `deploy-agent.sh` owns the private agent release independently.
-- The scripts build locally, verify health, and retain prior immutable references for component rollback.
-- Tunnel, DNS, redirect, and external provider rollback remain separate operator actions.
+Published frontend and panel containers have a dedicated non-internal ingress bridge because Docker does not activate host port mappings for containers attached only to `internal: true` networks. All service-to-service data paths remain on internal or private bridges. Explicit `/28` subnets avoid exhausting Docker address pools on the multi-project host.
 
-Use [`../../infrastructure/README.md`](../../infrastructure/README.md) for sanitized preparation and verification commands. Starting containers, installing systemd units, changing Tunnel/DNS state, or promoting production requires explicit authorization.
+## Deployment boundary
 
-## Evidence status
+The SaltaCode repository releases the site, BFF, and site Redis. The agent repository releases its API, panel, database migrations, bootstrap, optional worker, and private stores independently. A site rollback must not reset agent history; an agent rollback must not rebuild the indexable landing.
 
-Repository tests can verify contracts, builds, Compose models, and local behavior. Current DNS, Tunnel ownership, provider configuration, deployed content, Search Console, analytics, rankings, and field Core Web Vitals remain unknown until inspected directly.
+Production, DNS, Cloudflare, Search Console, analytics, and field Core Web Vitals remain unknown until independently verified.

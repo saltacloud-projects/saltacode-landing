@@ -23,12 +23,13 @@ class CapturingRateLimiter:
         return None
 
 
-def payload(*, session_id: str = "11111111-1111-4111-8111-111111111111") -> dict[str, str]:
+def payload() -> dict[str, str | bool]:
     return {
-        "session_id": session_id,
         "client_message_id": str(uuid4()),
         "message": "test",
         "locale": "es-AR",
+        "transcript_consent": True,
+        "privacy_version": "privacy-v1",
     }
 
 
@@ -100,12 +101,12 @@ def test_rotating_session_id_does_not_bypass_client_window() -> None:
     with TestClient(create_app(settings)) as client:
         first = client.post(
             "/api/v1/chat",
-            json=payload(session_id=str(uuid4())),
+            json=payload(),
             headers=headers,
         )
         second = client.post(
             "/api/v1/chat",
-            json=payload(session_id=str(uuid4())),
+            json=payload(),
             headers=headers,
         )
 

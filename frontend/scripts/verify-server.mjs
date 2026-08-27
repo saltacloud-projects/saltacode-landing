@@ -150,8 +150,14 @@ try {
   }
 
   const api = await fetch(`${baseUrl}/api/chat`);
-  if (api.status !== 404) {
-    throw new Error("The frontend must not proxy or fall back for /api routes.");
+  const apiProblem = await api.json();
+  if (
+    api.status !== 503 ||
+    !api.headers.get("content-type")?.startsWith("application/problem+json") ||
+    api.headers.get("cache-control") !== "no-store" ||
+    apiProblem.code !== "backend_unavailable"
+  ) {
+    throw new Error("Unconfigured API proxy requests must fail closed with a safe problem response.");
   }
 
   const robots = await fetch(`${baseUrl}/robots.txt`);
@@ -188,7 +194,7 @@ try {
     throw new Error("HEAD requests must return headers without a body.");
   }
 
-  console.log("Verified health, compression, index redirect, real 404s, no API fallback, cache policy, security headers, and HEAD support.");
+  console.log("Verified health, compression, index redirect, real 404s, fail-closed API proxy, cache policy, security headers, and HEAD support.");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolveExit) => {
