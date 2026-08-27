@@ -1,0 +1,52 @@
+.secrets/
+.env.platform.local
+# =============================================================================
+# Agent Platform — local and generated files
+# =============================================================================
+
+# Variables de entorno reales (NUNCA commitear)
+.env
+.env.local
+.env.*.local
+
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Alembic
+# Las migraciones de Alembic SÍ se versionan en git para colaboración entre devs.
+# El placeholder .gitkeep se mantiene por compatibilidad.
+
+# Docker volumes (nunca en el repo)
+postgres_data/
+redis_data/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporales
+*.tmp
+*.bak

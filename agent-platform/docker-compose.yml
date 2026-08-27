@@ -1,0 +1,183 @@
+name: saltacode-agent-platform
+
+x-agent-environment: &agent-environment
+  FASTAPI_ENV: ${FASTAPI_ENV:-development}
+  APP_VERSION: ${APP_VERSION:-dev}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  POSTGRES_DSN: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  FASTAPI_API_KEY: ${FASTAPI_API_KEY}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  ADMIN_INITIAL_EMAIL: ${ADMIN_INITIAL_EMAIL}
+  ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+  ADMIN_FRONTEND_URL: ${ADMIN_FRONTEND_URL:-http://localhost:23000}
+  CREDENTIAL_ENCRYPTION_KEY_FILE: /run/agent-secrets/source_master.key
+  DEFAULT_AGENT_SLUG: ${DEFAULT_AGENT_SLUG:-saltacode}
+  RETENTION_SWEEP_INTERVAL_SECONDS: ${RETENTION_SWEEP_INTERVAL_SECONDS:-21600}
+  DOMAIN: ${DOMAIN:-localhost}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+  OPENAI_WHISPER_MODEL: ${OPENAI_WHISPER_MODEL:-whisper-1}
+  WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+  WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+  WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+  WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+  DOCUMENT_STORAGE_ROOT: /data/documents
+
+x-api-base: &api-base
+  image: localhost/saltacode/agent-platform-api:${APP_VERSION:-dev}
+  build:
+    context: ./fastapi
+    dockerfile: Dockerfile
+  environment: *agent-environment
+  secrets:
+    - source_master_key
+  volumes:
+    - document_data:/data/documents
+  networks:
+    - private
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.3-pg16-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "${REDIS_MAX_MEMORY:-256mb}", "--maxmemory-policy", "noeviction", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  migrate:
+    <<: *api-base
+    restart: "no"
+    command: ["alembic", "-c", "alembic-platform.ini", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bootstrap:
+    <<: *api-base
+    restart: "no"
+    command: ["python", "-m", "app.bootstrap"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    <<: *api-base
+    restart: unless-stopped
+    ports:
+      - "${AGENT_API_BIND_ADDRESS:-0.0.0.0}:${AGENT_API_PORT:-28082}:8000"
+    networks:
+      private:
+      integration:
+        aliases:
+          - agent-platform
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/ready"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 1G
+
+  rag-worker:
+    <<: *api-base
+    profiles: ["rag"]
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.rag"]
+    healthcheck:
+      disable: true
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 2G
+
+  panel:
+    image: localhost/saltacode/agent-platform-panel:${APP_VERSION:-dev}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${AGENT_PANEL_BIND_ADDRESS:-0.0.0.0}:${AGENT_PANEL_PORT:-23000}:80"
+    networks:
+      - ingress
+      - private
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 3s
+      retries: 6
+
+networks:
+  ingress:
+    ipam:
+      config:
+        - subnet: 10.248.242.80/28
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.248.242.0/28
+  integration:
+    name: saltacode_agent_bridge
+    ipam:
+      config:
+        - subnet: 10.248.242.16/28
+
+volumes:
+  postgres_data:
+    name: saltacode_agent_platform_postgres
+  redis_data:
+    name: saltacode_agent_platform_redis
+  document_data:
+    name: saltacode_agent_platform_documents
+
+secrets:
+  source_master_key:
+    file: ./.secrets/source_master.key
