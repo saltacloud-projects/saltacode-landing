@@ -19,6 +19,10 @@ export const PERMISSIONS = {
   DOCUMENTS_TAXONOMY: "documents.taxonomy",
   DOCUMENTS_SETTINGS: "documents.settings",
   PANEL_USERS_MANAGE: "panel_users.manage",
+  RUNTIME_READ: "runtime.read",
+  RUNTIME_MANAGE: "runtime.manage",
+  CONNECTIONS_READ: "connections.read",
+  CONNECTIONS_MANAGE: "connections.manage",
 } as const;
 
 export function hasPermission(user: AdminUser | null, permission: string): boolean {
@@ -31,6 +35,7 @@ export function defaultPanelPath(user: AdminUser | null): string {
   if (hasPermission(user, PERMISSIONS.SOURCES_READ)) return "/shared/sources";
   if (hasPermission(user, PERMISSIONS.KNOWLEDGE_READ)) return "/shared/knowledge";
   if (hasPermission(user, PERMISSIONS.TOOLS_READ)) return "/shared/tools";
+  if (hasPermission(user, PERMISSIONS.CONNECTIONS_READ)) return "/shared/provider-connections";
   if (hasPermission(user, PERMISSIONS.PANEL_USERS_MANAGE)) return "/panel-users";
   return "/login";
 }

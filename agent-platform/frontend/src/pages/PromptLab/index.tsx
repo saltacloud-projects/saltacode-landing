@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Eye, Send, Search, AlertTriangle, Loader2 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
+import { useAuth } from "../../auth/AuthContext";
+import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 
 interface PromptPreviewResponse {
   system_prompt: string;
@@ -49,6 +51,8 @@ function Pill({ label, value }: { label: string; value: string | number }) {
 
 export default function PromptLabPage() {
   const { selectedAgent } = useAgentWorkspace();
+  const { user } = useAuth();
+  const canReadUsers = hasPermission(user, PERMISSIONS.USERS_READ);
   // --- Preview del system prompt ---
   const [prompt, setPrompt] = useState<PromptPreviewResponse | null>(null);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
@@ -60,7 +64,7 @@ export default function PromptLabPage() {
     try {
       const res = await api<PromptPreviewResponse>("/promptlab/prompt-preview", {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ agent_id: selectedAgent?.id || null }),
       });
       setPrompt(res);
     } catch (e) {
@@ -77,7 +81,16 @@ export default function PromptLabPage() {
   const [testError, setTestError] = useState<string | null>(null);
   const [users, setUsers] = useState<AuthorizedUser[]>([]);
   const [testUserId, setTestUserId] = useState("");
-  useEffect(() => { api<AuthorizedUser[]>("/users/").then((rows) => setUsers(rows.filter((row) => row.is_active))).catch(() => undefined); }, []);
+  useEffect(() => {
+    if (!canReadUsers) { setUsers([]); return; }
+    api<AuthorizedUser[]>("/users/").then((rows) => setUsers(rows.filter((row) => row.is_active))).catch(() => setUsers([]));
+  }, [canReadUsers]);
+  useEffect(() => {
+    setPrompt(null);
+    setTestResult(null);
+    setResults([]);
+    setSearched(false);
+  }, [selectedAgent?.id]);
 
   const runTest = async () => {
     if (!message.trim()) return;
@@ -86,7 +99,7 @@ export default function PromptLabPage() {
     try {
       const res = await api<TestAgentResponse>("/promptlab/test-agent", {
         method: "POST",
-        body: JSON.stringify({ message: message.trim(), user_id: testUserId || null }),
+        body: JSON.stringify({ agent_id: selectedAgent?.id || null, message: message.trim(), user_id: testUserId || null }),
       });
       setTestResult(res);
     } catch (e) {
@@ -131,7 +144,7 @@ export default function PromptLabPage() {
           Inspeccioná el system prompt real, probá el agente y buscá en el historial de conversaciones.
         </p>
       </div>
-      {selectedAgent && <p className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">Compatibilidad: PromptLab todavía resuelve el agente default del servidor y no acepta agent_id. Las pruebas no deben interpretarse como una ejecución garantizada de {selectedAgent.name}.</p>}
+      {selectedAgent && <p className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-300">El preview y el test se ejecutan explícitamente para <strong>{selectedAgent.name}</strong>. La búsqueda inferior continúa siendo global hasta que su endpoint acepte <code>agent_id</code>.</p>}
 
       {/* Paneles superiores: Preview + Test */}
       <div className="flex flex-col gap-6 lg:flex-row">
@@ -203,13 +216,14 @@ export default function PromptLabPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Contexto de acceso</label>
-              <select value={testUserId} onChange={(e) => setTestUserId(e.target.value)} className="mb-3 w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 text-sm text-[var(--text-primary)]">
+              <label htmlFor="promptlab-access-context" className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Contexto de acceso</label>
+              <select id="promptlab-access-context" value={testUserId} onChange={(e) => setTestUserId(e.target.value)} className="mb-3 w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 text-sm text-[var(--text-primary)]">
                 <option value="">Administrador (área General)</option>
                 {users.map((item) => <option key={item.id} value={item.id}>{item.name || item.phone_number}</option>)}
               </select>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Mensaje</label>
+              <label htmlFor="promptlab-message" className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Mensaje</label>
               <textarea
+                id="promptlab-message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => {
@@ -303,7 +317,7 @@ export default function PromptLabPage() {
         </div>
 
         <div className="space-y-3 p-4">
-          <p className={HELP}>Busca texto en el historial de todas las conversaciones del agente.</p>
+          <p className={HELP}>Búsqueda legacy sobre conversaciones de toda la plataforma; los resultados todavía no están filtrados por el agente seleccionado.</p>
 
           <div className="flex gap-2">
             <input

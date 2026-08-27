@@ -5,8 +5,10 @@ import { defaultPanelPath, hasPermission, PERMISSIONS } from "./auth/permissions
 import AdminLayout from "./components/AdminLayout";
 import ProfilesPage, { AgentIdentityPage } from "./pages/AgentProfile";
 import AgentChannelsPage from "./pages/AgentChannels";
+import AgentRuntimePage from "./pages/AgentRuntime";
 import AuditPage from "./pages/Audit";
 import ConversationsPage from "./pages/Conversations";
+import { ChannelConnectionsPage, ProviderConnectionsPage } from "./pages/Connections";
 import DashboardPage from "./pages/Dashboard";
 import DocumentsPage from "./pages/Documents";
 import KnowledgePage from "./pages/KnowledgeBlocks";
@@ -98,6 +100,8 @@ export default function App() {
             <Route path="shared/knowledge" element={<PermissionRoute permission={PERMISSIONS.KNOWLEDGE_READ}><KnowledgePage scope="library" /></PermissionRoute>} />
             <Route path="shared/tools" element={<PermissionRoute permission={PERMISSIONS.TOOLS_READ}><ToolsPage scope="library" /></PermissionRoute>} />
             <Route path="shared/documents" element={<PermissionRoute permission={PERMISSIONS.DOCUMENTS_READ}><DocumentsPage scope="library" /></PermissionRoute>} />
+            <Route path="shared/provider-connections" element={<PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}><ProviderConnectionsPage /></PermissionRoute>} />
+            <Route path="shared/channel-connections" element={<PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}><ChannelConnectionsPage /></PermissionRoute>} />
             <Route path="panel-users" element={<PermissionRoute permission={PERMISSIONS.PANEL_USERS_MANAGE}><PanelUsersPage /></PermissionRoute>} />
 
             <Route path="agents/:agentId" element={<AgentWorkspaceRoute />}>
@@ -108,7 +112,8 @@ export default function App() {
               <Route path="documents" element={<PermissionRoute permission={PERMISSIONS.DOCUMENTS_READ}><DocumentsPage scope="agent" /></PermissionRoute>} />
               <Route path="sources" element={<PermissionRoute permission={PERMISSIONS.SOURCES_READ}><SourcesPage scope="agent" /></PermissionRoute>} />
               <Route path="tools" element={<PermissionRoute permission={PERMISSIONS.TOOLS_READ}><ToolsPage scope="agent" /></PermissionRoute>} />
-              <Route path="channels" element={<AgentChannelsPage />} />
+              <Route path="runtime" element={<PermissionRoute permission={PERMISSIONS.RUNTIME_READ}><AgentRuntimePage /></PermissionRoute>} />
+              <Route path="channels" element={<PermissionRoute permission={PERMISSIONS.RUNTIME_READ}><AgentChannelsPage /></PermissionRoute>} />
               <Route path="conversations" element={<PermissionRoute permission={PERMISSIONS.CONVERSATIONS_READ}><ConversationsPage /></PermissionRoute>} />
               <Route path="audit" element={<PermissionRoute permission={PERMISSIONS.AUDIT_READ}><AuditPage /></PermissionRoute>} />
               <Route path="promptlab" element={<PermissionRoute permission={PERMISSIONS.PROMPTLAB_USE}><PromptLabPage /></PermissionRoute>} />
@@ -119,6 +124,9 @@ export default function App() {
             <Route path="knowledge" element={<LegacyAgentRedirect section="knowledge" fallback="/shared/knowledge" />} />
             <Route path="tools" element={<LegacyAgentRedirect section="tools" fallback="/shared/tools" />} />
             <Route path="documents" element={<LegacyAgentRedirect section="documents" fallback="/shared/documents" />} />
+            <Route path="provider-connections" element={<Navigate to="/shared/provider-connections" replace />} />
+            <Route path="channel-connections" element={<Navigate to="/shared/channel-connections" replace />} />
+            <Route path="runtime" element={<LegacyAgentRedirect section="runtime" fallback="/agents" />} />
             <Route path="users" element={<LegacyAgentRedirect section="channels" fallback="/agents" />} />
             <Route path="conversations" element={<LegacyAgentRedirect section="conversations" fallback="/agents" />} />
             <Route path="audit" element={<LegacyAgentRedirect section="audit" fallback="/agents" />} />

@@ -7,6 +7,7 @@ import {
   FlaskConical,
   Globe2,
   MessageSquare,
+  Cpu,
   Settings2,
   Wrench,
   type LucideIcon,
@@ -30,7 +31,8 @@ const LINKS: WorkspaceLink[] = [
   { label: "Documentos", description: "Áreas documentales asociadas al agente.", segment: "documents", icon: Files, permission: PERMISSIONS.DOCUMENTS_READ },
   { label: "Fuentes", description: "APIs y secretos write-only asignados.", segment: "sources", icon: Cable, permission: PERMISSIONS.SOURCES_READ },
   { label: "Herramientas", description: "Capacidades HTTP habilitadas para el agente.", segment: "tools", icon: Wrench, permission: PERMISSIONS.TOOLS_READ },
-  { label: "Canales", description: "Web y estado de compatibilidad de WhatsApp/API.", segment: "channels", icon: Globe2 },
+  { label: "Runtime", description: "Proveedor, modelos, límites, memoria y RAG.", segment: "runtime", icon: Cpu, permission: PERMISSIONS.RUNTIME_READ },
+  { label: "Canales", description: "Rutas web y WhatsApp resueltas por el servidor.", segment: "channels", icon: Globe2, permission: PERMISSIONS.RUNTIME_READ },
   { label: "Conversaciones", description: "Historial del agente seleccionado.", segment: "conversations", icon: MessageSquare, permission: PERMISSIONS.CONVERSATIONS_READ },
   { label: "PromptLab", description: "Previsualización y pruebas controladas.", segment: "promptlab", icon: FlaskConical, permission: PERMISSIONS.PROMPTLAB_USE },
 ];
