@@ -12,6 +12,7 @@ Ejecutar:
 
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -25,11 +26,23 @@ os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "123456")
 os.environ.setdefault("WHATSAPP_VERIFY_TOKEN", "test-verify")
 
 from app.services.transcription import TranscriptionService
+from app.services.whatsapp import WhatsAppConnectionContext
 
 REQ_ID = "test-req-audio-001"
 FAKE_MEDIA_ID = "media_abc123"
 FAKE_AUDIO_BYTES = b"OGG_FAKE_AUDIO_DATA"
 FAKE_TRANSCRIPT = "quiero consultar el estado del artículo A-123"
+
+
+def _whatsapp_connection() -> WhatsAppConnectionContext:
+    return WhatsAppConnectionContext(
+        connection_id=uuid4(),
+        phone_number_id="123456",
+        access_token="test-wa-token",
+        verify_token="test-verify",
+        app_secret="test-app-secret",
+        route_key="test-route",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +80,11 @@ class TestDownloadAudio:
         with patch(
             "app.services.transcription.httpx.AsyncClient", return_value=mock_client
         ):
-            result = await self.svc.download_audio(FAKE_MEDIA_ID, request_id=REQ_ID)
+            result = await self.svc.download_audio(
+                FAKE_MEDIA_ID,
+                request_id=REQ_ID,
+                connection=_whatsapp_connection(),
+            )
 
         assert result == FAKE_AUDIO_BYTES
 
@@ -96,7 +113,11 @@ class TestDownloadAudio:
         with patch(
             "app.services.transcription.httpx.AsyncClient", return_value=mock_client
         ):
-            result = await self.svc.download_audio(FAKE_MEDIA_ID, request_id=REQ_ID)
+            result = await self.svc.download_audio(
+                FAKE_MEDIA_ID,
+                request_id=REQ_ID,
+                connection=_whatsapp_connection(),
+            )
 
         assert result is None
 
@@ -116,7 +137,11 @@ class TestDownloadAudio:
         with patch(
             "app.services.transcription.httpx.AsyncClient", return_value=mock_client
         ):
-            result = await self.svc.download_audio(FAKE_MEDIA_ID, request_id=REQ_ID)
+            result = await self.svc.download_audio(
+                FAKE_MEDIA_ID,
+                request_id=REQ_ID,
+                connection=_whatsapp_connection(),
+            )
 
         assert result is None
 
@@ -142,7 +167,11 @@ class TestDownloadAudio:
         with patch(
             "app.services.transcription.httpx.AsyncClient", return_value=mock_client
         ):
-            result = await self.svc.download_audio(FAKE_MEDIA_ID, request_id=REQ_ID)
+            result = await self.svc.download_audio(
+                FAKE_MEDIA_ID,
+                request_id=REQ_ID,
+                connection=_whatsapp_connection(),
+            )
 
         assert result is None
 
