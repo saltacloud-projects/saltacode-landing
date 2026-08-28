@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Cpu,
   Settings2,
+  ShieldCheck,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -33,6 +34,7 @@ const LINKS: WorkspaceLink[] = [
   { label: "Herramientas", description: "Capacidades HTTP habilitadas para el agente.", segment: "tools", icon: Wrench, permission: PERMISSIONS.TOOLS_READ },
   { label: "Runtime", description: "Proveedor, modelos, límites, memoria y RAG.", segment: "runtime", icon: Cpu, permission: PERMISSIONS.RUNTIME_READ },
   { label: "Canales", description: "Rutas web y WhatsApp resueltas por el servidor.", segment: "channels", icon: Globe2, permission: PERMISSIONS.RUNTIME_READ },
+  { label: "Acceso WhatsApp", description: "Identidades y áreas autorizadas para este agente.", segment: "access", icon: ShieldCheck, permission: PERMISSIONS.USERS_READ },
   { label: "Conversaciones", description: "Historial del agente seleccionado.", segment: "conversations", icon: MessageSquare, permission: PERMISSIONS.CONVERSATIONS_READ },
   { label: "PromptLab", description: "Previsualización y pruebas controladas.", segment: "promptlab", icon: FlaskConical, permission: PERMISSIONS.PROMPTLAB_USE },
 ];

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { defaultPanelPath, hasPermission, PERMISSIONS } from "./auth/permissions";
 import AdminLayout from "./components/AdminLayout";
 import ProfilesPage, { AgentIdentityPage } from "./pages/AgentProfile";
+import AgentAccessPage from "./pages/AgentAccess";
 import AgentChannelsPage from "./pages/AgentChannels";
 import AgentRuntimePage from "./pages/AgentRuntime";
 import AuditPage from "./pages/Audit";
@@ -102,6 +103,7 @@ export default function App() {
             <Route path="shared/documents" element={<PermissionRoute permission={PERMISSIONS.DOCUMENTS_READ}><DocumentsPage scope="library" /></PermissionRoute>} />
             <Route path="shared/provider-connections" element={<PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}><ProviderConnectionsPage /></PermissionRoute>} />
             <Route path="shared/channel-connections" element={<PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}><ChannelConnectionsPage /></PermissionRoute>} />
+            <Route path="audit" element={<PermissionRoute permission={PERMISSIONS.AUDIT_READ}><AuditPage /></PermissionRoute>} />
             <Route path="panel-users" element={<PermissionRoute permission={PERMISSIONS.PANEL_USERS_MANAGE}><PanelUsersPage /></PermissionRoute>} />
 
             <Route path="agents/:agentId" element={<AgentWorkspaceRoute />}>
@@ -114,8 +116,9 @@ export default function App() {
               <Route path="tools" element={<PermissionRoute permission={PERMISSIONS.TOOLS_READ}><ToolsPage scope="agent" /></PermissionRoute>} />
               <Route path="runtime" element={<PermissionRoute permission={PERMISSIONS.RUNTIME_READ}><AgentRuntimePage /></PermissionRoute>} />
               <Route path="channels" element={<PermissionRoute permission={PERMISSIONS.RUNTIME_READ}><AgentChannelsPage /></PermissionRoute>} />
+              <Route path="access" element={<PermissionRoute permission={PERMISSIONS.USERS_READ}><AgentAccessPage /></PermissionRoute>} />
               <Route path="conversations" element={<PermissionRoute permission={PERMISSIONS.CONVERSATIONS_READ}><ConversationsPage /></PermissionRoute>} />
-              <Route path="audit" element={<PermissionRoute permission={PERMISSIONS.AUDIT_READ}><AuditPage /></PermissionRoute>} />
+              <Route path="audit" element={<Navigate to="/audit" replace />} />
               <Route path="promptlab" element={<PermissionRoute permission={PERMISSIONS.PROMPTLAB_USE}><PromptLabPage /></PermissionRoute>} />
             </Route>
 
@@ -127,9 +130,8 @@ export default function App() {
             <Route path="provider-connections" element={<Navigate to="/shared/provider-connections" replace />} />
             <Route path="channel-connections" element={<Navigate to="/shared/channel-connections" replace />} />
             <Route path="runtime" element={<LegacyAgentRedirect section="runtime" fallback="/agents" />} />
-            <Route path="users" element={<LegacyAgentRedirect section="channels" fallback="/agents" />} />
+            <Route path="users" element={<LegacyAgentRedirect section="access" fallback="/agents" />} />
             <Route path="conversations" element={<LegacyAgentRedirect section="conversations" fallback="/agents" />} />
-            <Route path="audit" element={<LegacyAgentRedirect section="audit" fallback="/agents" />} />
             <Route path="promptlab" element={<LegacyAgentRedirect section="promptlab" fallback="/agents" />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

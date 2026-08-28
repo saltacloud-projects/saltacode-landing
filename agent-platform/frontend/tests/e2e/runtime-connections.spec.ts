@@ -256,8 +256,12 @@ test("channel route creation binds the selected agent server-side", async ({ pag
 test("PromptLab preview and execution send the selected agent explicitly", async ({ page }) => {
   let previewBody: Record<string, unknown> | null = null;
   let testBody: Record<string, unknown> | null = null;
+  let searchAgentId: string | null = null;
   await mockAdmin(page, async (route, path) => {
-    if (path.endsWith("/users/")) { await json(route, []); return true; }
+    if (path.endsWith(`/agents/${AGENT_ID}/authorized-users`)) {
+      await json(route, [{ id: "user-1", agent_id: AGENT_ID, phone_number: "5493870000000", name: "Contacto", notes: null, is_active: true, has_all_area_access: false, area_ids: [], created_at: "2026-08-27T10:00:00Z", updated_at: "2026-08-27T10:00:00Z" }]);
+      return true;
+    }
     if (path.endsWith("/promptlab/prompt-preview")) {
       previewBody = route.request().postDataJSON();
       await json(route, { system_prompt: "Prompt Alpha", char_count: 12, profile_name: "Agent Alpha", placeholders_resolved: [] });
@@ -266,6 +270,11 @@ test("PromptLab preview and execution send the selected agent explicitly", async
     if (path.endsWith("/promptlab/test-agent")) {
       testBody = route.request().postDataJSON();
       await json(route, { response_text: "OK", tools_used: [], tool_invocations: [], iterations: 1, total_tool_calls: 0, duration_ms: 10, status: "success", rag_hits: [] });
+      return true;
+    }
+    if (path.endsWith("/promptlab/search-conversations")) {
+      searchAgentId = new URL(route.request().url()).searchParams.get("agent_id");
+      await json(route, [{ id: "message-1", conversation_id: "conversation-1", display_name: "Visitante web", channel: "web", route_key: "landing:principal", external_thread_id: "thread-public", role: "user", content: "Necesito un presupuesto", created_at: "2026-08-27T10:00:00Z" }]);
       return true;
     }
     return false;
@@ -279,4 +288,9 @@ test("PromptLab preview and execution send the selected agent explicitly", async
   await page.getByRole("button", { name: "Enviar" }).click();
   await expect.poll(() => testBody).not.toBeNull();
   expect(testBody).toMatchObject({ agent_id: AGENT_ID, message: "Hola" });
+  await page.getByLabel("Texto a buscar en conversaciones").fill("presupuesto");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect.poll(() => searchAgentId).toBe(AGENT_ID);
+  await expect(page.getByText("Visitante web")).toBeVisible();
+  await expect(page.getByText("landing:principal")).toBeVisible();
 });

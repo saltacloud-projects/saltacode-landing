@@ -36,6 +36,7 @@ export function defaultPanelPath(user: AdminUser | null): string {
   if (hasPermission(user, PERMISSIONS.KNOWLEDGE_READ)) return "/shared/knowledge";
   if (hasPermission(user, PERMISSIONS.TOOLS_READ)) return "/shared/tools";
   if (hasPermission(user, PERMISSIONS.CONNECTIONS_READ)) return "/shared/provider-connections";
+  if (hasPermission(user, PERMISSIONS.AUDIT_READ)) return "/audit";
   if (hasPermission(user, PERMISSIONS.PANEL_USERS_MANAGE)) return "/panel-users";
   return "/login";
 }

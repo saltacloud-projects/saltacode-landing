@@ -41,6 +41,7 @@ const PLATFORM_ITEMS: NavigationItem[] = [
   { to: "/shared/documents", label: "Documentos compartidos", icon: Files, permission: PERMISSIONS.DOCUMENTS_READ },
   { to: "/shared/provider-connections", label: "Conexiones de IA", icon: CloudCog, permission: PERMISSIONS.CONNECTIONS_READ },
   { to: "/shared/channel-connections", label: "Conexiones de canal", icon: Globe2, permission: PERMISSIONS.CONNECTIONS_READ },
+  { to: "/audit", label: "Auditoría global", icon: ClipboardList, permission: PERMISSIONS.AUDIT_READ },
   { to: "/panel-users", label: "Accesos del panel", icon: ShieldCheck, permission: PERMISSIONS.PANEL_USERS_MANAGE },
 ];
 
@@ -53,8 +54,8 @@ const WORKSPACE_ITEMS: Omit<NavigationItem, "to">[] = [
   { label: "Herramientas", icon: Wrench, permission: PERMISSIONS.TOOLS_READ },
   { label: "Runtime", icon: Cpu, permission: PERMISSIONS.RUNTIME_READ },
   { label: "Canales", icon: Globe2, permission: PERMISSIONS.RUNTIME_READ },
+  { label: "Acceso WhatsApp", icon: ShieldCheck, permission: PERMISSIONS.USERS_READ },
   { label: "Conversaciones", icon: MessageSquare, permission: PERMISSIONS.CONVERSATIONS_READ },
-  { label: "Ejecuciones y auditoría", icon: ClipboardList, permission: PERMISSIONS.AUDIT_READ },
   { label: "PromptLab", icon: FlaskConical, permission: PERMISSIONS.PROMPTLAB_USE },
 ];
 
@@ -67,8 +68,8 @@ const WORKSPACE_SEGMENTS: Record<string, string> = {
   Herramientas: "tools",
   Runtime: "runtime",
   Canales: "channels",
+  "Acceso WhatsApp": "access",
   Conversaciones: "conversations",
-  "Ejecuciones y auditoría": "audit",
   PromptLab: "promptlab",
 };
 

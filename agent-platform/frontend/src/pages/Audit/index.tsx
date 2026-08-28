@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
-import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { ClipboardList, Search, LoaderCircle, ListFilter } from "lucide-react";
 
 interface ToolCall {
@@ -43,7 +42,6 @@ function statusBadge(status: string): string {
 }
 
 export default function AuditPage() {
-  const { selectedAgent } = useAgentWorkspace();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
@@ -63,11 +61,13 @@ export default function AuditPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-6">
+      <div className="mb-6 flex items-start gap-2">
         <ClipboardList size={22} className="text-[var(--accent)]" />
-        <h2 className="text-xl font-semibold text-[var(--text-primary)]">Auditoría</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Auditoría global</h2>
+          <p className="text-sm text-[var(--text-muted)]">Eventos operativos de toda la plataforma. Esta vista no representa aislamiento por agente.</p>
+        </div>
       </div>
-      {selectedAgent && <p className="mb-4 rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">Compatibilidad: la auditoría actual es global y todavía no acepta agent_id. No se presenta como auditoría aislada de {selectedAgent.name}.</p>}
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 mb-4 items-center">
