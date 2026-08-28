@@ -632,11 +632,11 @@ class WhatsAppService:
         """
         Envía un message template pre-aprobado por Meta.
         Usado para iniciar conversaciones (business-initiated) fuera de la
-        ventana de 24h, por ejemplo para push de reportes programados.
+        ventana de 24h, por ejemplo para actualizaciones de estado programadas.
 
         Args:
             phone: Número destino (formato 549XXXXXXXXXX)
-            template_name: Nombre del template aprobado (ej: 'reporte_diario_compras')
+            template_name: Nombre del template aprobado (ej: 'solicitud_actualizada')
             language_code: Código de idioma (ej: 'es_AR')
             header_image_id: media_id de la imagen del header (si aplica)
             body_params: Lista de valores para {{1}}, {{2}}, etc.

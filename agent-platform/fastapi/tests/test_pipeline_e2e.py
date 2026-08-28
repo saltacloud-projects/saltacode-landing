@@ -21,7 +21,6 @@ import pytest
 
 os.environ.setdefault("FASTAPI_ENV", "testing")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///test.db")
-os.environ.setdefault("SIM_API_KEY", "test-key")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("WHATSAPP_TOKEN", "")
 os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "")
@@ -90,9 +89,9 @@ class TestParseInboundInteractive:
                                         "interactive": {
                                             "type": "list_reply",
                                             "list_reply": {
-                                                "id": "menu_tool_sim_caja_saldo",
-                                                "title": "Saldo de caja",
-                                                "description": "Caja por sucursal",
+                                                "id": "menu_tool_inventory_status",
+                                                "title": "Estado de inventario",
+                                                "description": "Inventario por región",
                                             },
                                         },
                                     }
@@ -104,8 +103,8 @@ class TestParseInboundInteractive:
             ]
         }
         msg = whatsapp_service.parse_inbound(payload)
-        assert msg["interactive_id"] == "menu_tool_sim_caja_saldo"
-        assert msg["content"] == "Saldo de caja"
+        assert msg["interactive_id"] == "menu_tool_inventory_status"
+        assert msg["content"] == "Estado de inventario"
 
     def test_audio_extracts_media_id(self):
         from app.services.whatsapp import whatsapp_service
@@ -168,12 +167,12 @@ class TestToolResultSchema:
 
         result = ToolResult(
             request_id="r1",
-            tool_name="sim_test",
+            tool_name="inventory_lookup",
             status="success",
             result={"items": list(range(100))},  # data completa, no truncada
             llm_summary={"items_count": 100, "first_3": [0, 1, 2]},
             file_content=b"fake excel bytes",
-            file_name="reporte.xlsx",
+            file_name="seguimiento-solicitudes.xlsx",
             file_mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         dumped = result.model_dump()

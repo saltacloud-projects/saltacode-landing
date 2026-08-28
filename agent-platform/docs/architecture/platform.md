@@ -36,3 +36,9 @@ The web BFF owns its signed browser session and passes only the opaque server-si
 An `IntegrationSource` owns a base URL, host allowlist, authentication configuration, encrypted credentials, and transport policy. A `ToolConfig` points to one source and defines the relative path, HTTP method, parameter placement, input schema, permitted channels, risk, confirmation, and idempotency behavior.
 
 This separation allows multiple APIs without environment-variable-per-source coupling and prevents the model from inventing an untrusted destination.
+
+## Administration hierarchy
+
+Connections, sources, tools, knowledge blocks, document areas, and reusable WhatsApp identities form platform-wide libraries. An agent owns its profile, runtime, explicit resource assignments, channel routes, conversations, and PromptLab context. A library resource is not available to an agent until its binding exists.
+
+See [`administration-model.md`](administration-model.md) for the complete persistence, secret, routing, and panel ownership map.

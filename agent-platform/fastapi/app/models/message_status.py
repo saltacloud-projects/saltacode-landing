@@ -7,7 +7,7 @@ Por qué existe: al enviar via Cloud API, un HTTP 200 solo significa que Meta
 "aceptó" el mensaje (status `accepted`), NO que se entregó. La entrega real
 llega de forma asíncrona por los webhooks de status (`sent` → `delivered` →
 `read`, o `failed` con un código de error). Persistimos esos eventos para tener
-visibilidad real de quién recibió cada reporte y por qué falló cuando falla.
+visibilidad real de quién recibió cada notificación y por qué falló cuando falla.
 
 Correlación: `meta_message_id` (wamid...) es la clave. Al enviar un template
 guardamos un registro con status `accepted`; cuando llega el webhook de status
@@ -37,7 +37,7 @@ class MessageStatus(TimestampedModel):
     recipient_name: Mapped[str | None] = mapped_column(String(120))
     # Tipo de mensaje saliente: template / text / image / document.
     kind: Mapped[str] = mapped_column(String(20), default="template", nullable=False)
-    # Contexto legible para humanos (ej: "reporte 06/06/2026 Tavella").
+    # Contexto legible para humanos (ej: "seguimiento 06/06/2026 región norte").
     context: Mapped[str | None] = mapped_column(String(160))
     # Ciclo de vida del envío:
     #   accepted (HTTP 200 al enviar) → sent → delivered → read | failed

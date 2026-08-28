@@ -13,16 +13,16 @@ def test_build_openai_tools_propagates_required_from_params_schema():
     tools = _build_openai_tools(
         [
             {
-                "tool_name": "sim_cuenta_corriente_cliente",
-                "description": "Cuenta corriente",
+                "tool_name": "inventory_item_status",
+                "description": "Estado de inventario",
             }
         ],
         {
-            "sim_cuenta_corriente_cliente": {
+            "inventory_item_status": {
                 "params_schema": {
-                    "cliente": {
+                    "item": {
                         "type": "string",
-                        "description": "Cliente",
+                        "description": "Artículo",
                         "required": True,
                     },
                     "debug": {"type": "boolean", "description": "Debug"},
@@ -31,21 +31,26 @@ def test_build_openai_tools_propagates_required_from_params_schema():
         },
     )
     params = _parameters(tools[0])
-    assert params["required"] == ["cliente"]
-    assert params["properties"]["cliente"]["description"] == "Cliente"
+    assert params["required"] == ["item"]
+    assert params["properties"]["item"]["description"] == "Artículo"
     assert "debug" not in params["required"]
 
 
 def test_build_openai_tools_omits_required_when_only_require_any_exists():
     tools = _build_openai_tools(
-        [{"tool_name": "sim_compras_bienes_cambio", "description": "Compras"}],
+        [
+            {
+                "tool_name": "inventory_movement_lookup",
+                "description": "Movimientos de inventario",
+            }
+        ],
         {
-            "sim_compras_bienes_cambio": {
+            "inventory_movement_lookup": {
                 "params_schema": {
-                    "boleta": {"type": "string"},
-                    "orden_carga": {"type": "string"},
+                    "reference": {"type": "string"},
+                    "region": {"type": "string"},
                 },
-                "http_config": {"require_any": ["boleta", "orden_carga"]},
+                "http_config": {"require_any": ["reference", "region"]},
             }
         },
     )
@@ -54,9 +59,14 @@ def test_build_openai_tools_omits_required_when_only_require_any_exists():
 
 def test_build_openai_tools_preserves_existing_optional_tools():
     tools = _build_openai_tools(
-        [{"tool_name": "sim_compras", "description": "Compras por filtros"}],
-        {"sim_compras": {"params_schema": {"mes": {"type": "string"}}}},
+        [
+            {
+                "tool_name": "inventory_movements",
+                "description": "Movimientos por filtros",
+            }
+        ],
+        {"inventory_movements": {"params_schema": {"month": {"type": "string"}}}},
     )
     params = _parameters(tools[0])
-    assert params["properties"]["mes"]["type"] == "string"
+    assert params["properties"]["month"]["type"] == "string"
     assert "required" not in params

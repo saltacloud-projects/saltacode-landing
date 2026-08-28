@@ -29,7 +29,7 @@ from app.services.transcription import TranscriptionService
 REQ_ID = "test-req-audio-001"
 FAKE_MEDIA_ID = "media_abc123"
 FAKE_AUDIO_BYTES = b"OGG_FAKE_AUDIO_DATA"
-FAKE_TRANSCRIPT = "quiero saber el saldo del proveedor Perez"
+FAKE_TRANSCRIPT = "quiero consultar el estado del artículo A-123"
 
 
 # ---------------------------------------------------------------------------

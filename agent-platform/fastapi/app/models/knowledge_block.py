@@ -2,7 +2,7 @@
 Agent Platform — Modelo: KnowledgeBlock
 
 Capa de conocimiento PERSISTIDA y editable del agente. Permite personalizar lo
-"variable" (hints de esquema de las bases, sucursales, reglas de dominio) desde
+"variable" (hints de esquema de APIs, regiones, reglas de dominio) desde
 la DB, sin tocar código ni hacer redeploy.
 
 Separación estático/variable:
@@ -22,7 +22,7 @@ from app.models.base import TimestampedModel
 class KnowledgeBlock(TimestampedModel):
     __tablename__ = "knowledge_blocks"
 
-    # Clave estable para referenciar el bloque desde el código (ej: "db_sim",
+    # Clave estable para referenciar el bloque desde el código (ej: "inventory_api",
     # "policies", "catalog"). Unique.
     key: Mapped[str] = mapped_column(
         String(80), unique=True, index=True, nullable=False

@@ -66,12 +66,12 @@ class TestDeliveryStatusLifecycle:
                 meta_message_id=mid,
                 phone="549test",
                 recipient_name="Tester",
-                context="reporte test",
+                context="seguimiento de solicitud",
             )
             row = await _fetch(mid)
             assert row is not None
             assert row.status == "accepted"
-            assert row.context == "reporte test"
+            assert row.context == "seguimiento de solicitud"
             assert row.recipient_name == "Tester"
 
             # 2. Webhook 'delivered': se actualiza la misma fila + status_at.

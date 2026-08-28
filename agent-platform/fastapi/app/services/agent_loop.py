@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Guardrails
 # ---------------------------------------------------------------------------
-# Subidos para soportar consultas que iteran por dimensión (ej: 6-7 sucursales
+# Subidos para soportar consultas que iteran por dimensión (ej: varias regiones
 # + síntesis). MAX_ITERATIONS = ciclos LLM; MAX_TOOL_CALLS = invocaciones totales.
 MAX_ITERATIONS = 12
 MAX_TOOL_CALLS = 25

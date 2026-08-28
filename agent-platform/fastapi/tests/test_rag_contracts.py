@@ -120,7 +120,7 @@ def test_persistent_file_reference_is_never_serialized():
 @pytest.mark.asyncio
 async def test_document_delivery_requires_exact_cited_reference_without_db_access():
     result = await RagDocumentSendTool().invoke(
-        {"reference_code": "manual-de-compras"},
+        {"reference_code": "manual-operativo"},
         "request",
         ToolExecutionContext(
             request_id="request",

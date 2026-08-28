@@ -8,7 +8,6 @@ from uuid import uuid4
 
 os.environ.setdefault("FASTAPI_ENV", "testing")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///test.db")
-os.environ.setdefault("SIM_API_KEY", "test-key")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("WHATSAPP_TOKEN", "")
 os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "")

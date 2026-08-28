@@ -77,7 +77,7 @@ class TestResolver:
         assert out == "hola {desconocido} X"
 
     def test_detecta_placeholders_sin_resolver(self):
-        assert _unresolved_placeholders("texto {sucursales} fin") == ["{sucursales}"]
+        assert _unresolved_placeholders("texto {regiones} fin") == ["{regiones}"]
         assert _unresolved_placeholders("sin placeholders") == []
 
     @pytest.mark.asyncio
@@ -85,14 +85,14 @@ class TestResolver:
         service = KnowledgeService()
         blocks = [
             SimpleNamespace(
-                key="reglas_sueldos",
-                title="Reglas de sueldos",
+                key="seguimiento_solicitudes",
+                title="Seguimiento de solicitudes",
                 content="Fecha: {fecha_actual}",
                 sort_order=70,
             ),
             SimpleNamespace(
-                key="formato_arribos",
-                title="Formato de arribos",
+                key="formato_respuestas",
+                title="Formato de respuestas",
                 content="Formato propio",
                 sort_order=90,
             ),
@@ -107,10 +107,10 @@ class TestResolver:
         resolved = await service.build_resolved_knowledge(FakeDb(), _full_ctx())
 
         assert [block.key for block in resolved] == [
-            "reglas_sueldos",
-            "formato_arribos",
+            "seguimiento_solicitudes",
+            "formato_respuestas",
         ]
-        assert resolved[0].title == "Reglas de sueldos"
+        assert resolved[0].title == "Seguimiento de solicitudes"
         assert "{fecha_actual}" not in resolved[0].content
         assert service.compose_resolved_knowledge(resolved) == (
             f"Fecha: {_full_ctx()['fecha_actual']}\n\nFormato propio"

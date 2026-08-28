@@ -39,6 +39,14 @@ The frontend same-origin proxy prevents browser CORS coupling and streams SSE wi
 | site Redis | Ephemeral public rate-limit counters. | Durable transcript or agent data. |
 | agent PostgreSQL/Redis | Durable platform state and internal coordination. | Public ingress. |
 
+## Administration ownership
+
+The agent control plane follows `platform -> shared connection/resource libraries -> selected agent`. Provider and channel connections, integration sources, tools, knowledge blocks, document areas, and reusable WhatsApp identities are defined once. Explicit bindings assign the allowed subset to each agent together with its runtime, routes, access policy, conversations, and PromptLab context.
+
+Web routing is server-owned: the BFF sends its configured `SALTACODE_AGENT_ROUTE_KEY`, and the agent platform resolves the persisted public web route. WhatsApp uses `GET|POST /webhooks/whatsapp/{route_key}` to resolve the persisted channel route and connection, validates the signature and external account, and only then resolves provider runtime for a processable message. Audit remains global until the audit schema persists agent ownership; filtering it only in the panel would not create a trustworthy boundary.
+
+The detailed persistence and secret map lives in [`../../agent-platform/docs/architecture/administration-model.md`](../../agent-platform/docs/architecture/administration-model.md).
+
 ## Network model
 
 Published frontend and panel containers have a dedicated non-internal ingress bridge because Docker does not activate host port mappings for containers attached only to `internal: true` networks. All service-to-service data paths remain on internal or private bridges. Explicit `/28` subnets avoid exhausting Docker address pools on the multi-project host.

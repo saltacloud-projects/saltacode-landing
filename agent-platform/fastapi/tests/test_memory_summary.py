@@ -14,7 +14,6 @@ import os
 
 os.environ.setdefault("FASTAPI_ENV", "testing")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///test.db")
-os.environ.setdefault("SIM_API_KEY", "test-key")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("WHATSAPP_TOKEN", "")
 os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "")
@@ -37,10 +36,10 @@ class TestSummaryInjection:
             None,
             "DIRECTIVAS",
             _TEMPORAL_CTX,
-            "Hablamos de sueldos de abril.",
+            "Hablamos del seguimiento de una solicitud.",
         )
         assert _MEM_HEADER in out
-        assert "Hablamos de sueldos de abril." in out
+        assert "Hablamos del seguimiento de una solicitud." in out
         # Las directivas se preservan.
         assert "DIRECTIVAS" in out
 

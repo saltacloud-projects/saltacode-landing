@@ -92,6 +92,8 @@ docker compose --env-file .env.sandbox.local \
 | `docs/quality/` | SEO, accessibility, and performance gates. |
 | `docs/architecture/` | Technology, trust-boundary, and runtime decisions. |
 
+The agent panel's configuration hierarchy, persistence ownership, write-only secret boundary, and channel routing are documented in [`agent-platform/docs/architecture/administration-model.md`](agent-platform/docs/architecture/administration-model.md). The landing workspace uses pnpm; the independent agent administration panel uses npm with its committed `package-lock.json`.
+
 ## Delivery rules
 
 1. Keep changes in bounded work units and validate before a Conventional Commit.

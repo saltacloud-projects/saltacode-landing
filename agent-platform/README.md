@@ -22,7 +22,7 @@ The browser never receives provider keys, integration credentials, or the intern
 ## Capabilities
 
 - Independent agent profiles with public/private visibility and retention settings.
-- Principals and channel identities shared across web, WhatsApp, and API channels.
+- Principals with route-scoped channel identities for web, WhatsApp, and API channels.
 - Persisted conversations, messages, execution state, consent, and audit records.
 - Encrypted integration credentials configured through the panel.
 - HTTP sources with host allowlists, TLS enforcement, timeouts, size limits, and SSRF defenses.
@@ -57,14 +57,16 @@ Stop the stack with:
 
 ## Configuration workflow
 
-1. Sign in to the panel.
-2. Create an integration source with its base URL, allowed hosts, authentication scheme, and encrypted credentials.
-3. Test source connectivity from the panel.
-4. Create tools bound to that source and explicitly select method, parameter location, channels, and risk policy.
-5. Enable tools only for the channels that may use them and mark web-visible sources public explicitly.
-6. Configure the agent profile and knowledge, then validate in Prompt Lab before exposing it to a public channel.
+1. Sign in and create reusable provider, channel, and API connections in the platform library.
+2. Create an integration source with its base URL, allowed hosts, authentication scheme, transport policy, and write-only encrypted credentials.
+3. Test source connectivity, then create tools bound to that source with an explicit method, parameter location, channel, and risk policy.
+4. Select an agent and assign only the sources, tools, knowledge blocks, document areas, and WhatsApp users it may use.
+5. Configure that agent's provider runtime and its server-owned web or WhatsApp routes.
+6. Validate the selected persisted agent in PromptLab before exposing it to a public channel.
 
 Write-capable tools are never inferred from user text. They require trusted configuration, channel authorization, explicit confirmation, and an idempotency strategy.
+
+See [`docs/architecture/administration-model.md`](docs/architecture/administration-model.md) for the complete hierarchy, persisted/editable configuration, write-only secret boundary, channel routing, and current global-audit limitation.
 
 ## Development
 
@@ -80,10 +82,12 @@ npm run build
 ```
 
 The clean platform schema lives in `fastapi/migrations_platform/` and is selected with `fastapi/alembic-platform.ini`.
+The administration panel intentionally uses npm and its committed `package-lock.json`; the repository landing uses pnpm from the repository root.
 
 ## Documentation
 
 - `docs/architecture/platform.md`
+- `docs/architecture/administration-model.md`
 - `docs/operations/local-stack.md`
 - `docs/security/trust-boundaries.md`
 - `docs/tools/http-sources.md`

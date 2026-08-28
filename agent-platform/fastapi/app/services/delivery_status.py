@@ -7,8 +7,8 @@ el HTTP 200 al enviar solo significa que Meta aceptó el mensaje; la entrega rea
 (`sent` → `delivered` → `read`, o `failed`) llega async por webhooks de status.
 
 Flujo:
-  1. Al enviar un template (reporte), `record_outbound()` inserta una fila con
-     status `accepted` y el contexto (a quién / qué reporte).
+  1. Al enviar una notificación, `record_outbound()` inserta una fila con
+     status `accepted` y el contexto de la entrega.
   2. Cuando Meta manda el webhook de status, `upsert_statuses()` actualiza esa
      misma fila (match por `meta_message_id`) con el estado real y el error si
      falló (ej: 131026 = el número no está en WhatsApp).
