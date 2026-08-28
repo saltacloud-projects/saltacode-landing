@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     session_cookie_name: str = "saltacode_chat_session"
     session_cookie_max_age_seconds: int = Field(default=2_592_000, ge=300, le=31_536_000)
     chat_privacy_version: str = Field(
-        default="saltacode-chat-privacy-2026-08-28",
+        default="saltacode-chat-privacy-2026-08-27",
         min_length=1,
         max_length=80,
         pattern=r"^[a-z0-9][a-z0-9._-]*$",

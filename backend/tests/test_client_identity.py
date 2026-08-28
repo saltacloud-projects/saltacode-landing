@@ -29,7 +29,7 @@ def payload() -> dict[str, str | bool]:
         "message": "test",
         "locale": "es-AR",
         "transcript_consent": True,
-        "privacy_version": "saltacode-chat-privacy-2026-08-28",
+        "privacy_version": "saltacode-chat-privacy-2026-08-27",
     }
 
 
