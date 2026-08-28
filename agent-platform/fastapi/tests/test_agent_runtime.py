@@ -22,7 +22,12 @@ from app.models.agent_runtime import (
     ChannelConnection,
     ProviderConnection,
 )
-from app.models.platform import ChatConversation, ChatExecution, ChatMessage
+from app.models.platform import (
+    ChannelIdentity,
+    ChatConversation,
+    ChatExecution,
+    ChatMessage,
+)
 from app.routers.admin.agent_runtime import patch_runtime, router
 from app.routers.admin.promptlab import PromptPreviewRequest, prompt_preview
 from app.schemas.agent_runtime import (
@@ -339,30 +344,76 @@ async def test_resolver_isolates_route_and_fails_closed_for_inactive_agent(monke
         await AgentRuntimeResolver().resolve_agent(_SequenceDb(None), uuid4())
 
 
+class _RouteMemoryDb(_MemoryDb):
+    async def execute(self, statement):
+        entity = statement.column_descriptions[0].get("entity")
+        params = set(statement.compile().params.values())
+        if entity is ChatConversation:
+            row = next(
+                (
+                    item
+                    for item in self.rows
+                    if isinstance(item, ChatConversation)
+                    and item.agent_id in params
+                    and item.channel in params
+                    and item.route_key in params
+                    and item.external_thread_id in params
+                ),
+                None,
+            )
+            return _Result(row)
+        if entity is ChannelIdentity:
+            row = next(
+                (
+                    item
+                    for item in self.rows
+                    if isinstance(item, ChannelIdentity)
+                    and item.channel in params
+                    and item.route_key in params
+                    and item.external_subject in params
+                ),
+                None,
+            )
+            return _Result(row)
+        return await super().execute(statement)
+
+
 @pytest.mark.asyncio
-async def test_conversation_rejects_cross_route_replay():
+async def test_conversation_and_identity_are_independent_per_route():
     route_a, route_b = uuid4(), uuid4()
-    conversation = ChatConversation(
-        id=uuid4(),
-        agent_id=uuid4(),
-        principal_id=uuid4(),
+    agent_id = uuid4()
+    principal_id = uuid4()
+    db = _RouteMemoryDb()
+    service = ChatApplicationService()
+
+    conversation_a = await service._resolve_conversation(
+        db,
+        agent_id=agent_id,
+        principal_id=principal_id,
         channel="web",
         external_thread_id="session",
+        consent_version="v1",
         route_key="site-a",
         channel_route_id=route_a,
-        transcript_consent=True,
     )
-    with pytest.raises(AgentNotReady, match="another route"):
-        await ChatApplicationService()._resolve_conversation(
-            _SequenceDb(conversation),
-            agent_id=conversation.agent_id,
-            principal_id=conversation.principal_id,
-            channel="web",
-            external_thread_id="session",
-            consent_version="v1",
-            route_key="site-b",
-            channel_route_id=route_b,
-        )
+    conversation_b = await service._resolve_conversation(
+        db,
+        agent_id=agent_id,
+        principal_id=principal_id,
+        channel="web",
+        external_thread_id="session",
+        consent_version="v1",
+        route_key="site-b",
+        channel_route_id=route_b,
+    )
+    identity_a = await service._resolve_identity(db, "web", "site-a", "session")
+    identity_b = await service._resolve_identity(db, "web", "site-b", "session")
+
+    assert conversation_a.id != conversation_b.id
+    assert conversation_a.route_key == "site-a"
+    assert conversation_b.route_key == "site-b"
+    assert identity_a.id != identity_b.id
+    assert identity_a.principal_id != identity_b.principal_id
 
 
 @pytest.mark.asyncio

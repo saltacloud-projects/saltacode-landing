@@ -18,6 +18,8 @@ from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 from app.dependencies import get_db
 from app.models.agent_profile import AgentProfile
 from app.models.agent_resource_binding import (
+    AgentAuthorizedUserArea,
+    AgentAuthorizedUserBinding,
     AgentKnowledgeBlockBinding,
     AgentOrganizationAreaBinding,
     AgentSourceBinding,
@@ -59,6 +61,8 @@ class _AgentFilteredDb:
 
 def test_binding_models_have_cascading_foreign_keys_and_unique_pairs() -> None:
     expected = {
+        AgentAuthorizedUserBinding: {"agent_id", "user_id"},
+        AgentAuthorizedUserArea: {"agent_id", "user_id", "area_id"},
         AgentSourceBinding: {"agent_id", "source_id"},
         AgentToolBinding: {"agent_id", "tool_id"},
         AgentKnowledgeBlockBinding: {"agent_id", "knowledge_block_id"},
@@ -91,7 +95,13 @@ def test_agent_resource_api_exposes_all_binding_contracts() -> None:
         if isinstance(route, APIRoute)
         for method in route.methods
     }
-    for resource in ("sources", "tools", "knowledge-blocks", "document-areas"):
+    for resource in (
+        "sources",
+        "tools",
+        "knowledge-blocks",
+        "document-areas",
+        "authorized-users",
+    ):
         collection = f"/api/admin/agents/{{agent_id}}/{resource}"
         member = (
             collection
@@ -101,6 +111,7 @@ def test_agent_resource_api_exposes_all_binding_contracts() -> None:
                 "tools": "tool_id",
                 "knowledge-blocks": "block_id",
                 "document-areas": "area_id",
+                "authorized-users": "user_id",
             }[resource]
             + "}"
         )

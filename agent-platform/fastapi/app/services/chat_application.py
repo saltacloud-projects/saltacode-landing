@@ -70,7 +70,10 @@ class ChatApplicationService:
         """Dual-write the existing WhatsApp flow into the neutral history."""
         if await self._existing_outcome(db, request_id) is not None:
             return
-        identity = await self._resolve_identity(db, "whatsapp", external_subject)
+        route_scope = route_key or profile.slug
+        identity = await self._resolve_identity(
+            db, "whatsapp", route_scope, external_subject
+        )
         if display_name:
             principal = await db.get(Principal, identity.principal_id)
             if principal is not None:
@@ -83,7 +86,7 @@ class ChatApplicationService:
             channel="whatsapp",
             external_thread_id=external_subject,
             consent_version="whatsapp-existing-history-v1",
-            route_key=route_key,
+            route_key=route_scope,
             channel_route_id=channel_route_id,
         )
         inbound = ChatMessage(
@@ -130,14 +133,13 @@ class ChatApplicationService:
                 select(ChatConversation).where(
                     ChatConversation.agent_id == agent_id,
                     ChatConversation.channel == "whatsapp",
+                    ChatConversation.route_key == route_key,
                     ChatConversation.external_thread_id == external_subject,
                 )
             )
         ).scalar_one_or_none()
         if conversation is None:
             return [], None
-        if conversation.route_key not in (None, route_key):
-            raise AgentNotReady("WhatsApp identity belongs to another route")
         if conversation.channel_route_id not in (None, channel_route_id):
             raise AgentNotReady("WhatsApp identity belongs to another route")
         return await self._history(db, conversation.id, limit), conversation.summary
@@ -212,6 +214,7 @@ class ChatApplicationService:
                         select(ChannelIdentity).where(
                             ChannelIdentity.principal_id == conversation.principal_id,
                             ChannelIdentity.channel == "web",
+                            ChannelIdentity.route_key == conversation.route_key,
                         )
                     )
                 )
@@ -244,7 +247,10 @@ class ChatApplicationService:
         else:
             profile = resolved_profile
 
-            identity = await self._resolve_identity(db, "web", str(request.session_id))
+            route_scope = request.route_key or profile.slug
+            identity = await self._resolve_identity(
+                db, "web", route_scope, str(request.session_id)
+            )
             conversation = await self._resolve_conversation(
                 db,
                 agent_id=profile.id,
@@ -252,7 +258,7 @@ class ChatApplicationService:
                 channel="web",
                 external_thread_id=str(request.session_id),
                 consent_version=request.consent.version,
-                route_key=request.route_key,
+                route_key=route_scope,
                 channel_route_id=resolved_route.route.id if resolved_route else None,
             )
             history = await self._history(
@@ -385,12 +391,14 @@ class ChatApplicationService:
         self,
         db: AsyncSession,
         channel: str,
+        route_key: str,
         external_subject: str,
     ) -> ChannelIdentity:
         identity = (
             await db.execute(
                 select(ChannelIdentity).where(
                     ChannelIdentity.channel == channel,
+                    ChannelIdentity.route_key == route_key,
                     ChannelIdentity.external_subject == external_subject,
                 )
             )
@@ -403,6 +411,7 @@ class ChatApplicationService:
         identity = ChannelIdentity(
             principal_id=principal.id,
             channel=channel,
+            route_key=route_key,
             external_subject=external_subject,
             verified=True,
         )
@@ -419,7 +428,7 @@ class ChatApplicationService:
         channel: str,
         external_thread_id: str,
         consent_version: str,
-        route_key: str | None = None,
+        route_key: str,
         channel_route_id: uuid.UUID | None = None,
     ) -> ChatConversation:
         conversation = (
@@ -427,22 +436,17 @@ class ChatApplicationService:
                 select(ChatConversation).where(
                     ChatConversation.agent_id == agent_id,
                     ChatConversation.channel == channel,
+                    ChatConversation.route_key == route_key,
                     ChatConversation.external_thread_id == external_thread_id,
                 )
             )
         ).scalar_one_or_none()
         if conversation is not None:
-            if route_key is not None and conversation.route_key not in (
-                None,
-                route_key,
-            ):
-                raise AgentNotReady("session is already associated with another route")
             if channel_route_id is not None and conversation.channel_route_id not in (
                 None,
                 channel_route_id,
             ):
                 raise AgentNotReady("session is already associated with another route")
-            conversation.route_key = route_key or conversation.route_key
             conversation.channel_route_id = (
                 channel_route_id or conversation.channel_route_id
             )

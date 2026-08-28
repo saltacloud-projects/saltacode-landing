@@ -44,11 +44,7 @@ class RagRetrievalService:
             or not query.strip()
         ):
             return []
-        area_ids = (
-            area_ids_override
-            if area_ids_override is not None
-            else await get_user_area_ids(db, user_id)
-        )
+        parsed_agent_id = None
         if agent_id is not None:
             try:
                 parsed_agent_id = (
@@ -60,6 +56,12 @@ class RagRetrievalService:
                     extra={"request_id": request_id},
                 )
                 return []
+        area_ids = (
+            area_ids_override
+            if area_ids_override is not None
+            else await get_user_area_ids(db, user_id, parsed_agent_id)
+        )
+        if parsed_agent_id is not None:
             assigned_area_ids = await agent_resource_service.assigned_area_ids(
                 db, parsed_agent_id
             )

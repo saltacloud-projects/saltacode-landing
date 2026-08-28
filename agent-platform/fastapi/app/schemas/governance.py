@@ -5,6 +5,7 @@ Whitelist de usuarios, cuotas y control de acceso.
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,7 @@ class AccessCheckRequest(BaseModel):
     request_id: str
     phone_number: str
     channel: str = "whatsapp"
+    agent_id: UUID | None = None
 
 
 class AccessCheckResponse(BaseModel):
@@ -69,4 +71,35 @@ class UserOut(BaseModel):
             area_ids=area_ids or [],
             created_at=obj.created_at,
             updated_at=obj.updated_at,
+        )
+
+
+class AgentUserAssignmentUpdate(BaseModel):
+    is_active: bool = True
+    has_all_area_access: bool = False
+    area_ids: list[str] = Field(default_factory=list)
+
+
+class AgentUserOut(UserOut):
+    agent_id: str
+
+    @classmethod
+    def from_assignment(
+        cls,
+        agent_id,
+        user,
+        binding,
+        area_ids: list[str] | None = None,
+    ) -> "AgentUserOut":
+        return cls(
+            agent_id=str(agent_id),
+            id=str(user.id),
+            phone_number=user.phone_number,
+            name=user.name,
+            is_active=binding.is_active,
+            notes=user.notes,
+            has_all_area_access=binding.has_all_area_access,
+            area_ids=area_ids or [],
+            created_at=binding.created_at,
+            updated_at=binding.updated_at,
         )

@@ -1,13 +1,13 @@
 """Tool nativa exclusiva para entregar un original RAG ya citado."""
 
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.models.authorized_user import AuthorizedUser
 from app.models.rag import Document, DocumentBlob, DocumentFolder, DocumentVersion
 from app.schemas.tools import ToolExecutionContext, ToolResult
 from app.services.rag.access import get_user_area_ids
@@ -34,7 +34,6 @@ class RagDocumentSendTool(AbstractTool):
             return self._error(
                 request_id, "The document is not available for this channel."
             )
-        phone_number = context.external_subject or ""
         reference_code = str(params.get("reference_code") or "").strip().upper()
         if not _REFERENCE_RE.fullmatch(reference_code):
             return self._error(
@@ -48,19 +47,14 @@ class RagDocumentSendTool(AbstractTool):
                 return self._error(
                     request_id, "La biblioteca documental no está habilitada."
                 )
-            user = (
-                await db.execute(
-                    select(AuthorizedUser).where(
-                        AuthorizedUser.phone_number == phone_number,
-                        AuthorizedUser.is_active == True,  # noqa: E712
-                    )
-                )
-            ).scalar_one_or_none()
-            if user is None:
+            try:
+                user_id = uuid.UUID(context.principal_id or "")
+                agent_id = uuid.UUID(context.agent_id or "")
+            except ValueError:
                 return self._error(
                     request_id, "El documento no está disponible para este usuario."
                 )
-            area_ids = await get_user_area_ids(db, user.id)
+            area_ids = await get_user_area_ids(db, user_id, agent_id)
             if not area_ids:
                 return self._error(
                     request_id, "El documento no está disponible para este usuario."

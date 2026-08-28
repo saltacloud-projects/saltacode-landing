@@ -208,6 +208,7 @@ class PipelineService:
                             request_id=request_id,
                             phone_number=phone,
                             channel="whatsapp",
+                            agent_id=profile.id if profile is not None else None,
                         ),
                     )
 

@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
+from app.models.authorized_user import AuthorizedUser
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.rag import OrganizationArea
 from app.models.tool_config import ToolConfig
 from app.routers.admin.auth import require_admin_role, require_permission
 from app.schemas.admin import KnowledgeBlockOut, ToolConfigOut
+from app.schemas.governance import AgentUserAssignmentUpdate, AgentUserOut
 from app.schemas.integrations import IntegrationSourceOut
 from app.schemas.rag import AreaOut
 from app.services.admin_rbac import AdminPermission
@@ -242,5 +244,74 @@ async def unassign_agent_document_area(
     )
     await agent_resource_service.unassign_document_area(
         db, parsed_agent_id, parsed_area_id
+    )
+    return None
+
+
+@router.get(
+    "/{agent_id}/authorized-users",
+    response_model=list[AgentUserOut],
+    dependencies=[Depends(require_permission(AdminPermission.USERS_READ))],
+)
+async def list_agent_authorized_users(
+    agent_id: str, db: AsyncSession = Depends(get_db)
+):
+    parsed_agent_id = await _agent_or_404(db, agent_id)
+    return [
+        AgentUserOut.from_assignment(parsed_agent_id, user, binding, area_ids)
+        for user, binding, area_ids in (
+            await agent_resource_service.list_authorized_users(db, parsed_agent_id)
+        )
+    ]
+
+
+@router.put(
+    "/{agent_id}/authorized-users/{user_id}",
+    response_model=AgentUserOut,
+    dependencies=[Depends(require_admin_role)],
+)
+async def assign_agent_authorized_user(
+    agent_id: str,
+    user_id: str,
+    data: AgentUserAssignmentUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    parsed_agent_id = await _agent_or_404(db, agent_id)
+    parsed_user_id = await _resource_or_404(
+        db, AuthorizedUser, user_id, "Authorized user"
+    )
+    try:
+        binding = await agent_resource_service.assign_authorized_user(
+            db,
+            parsed_agent_id,
+            parsed_user_id,
+            is_active=data.is_active,
+            has_all_area_access=data.has_all_area_access,
+            raw_area_ids=data.area_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    user = await db.get(AuthorizedUser, parsed_user_id)
+    assigned = await agent_resource_service.list_authorized_users(db, parsed_agent_id)
+    area_ids = next(
+        (areas for item, _, areas in assigned if item.id == parsed_user_id), []
+    )
+    return AgentUserOut.from_assignment(parsed_agent_id, user, binding, area_ids)
+
+
+@router.delete(
+    "/{agent_id}/authorized-users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin_role)],
+)
+async def unassign_agent_authorized_user(
+    agent_id: str, user_id: str, db: AsyncSession = Depends(get_db)
+):
+    parsed_agent_id = await _agent_or_404(db, agent_id)
+    parsed_user_id = await _resource_or_404(
+        db, AuthorizedUser, user_id, "Authorized user"
+    )
+    await agent_resource_service.unassign_authorized_user(
+        db, parsed_agent_id, parsed_user_id
     )
     return None

@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_profile import AgentProfile
 from app.models.agent_resource_binding import (
+    AgentAuthorizedUserArea,
+    AgentAuthorizedUserBinding,
     AgentKnowledgeBlockBinding,
     AgentOrganizationAreaBinding,
     AgentSourceBinding,
     AgentToolBinding,
 )
+from app.models.authorized_user import AuthorizedUser
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.rag import Document, DocumentFolder, OrganizationArea
@@ -134,6 +137,35 @@ class AgentResourceService:
             for area, folder_count, document_count in rows
         ]
 
+    async def list_authorized_users(
+        self, db: AsyncSession, agent_id: uuid.UUID
+    ) -> list[tuple[AuthorizedUser, AgentAuthorizedUserBinding, list[str]]]:
+        rows = (
+            await db.execute(
+                select(AuthorizedUser, AgentAuthorizedUserBinding)
+                .join(
+                    AgentAuthorizedUserBinding,
+                    AgentAuthorizedUserBinding.user_id == AuthorizedUser.id,
+                )
+                .where(AgentAuthorizedUserBinding.agent_id == agent_id)
+                .order_by(AuthorizedUser.name, AuthorizedUser.phone_number)
+            )
+        ).all()
+        area_rows = (
+            await db.execute(
+                select(
+                    AgentAuthorizedUserArea.user_id,
+                    AgentAuthorizedUserArea.area_id,
+                ).where(AgentAuthorizedUserArea.agent_id == agent_id)
+            )
+        ).all()
+        areas_by_user: dict[uuid.UUID, list[str]] = {}
+        for user_id, area_id in area_rows:
+            areas_by_user.setdefault(user_id, []).append(str(area_id))
+        return [
+            (user, binding, areas_by_user.get(user.id, [])) for user, binding in rows
+        ]
+
     async def assigned_area_ids(
         self, db: AsyncSession, agent_id: uuid.UUID
     ) -> set[uuid.UUID]:
@@ -193,6 +225,44 @@ class AgentResourceService:
             area_id,
         )
 
+    async def assign_authorized_user(
+        self,
+        db: AsyncSession,
+        agent_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        is_active: bool,
+        has_all_area_access: bool,
+        raw_area_ids: list[str],
+    ) -> AgentAuthorizedUserBinding:
+        await db.execute(
+            pg_insert(AgentAuthorizedUserBinding)
+            .values(
+                agent_id=agent_id,
+                user_id=user_id,
+                is_active=is_active,
+                has_all_area_access=has_all_area_access,
+            )
+            .on_conflict_do_update(
+                index_elements=["agent_id", "user_id"],
+                set_={
+                    "is_active": is_active,
+                    "has_all_area_access": has_all_area_access,
+                    "updated_at": func.now(),
+                },
+            )
+        )
+        await self._sync_authorized_user_areas(db, agent_id, user_id, raw_area_ids)
+        binding = (
+            await db.execute(
+                select(AgentAuthorizedUserBinding).where(
+                    AgentAuthorizedUserBinding.agent_id == agent_id,
+                    AgentAuthorizedUserBinding.user_id == user_id,
+                )
+            )
+        ).scalar_one()
+        return binding
+
     async def unassign_source(
         self, db: AsyncSession, agent_id: uuid.UUID, source_id: uuid.UUID
     ) -> None:
@@ -228,6 +298,84 @@ class AgentResourceService:
             agent_id,
             area_id,
         )
+
+    async def unassign_authorized_user(
+        self, db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    ) -> None:
+        await db.execute(
+            delete(AgentAuthorizedUserBinding).where(
+                AgentAuthorizedUserBinding.agent_id == agent_id,
+                AgentAuthorizedUserBinding.user_id == user_id,
+            )
+        )
+
+    @staticmethod
+    async def _sync_authorized_user_areas(
+        db: AsyncSession,
+        agent_id: uuid.UUID,
+        user_id: uuid.UUID,
+        raw_area_ids: list[str],
+    ) -> None:
+        try:
+            area_ids = {uuid.UUID(str(raw)) for raw in raw_area_ids}
+        except ValueError as exc:
+            raise ValueError("One or more document areas are invalid") from exc
+
+        general_area_id = (
+            await db.execute(
+                select(OrganizationArea.id)
+                .join(
+                    AgentOrganizationAreaBinding,
+                    AgentOrganizationAreaBinding.area_id == OrganizationArea.id,
+                )
+                .where(
+                    AgentOrganizationAreaBinding.agent_id == agent_id,
+                    OrganizationArea.is_general == True,  # noqa: E712
+                    OrganizationArea.is_active == True,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+        if general_area_id is not None:
+            area_ids.add(general_area_id)
+
+        if area_ids:
+            owned_area_ids = set(
+                (
+                    await db.execute(
+                        select(OrganizationArea.id)
+                        .join(
+                            AgentOrganizationAreaBinding,
+                            AgentOrganizationAreaBinding.area_id == OrganizationArea.id,
+                        )
+                        .where(
+                            AgentOrganizationAreaBinding.agent_id == agent_id,
+                            OrganizationArea.id.in_(area_ids),
+                            OrganizationArea.is_active == True,  # noqa: E712
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if owned_area_ids != area_ids:
+                raise ValueError(
+                    "One or more document areas are not assigned to this agent"
+                )
+
+        await db.execute(
+            delete(AgentAuthorizedUserArea).where(
+                AgentAuthorizedUserArea.agent_id == agent_id,
+                AgentAuthorizedUserArea.user_id == user_id,
+            )
+        )
+        for area_id in sorted(area_ids, key=str):
+            db.add(
+                AgentAuthorizedUserArea(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    area_id=area_id,
+                )
+            )
 
     @staticmethod
     async def _assign(

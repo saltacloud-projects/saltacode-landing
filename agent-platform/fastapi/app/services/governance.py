@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent_resource_binding import AgentAuthorizedUserBinding
 from app.models.authorized_user import AuthorizedUser
 from app.models.rag import AuthorizedUserArea, OrganizationArea
 from app.models.tool_config import ToolConfig
@@ -27,14 +28,29 @@ class GovernanceService:
     async def check_access(
         self, db: AsyncSession, req: AccessCheckRequest
     ) -> AccessCheckResponse:
-        user = await self._get_user(db, req.phone_number)
+        if req.agent_id is None:
+            logger.warning(
+                "legacy_governance_access_without_agent_scope",
+                extra={"request_id": req.request_id, "channel": req.channel},
+            )
+            user = await self._get_user(db, req.phone_number)
+            binding = None
+        else:
+            scoped = await self._get_agent_user(db, req.agent_id, req.phone_number)
+            if scoped is None:
+                return AccessCheckResponse(
+                    allowed=False,
+                    reason="Número no autorizado para este agente",
+                )
+            user, binding = scoped
 
         if user is None:
             return AccessCheckResponse(
                 allowed=False,
                 reason="Número no autorizado",
             )
-        if not user.is_active:
+        is_active = binding.is_active if binding is not None else user.is_active
+        if not is_active:
             return AccessCheckResponse(
                 allowed=False,
                 user={"user_id": str(user.id), "name": user.name},
@@ -43,7 +59,15 @@ class GovernanceService:
 
         return AccessCheckResponse(
             allowed=True,
-            user={"user_id": str(user.id), "name": user.name},
+            user={
+                "user_id": str(user.id),
+                "name": user.name,
+                "has_all_area_access": (
+                    binding.has_all_area_access
+                    if binding is not None
+                    else user.has_all_area_access
+                ),
+            },
         )
 
     async def get_user(
@@ -160,6 +184,26 @@ class GovernanceService:
             select(AuthorizedUser).where(AuthorizedUser.phone_number == phone)
         )
         return result.scalar_one_or_none()
+
+    async def _get_agent_user(
+        self,
+        db: AsyncSession,
+        agent_id: uuid.UUID,
+        phone: str,
+    ) -> tuple[AuthorizedUser, AgentAuthorizedUserBinding] | None:
+        return (
+            await db.execute(
+                select(AuthorizedUser, AgentAuthorizedUserBinding)
+                .join(
+                    AgentAuthorizedUserBinding,
+                    AgentAuthorizedUserBinding.user_id == AuthorizedUser.id,
+                )
+                .where(
+                    AgentAuthorizedUserBinding.agent_id == agent_id,
+                    AuthorizedUser.phone_number == phone,
+                )
+            )
+        ).one_or_none()
 
     async def _sync_user_areas(
         self,

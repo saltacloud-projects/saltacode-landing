@@ -5,6 +5,8 @@ from app.models.admin_role import AdminRole
 from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
 from app.models.agent_resource_binding import (
+    AgentAuthorizedUserArea,
+    AgentAuthorizedUserBinding,
     AgentKnowledgeBlockBinding,
     AgentOrganizationAreaBinding,
     AgentSourceBinding,

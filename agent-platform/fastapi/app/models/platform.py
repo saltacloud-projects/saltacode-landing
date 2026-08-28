@@ -40,7 +40,10 @@ class ChannelIdentity(TimestampedModel):
     __tablename__ = "channel_identities"
     __table_args__ = (
         UniqueConstraint(
-            "channel", "external_subject", name="uq_channel_identity_subject"
+            "channel",
+            "route_key",
+            "external_subject",
+            name="uq_channel_identity_subject",
         ),
     )
 
@@ -48,6 +51,7 @@ class ChannelIdentity(TimestampedModel):
         UUID(as_uuid=True), ForeignKey("principals.id", ondelete="CASCADE"), index=True
     )
     channel: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    route_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     external_subject: Mapped[str] = mapped_column(String(255), nullable=False)
     verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     attributes: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
@@ -63,6 +67,7 @@ class ChatConversation(TimestampedModel):
         UniqueConstraint(
             "agent_id",
             "channel",
+            "route_key",
             "external_thread_id",
             name="uq_chat_conversation_external_thread",
         ),
@@ -79,9 +84,7 @@ class ChatConversation(TimestampedModel):
     )
     channel: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     external_thread_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    route_key: Mapped[str | None] = mapped_column(
-        String(120), nullable=True, index=True
-    )
+    route_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     channel_route_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("channel_agent_routes.id", ondelete="SET NULL"),
