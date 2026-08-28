@@ -813,6 +813,10 @@ ul {
   object-fit: cover;
 }
 
+#consultoria-it img { object-position: 50% 38%; }
+#outsourcing img { object-position: 68%; }
+#soluciones-saas img { object-position: 50% 32%; }
+
 .service-card-copy {
   display: flex;
   min-width: 0;

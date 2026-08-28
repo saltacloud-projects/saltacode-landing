@@ -20,6 +20,8 @@ const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
 const chatSource = await readFile(resolve(import.meta.dirname, "../src/scripts/chat-preview.ts"), "utf8");
+const pageMotionSource = await readFile(resolve(import.meta.dirname, "../src/scripts/page-motion.ts"), "utf8");
+const clientMessageIdSource = await readFile(resolve(import.meta.dirname, "../src/scripts/client-message-id.ts"), "utf8");
 const assetManifest = JSON.parse(await readFile(resolve(import.meta.dirname, "../src/assets/optimized/manifest.json"), "utf8"));
 
 const BUILD_BUDGETS = Object.freeze({
@@ -157,6 +159,7 @@ for (const [route, markup] of pages) {
   const hrefs = extractAnchorHrefs(navigationMarkup);
   for (const href of [...requiredNavigation, ...requiredLegalLinks]) if (!hrefs.includes(href)) throw new Error(`${route} navigation is missing ${href}.`);
   if (route !== "/" && !/class="breadcrumbs"/.test(markup)) throw new Error(`${route} must render visible breadcrumbs.`);
+  if (/\sstyle="/.test(markup)) throw new Error(`${route} contains a CSP-incompatible inline style attribute.`);
 }
 
 const homeHeader = extractLandmark(index, "header");
@@ -184,6 +187,8 @@ if (!/<form\b[^>]*class="agent-preview"[^>]*data-chat-launcher/.test(index)) thr
 if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-27"') || !chatSource.includes('const CONSENT_STORAGE_KEY = "saltacode-chat-consent"')) throw new Error("Chat consent version or local key is incorrect.");
 if (/transcript-consent|type="checkbox"/.test(chatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
 if (!chatSource.includes("Aceptar y enviar") || !chatSource.includes("event.isComposing") || !chatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");
+if ([chatSource, pageMotionSource].some((source) => source.includes("crypto.randomUUID"))) throw new Error("Public chat code must not require randomUUID on insecure LAN origins.");
+if (!clientMessageIdSource.includes("crypto.getRandomValues") || !clientMessageIdSource.includes("4000-8000")) throw new Error("The browser-compatible UUID v4 generator is missing.");
 
 const clientList = index.match(/<ul class="client-group" data-client-group[^>]*>([\s\S]*?)<\/ul>/)?.[1];
 if (!clientList || (index.match(/<ul\b[^>]*\bdata-client-group\b/g) ?? []).length !== 1) throw new Error("Accessible client group is missing or duplicated.");

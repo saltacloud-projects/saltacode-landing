@@ -32,7 +32,6 @@ export interface Service {
   description: string;
   image: ImageMetadata;
   imageAlt: string;
-  imagePosition: string;
   features: readonly { title: string; copy: string }[];
 }
 
@@ -47,7 +46,6 @@ export const services = [
       "Diseñamos y desarrollamos sistemas web y móviles adaptados a tus procesos, integraciones y objetivos de negocio.",
     image: softwareImage,
     imageAlt: "Tarjeta de presentación de SaltaCode",
-    imagePosition: "center",
     features: [
       { title: "Procesos", copy: "Digitalizamos tareas y flujos que hoy consumen tiempo." },
       { title: "Integraciones", copy: "Conectamos herramientas y datos para evitar trabajo duplicado." },
@@ -65,7 +63,6 @@ export const services = [
       "Analizamos tu contexto y te ayudamos a decidir arquitectura, tecnologías y un plan de implementación antes de avanzar.",
     image: consultingImage,
     imageAlt: "Saludo profesional de un integrante de SaltaCode",
-    imagePosition: "center 38%",
     features: [
       { title: "Arquitectura", copy: "Definimos límites, integraciones y criterios de evolución." },
       { title: "Tecnología", copy: "Comparamos opciones según costo, equipo y mantenimiento." },
@@ -83,7 +80,6 @@ export const services = [
       "Sumamos perfiles técnicos o equipos para iniciar un proyecto, ampliar capacidad o complementar tu equipo interno.",
     image: outsourcingImage,
     imageAlt: "Taza de SaltaCode en una oficina",
-    imagePosition: "68% center",
     features: [
       { title: "Perfiles", copy: "Armamos el equipo según el desafío y la etapa del proyecto." },
       { title: "Integración", copy: "Trabajamos con tus responsables, procesos y herramientas." },
@@ -101,7 +97,6 @@ export const services = [
       "Diseñamos, construimos y evolucionamos productos SaaS preparados para operar con usuarios reales.",
     image: saasImage,
     imageAlt: "Equipo de SaltaCode colaborando frente a una computadora",
-    imagePosition: "center 32%",
     features: [
       { title: "Producto", copy: "Aterrizamos el problema, el alcance y la experiencia de uso." },
       { title: "Cuentas y permisos", copy: "Preparamos usuarios, accesos y operación del servicio." },

@@ -8,10 +8,9 @@ if (chatLauncher) chatLauncher.onsubmit = (event) => {
   event.preventDefault();
   if (openingChat) return;
   openingChat = true;
-  const clientMessageId = crypto.randomUUID();
   chatModulePromise ??= import("./chat-preview");
   void chatModulePromise
-    .then(({ openChatPreview }) => openChatPreview(chatLauncher, clientMessageId))
+    .then(({ openChatPreview }) => openChatPreview(chatLauncher))
     .finally(() => { openingChat = false; });
 };
 
