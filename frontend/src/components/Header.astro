@@ -45,7 +45,7 @@ const navigation = [
               <li>
                 <a
                   href={item.href}
-                  aria-current={item.match && currentPath === item.match ? "page" : undefined}
+                  aria-current={item.match && currentPath.startsWith(item.match) ? "page" : undefined}
                 >{item.label}</a>
               </li>
             ))}

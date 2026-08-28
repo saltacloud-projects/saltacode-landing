@@ -1,5 +1,7 @@
 ---
 import "../styles/global.css";
+import PrivacyCenter from "../components/PrivacyCenter.astro";
+import { site } from "../data/site-content";
 
 interface Breadcrumb {
   name: string;
@@ -11,9 +13,10 @@ interface Props {
   description: string;
   indexable?: boolean;
   breadcrumbs?: readonly Breadcrumb[];
+  schema?: readonly Record<string, unknown>[];
 }
 
-const { title, description, indexable = true, breadcrumbs = [] } = Astro.props;
+const { title, description, indexable = true, breadcrumbs = [], schema = [] } = Astro.props;
 
 if (!Astro.site) {
   throw new Error("Astro site must be configured to generate canonical metadata.");
@@ -30,10 +33,13 @@ const graph: Record<string, unknown>[] = [
     "@type": ["Organization", "ProfessionalService"],
     "@id": organizationId.href,
     name: "SaltaCode",
+    legalName: site.legalName,
+    taxID: site.taxId,
     url: Astro.site.href,
     logo: new URL("/favicon.png", Astro.site).href,
     email: "saltacodear@gmail.com",
     telephone: "+54 9 387 529-6587",
+    founder: { "@type": "Person", name: site.legalName },
     address: {
       "@type": "PostalAddress",
       streetAddress: "Zuviría 333, Oficina 4C",
@@ -78,6 +84,8 @@ if (breadcrumbs.length > 0) {
     })),
   });
 }
+
+graph.push(...schema);
 
 const structuredData = { "@context": "https://schema.org", "@graph": graph };
 ---
@@ -128,6 +136,7 @@ const structuredData = { "@context": "https://schema.org", "@graph": graph };
   <body>
     <a class="skip-link" href="#contenido">Saltar al contenido principal</a>
     <slot />
+    <PrivacyCenter />
     <script>
       import "../scripts/theme-controller";
     </script>

@@ -47,7 +47,7 @@ def test_allowed_origin_rejects_paths() -> None:
 def test_chat_privacy_version_uses_current_notice() -> None:
     settings = Settings(app_env="test")
 
-    assert settings.chat_privacy_version == "saltacode-chat-privacy-2026-08-27"
+    assert settings.chat_privacy_version == "saltacode-chat-privacy-2026-08-28"
 
 
 @pytest.mark.parametrize("value", ["Privacy Version 1", "a" * 81])

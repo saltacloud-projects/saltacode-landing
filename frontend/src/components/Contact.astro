@@ -1,5 +1,6 @@
 ---
 import { site } from "../data/site-content";
+import SiteIcon from "./SiteIcon.astro";
 ---
 
 <section class="section contact legacy-fragment-target" id="contacto" aria-labelledby="contact-title">
@@ -13,16 +14,16 @@ import { site } from "../data/site-content";
         resulte más cómodo.
       </p>
       <div class="contact-actions">
-        <a class="button" href={`mailto:${site.email}`}>Escribinos por email</a>
-        <a class="button button-secondary" href={site.whatsapp} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+        <a class="button" href={`mailto:${site.email}`}><SiteIcon name="email" />Escribinos por email</a>
+        <a class="button button-secondary" href={site.whatsapp} target="_blank" rel="noopener noreferrer"><SiteIcon name="whatsapp" />WhatsApp</a>
       </div>
     </div>
 
     <address class="contact-directory">
-      <a href={`mailto:${site.email}`}><span>Email</span><strong>{site.email}</strong></a>
-      <a href={site.phoneHref}><span>Teléfono</span><strong>{site.phoneDisplay}</strong></a>
+      <a href={`mailto:${site.email}`}><SiteIcon name="email" /><span>Email</span><strong>{site.email}</strong></a>
+      <a href={site.phoneHref}><SiteIcon name="phone" /><span>Teléfono</span><strong>{site.phoneDisplay}</strong></a>
       <a href={site.maps} target="_blank" rel="noopener noreferrer">
-        <span>Oficina</span><strong>{site.address}<br />{site.locality}</strong>
+        <SiteIcon name="google-maps" /><span>Oficina</span><strong>{site.address}<br />{site.locality}</strong>
       </a>
       <a href="/contacto/"><span>Todos los canales</span><strong>Ver contacto <span aria-hidden="true">→</span></strong></a>
     </address>

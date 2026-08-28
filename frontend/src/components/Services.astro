@@ -41,7 +41,7 @@ import { services } from "../data/site-content";
           <span class="service-number">{service.number}</span>
           <h3>{service.title}</h3>
           <p>{service.shortDescription}</p>
-          <a class="text-link" href={`/servicios/#${service.id}`}>Ver este servicio <span aria-hidden="true">→</span></a>
+          <a class="text-link" href={service.href}>Ver más <span aria-hidden="true">→</span></a>
         </div>
       </article>
     ))}

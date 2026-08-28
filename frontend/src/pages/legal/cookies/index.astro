@@ -25,13 +25,13 @@ const breadcrumbs = [
           <p class="eyebrow">Legal</p>
           <h1>Política de cookies y almacenamiento</h1>
           <p class="legal-updated">Última actualización: {legalUpdatedAt}</p>
-          <p class="page-lead">Usamos únicamente almacenamiento necesario para el funcionamiento del sitio, el tema visual y el consentimiento del chat.</p>
+          <p class="page-lead">Usamos únicamente almacenamiento necesario para el funcionamiento, las preferencias de privacidad, el tema visual y el chat.</p>
         </header>
 
         <div class="legal-content">
           <section>
             <h2>1. Qué tecnologías utiliza el sitio</h2>
-            <p>El sitio puede guardar información en una cookie técnica y en el almacenamiento local del navegador. Actualmente no usamos cookies de analítica, publicidad, seguimiento entre sitios ni marketing.</p>
+            <p>El sitio puede guardar información en una cookie técnica y en el almacenamiento local del navegador. Actualmente no usamos cookies de analítica, publicidad, seguimiento entre sitios ni marketing. Por eso no mostramos una falsa opción de “aceptar todo”: el aviso inicial confirma la configuración necesaria y el centro de privacidad deja visibles las categorías inactivas.</p>
           </section>
           <section>
             <h2>2. Sesión del chat</h2>
@@ -44,20 +44,29 @@ const breadcrumbs = [
             <p>La cookie se crea al enviar un mensaje aceptado al chat. Al ser HttpOnly, el código del navegador no puede leer su contenido.</p>
           </section>
           <section>
-            <h2>3. Preferencia de tema</h2>
-            <p>La clave local <code>saltacode-theme</code> recuerda si elegiste modo claro u oscuro. Si preferís “sistema”, no necesitamos guardar esa elección y usamos la configuración de tu dispositivo.</p>
+            <h2>3. Preferencias locales</h2>
+            <div class="storage-table" role="region" aria-label="Detalle del almacenamiento local" tabindex="0">
+              <table>
+                <thead><tr><th>Nombre</th><th>Finalidad</th><th>Duración</th></tr></thead>
+                <tbody>
+                  <tr><td><code>saltacode-theme</code></td><td>Recordar modo claro u oscuro.</td><td>Hasta que elijas “sistema” o borres los datos locales.</td></tr>
+                  <tr><td><code>saltacode-privacy-preferences</code></td><td>Registrar la versión de configuración necesaria que revisaste.</td><td>Hasta que la restablezcas o cambie la versión.</td></tr>
+                  <tr><td><code>saltacode-chat-consent</code></td><td>Registrar la versión de privacidad del chat y la fecha aceptada; no guarda mensajes.</td><td>Hasta que la restablezcas o cambie la versión.</td></tr>
+                </tbody>
+              </table>
+            </div>
           </section>
           <section>
-            <h2>4. Consentimiento del chat</h2>
-            <p>La clave local <code>saltacode-chat-consent</code> guarda exclusivamente la versión de privacidad aceptada y la fecha de aceptación. No contiene mensajes ni respuestas. Permanece en el navegador hasta que borres los datos del sitio o sea reemplazada por una versión posterior.</p>
+            <h2>4. Consentimiento independiente del chat</h2>
+            <p>La aceptación general de la configuración necesaria no habilita el envío de conversaciones. El chat pide una aceptación específica antes del primer mensaje y el servidor valida la versión vigente.</p>
           </section>
           <section>
             <h2>5. Cómo controlar este almacenamiento</h2>
-            <p>Podés eliminar cookies y datos locales desde la configuración de tu navegador. Al hacerlo, el sitio volverá a usar el tema del sistema, podrá solicitar nuevamente el consentimiento del chat y comenzará una nueva sesión de conversación.</p>
+            <p>Podés abrir “Preferencias de privacidad” desde el pie para revisar la configuración, la señal Global Privacy Control o restablecer las constancias locales. También podés eliminar cookies y datos desde tu navegador. La cookie HttpOnly del chat no puede borrarse mediante JavaScript; podés eliminarla desde el navegador y solicitar la supresión de conversaciones escribiendo a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
           </section>
           <section>
-            <h2>6. Cambios futuros</h2>
-            <p>Hoy no hace falta un banner global porque no usamos categorías opcionales. Si incorporamos analítica, marketing u otra tecnología no necesaria, actualizaremos esta política y ofreceremos un control previo para aceptar o rechazar esas categorías.</p>
+            <h2>6. Categorías opcionales y señales de preferencia</h2>
+            <p>Si incorporamos analítica, marketing u otra tecnología no necesaria, la bloquearemos hasta ofrecer un control previo para aceptar o rechazar por categoría. También evaluaremos las señales universales de exclusión que sean jurídicamente aplicables.</p>
             <p>Para consultas escribinos a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
           </section>
         </div>

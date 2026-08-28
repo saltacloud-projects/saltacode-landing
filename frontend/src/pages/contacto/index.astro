@@ -3,6 +3,7 @@ import "../../styles/interior.css";
 import Breadcrumbs from "../../components/Breadcrumbs.astro";
 import Footer from "../../components/Footer.astro";
 import Header from "../../components/Header.astro";
+import SiteIcon from "../../components/SiteIcon.astro";
 import { site } from "../../data/site-content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 
@@ -33,16 +34,16 @@ const breadcrumbs = [
     <section class="section contact-channels" aria-label="Canales de contacto">
       <div class="container channel-grid">
         <a class="channel-card featured" href={`mailto:${site.email}`}>
-          <span>Email</span><h2>{site.email}</h2><p>Escribinos con el contexto que tengas disponible.</p><strong>Enviar email <span aria-hidden="true">→</span></strong>
+          <SiteIcon name="email" size={28} /><span>Email</span><h2>{site.email}</h2><p>Escribinos con el contexto que tengas disponible.</p><strong>Enviar email <span aria-hidden="true">→</span></strong>
         </a>
         <a class="channel-card" href={site.whatsapp} target="_blank" rel="noopener noreferrer">
-          <span>WhatsApp</span><h2>{site.phoneDisplay}</h2><p>Iniciá una conversación desde tu teléfono o computadora.</p><strong>Abrir WhatsApp <span aria-hidden="true">→</span></strong>
+          <SiteIcon name="whatsapp" size={28} /><span>WhatsApp</span><h2>{site.phoneDisplay}</h2><p>Iniciá una conversación desde tu teléfono o computadora.</p><strong>Abrir WhatsApp <span aria-hidden="true">→</span></strong>
         </a>
         <a class="channel-card" href={site.phoneHref}>
-          <span>Teléfono</span><h2>{site.phoneDisplay}</h2><p>Llamanos si preferís conversar directamente.</p><strong>Llamar <span aria-hidden="true">→</span></strong>
+          <SiteIcon name="phone" size={28} /><span>Teléfono</span><h2>{site.phoneDisplay}</h2><p>Llamanos si preferís conversar directamente.</p><strong>Llamar <span aria-hidden="true">→</span></strong>
         </a>
         <a class="channel-card" href={site.maps} target="_blank" rel="noopener noreferrer">
-          <span>Oficina</span><h2>{site.address}</h2><p>{site.locality}</p><strong>Ver mapa <span aria-hidden="true">→</span></strong>
+          <SiteIcon name="google-maps" size={28} /><span>Google Maps</span><h2>{site.address}</h2><p>{site.locality}</p><strong>Ver mapa <span aria-hidden="true">→</span></strong>
         </a>
       </div>
     </section>
@@ -51,7 +52,7 @@ const breadcrumbs = [
       <div class="container location-grid">
         <div><p class="eyebrow">Redes</p><h2 id="social-title">También podés encontrarnos acá</h2></div>
         <ul class="social-directory">
-          {site.social.map((social) => <li><a href={social.href} target="_blank" rel="noopener noreferrer">{social.name}<span aria-hidden="true">↗</span></a></li>)}
+          {site.social.map((social) => <li><a href={social.href} target="_blank" rel="noopener noreferrer"><span><SiteIcon name={social.icon} />{social.name}</span><span aria-hidden="true">↗</span></a></li>)}
         </ul>
       </div>
     </section>

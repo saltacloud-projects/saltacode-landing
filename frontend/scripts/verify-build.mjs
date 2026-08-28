@@ -1,10 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
-import { extname, relative, resolve } from "node:path";
+import { dirname, extname, join, normalize, relative, resolve } from "node:path";
 
 const dist = resolve(import.meta.dirname, "../dist");
 const routeFiles = new Map([
   ["/", "index.html"],
   ["/servicios/", "servicios/index.html"],
+  ["/servicios/software-a-medida/", "servicios/software-a-medida/index.html"],
+  ["/servicios/consultoria-it/", "servicios/consultoria-it/index.html"],
+  ["/servicios/equipos-it/", "servicios/equipos-it/index.html"],
+  ["/servicios/productos-saas/", "servicios/productos-saas/index.html"],
   ["/nosotros/", "nosotros/index.html"],
   ["/contacto/", "contacto/index.html"],
   ["/legal/privacidad/", "legal/privacidad/index.html"],
@@ -20,6 +24,7 @@ const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
 const chatSource = await readFile(resolve(import.meta.dirname, "../src/scripts/chat-preview.ts"), "utf8");
+const privacySource = await readFile(resolve(import.meta.dirname, "../src/scripts/privacy-preferences.ts"), "utf8");
 const pageMotionSource = await readFile(resolve(import.meta.dirname, "../src/scripts/page-motion.ts"), "utf8");
 const clientMessageIdSource = await readFile(resolve(import.meta.dirname, "../src/scripts/client-message-id.ts"), "utf8");
 const assetManifest = JSON.parse(await readFile(resolve(import.meta.dirname, "../src/assets/optimized/manifest.json"), "utf8"));
@@ -28,9 +33,11 @@ const BUILD_BUDGETS = Object.freeze({
   indexHtmlBytes: 29 * 1024,
   coreCssBytes: 20 * 1024,
   additionalInteriorCssBytes: 5 * 1024,
-  initialExecutableJavaScriptBytes: 5 * 1024,
+  initialExecutableJavaScriptBytes: 5.25 * 1024,
   nonChatExecutableJavaScriptBytes: 7 * 1024,
   chatChunkBytes: 16 * 1024,
+  privacyChunkBytes: 3 * 1024,
+  privacyStylesheetBytes: 4 * 1024,
   socialImageBytes: 100 * 1024,
   webfontBytes: 0,
 });
@@ -85,25 +92,48 @@ function totalBytesForExtensions(extensions) {
   return buildFiles.filter((file) => extensions.has(file.extension)).reduce((total, file) => total + file.bytes, 0);
 }
 
+async function staticModuleGraphBytes(entryPaths) {
+  const pendingPaths = [...entryPaths];
+  const visitedPaths = new Set();
+  while (pendingPaths.length > 0) {
+    const path = pendingPaths.pop();
+    if (!path || visitedPaths.has(path)) continue;
+    const file = fileByPath.get(path);
+    if (!file) throw new Error(`Referenced module is missing: ${path}`);
+    visitedPaths.add(path);
+    const source = await readFile(resolve(dist, path), "utf8");
+    for (const match of source.matchAll(/\b(?:import|export)(?!\s*\()[^;\n]*?["']([^"']+)["']/g)) {
+      if (match[1].startsWith(".")) pendingPaths.push(normalize(join(dirname(path), match[1])));
+    }
+  }
+  return bytesForPaths(visitedPaths);
+}
+
 const homeScripts = extractExecutableScripts(index);
 const inlineBytes = homeScripts.reduce((total, script) => total + Buffer.byteLength(script[2]), 0);
-const initialExternalBytes = homeScripts.reduce((total, script) => {
+const initialScriptPaths = homeScripts.flatMap((script) => {
   const source = attributeValue(script[1], "src");
-  return source ? total + (fileByPath.get(source.replace(/^\//, ""))?.bytes ?? 0) : total;
-}, 0);
+  return source ? [source.replace(/^\//, "")] : [];
+});
+const initialExternalBytes = await staticModuleGraphBytes(initialScriptPaths);
 const homeCssPaths = stylesheetPaths(index);
 const allRouteCssPaths = new Set([...pages.values()].flatMap((markup) => [...stylesheetPaths(markup)]));
 const additionalCssPaths = new Set([...allRouteCssPaths].filter((path) => !homeCssPaths.has(path)));
 const chatChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)chat-preview\.[^/]+\.js$/.test(file.path));
 if (!chatChunk) throw new Error("The lazy chat chunk was not emitted.");
+const privacyChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)privacy-preferences\.[^/]+\.js$/.test(file.path));
+const privacyStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)privacy-preferences\.[^/]+\.css$/.test(file.path));
+if (!privacyChunk || !privacyStylesheet) throw new Error("The deferred privacy center assets were not emitted.");
 const totalJavaScript = totalBytesForExtensions(EXECUTABLE_JAVASCRIPT_EXTENSIONS) + inlineBytes;
 const measuredBuild = Object.freeze({
   indexHtmlBytes: indexBuffer.byteLength,
   coreCssBytes: bytesForPaths(homeCssPaths),
   additionalInteriorCssBytes: bytesForPaths(additionalCssPaths),
   initialExecutableJavaScriptBytes: initialExternalBytes + inlineBytes,
-  nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes,
+  nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes - privacyChunk.bytes,
   chatChunkBytes: chatChunk.bytes,
+  privacyChunkBytes: privacyChunk.bytes,
+  privacyStylesheetBytes: privacyStylesheet.bytes,
   socialImageBytes: socialImage.bytes,
   webfontBytes: totalBytesForExtensions(WEBFONT_EXTENSIONS),
 });
@@ -114,6 +144,8 @@ const budgetResults = [
   ["initial executable JavaScript", measuredBuild.initialExecutableJavaScriptBytes, BUILD_BUDGETS.initialExecutableJavaScriptBytes],
   ["non-chat executable JavaScript", measuredBuild.nonChatExecutableJavaScriptBytes, BUILD_BUDGETS.nonChatExecutableJavaScriptBytes],
   ["lazy chat chunk", measuredBuild.chatChunkBytes, BUILD_BUDGETS.chatChunkBytes],
+  ["deferred privacy JavaScript", measuredBuild.privacyChunkBytes, BUILD_BUDGETS.privacyChunkBytes],
+  ["deferred privacy CSS", measuredBuild.privacyStylesheetBytes, BUILD_BUDGETS.privacyStylesheetBytes],
   ["social preview image", measuredBuild.socialImageBytes, BUILD_BUDGETS.socialImageBytes],
   ["emitted webfonts", measuredBuild.webfontBytes, BUILD_BUDGETS.webfontBytes],
 ];
@@ -145,6 +177,7 @@ if (/Productos SaaS/.test(index)) throw new Error("The obsolete Productos SaaS l
 
 const requiredNavigation = ["/", "/#clientes", "/servicios/", "/nosotros/", "/contacto/"];
 const requiredLegalLinks = ["/legal/privacidad/", "/legal/cookies/", "/legal/terminos/"];
+const serviceRoutes = ["/servicios/software-a-medida/", "/servicios/consultoria-it/", "/servicios/equipos-it/", "/servicios/productos-saas/"];
 const titles = new Set();
 const descriptions = new Set();
 for (const [route, markup] of pages) {
@@ -174,6 +207,11 @@ for (const [route, markup] of pages) {
   if (route === "/") continue;
   const data = JSON.parse(markup.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)?.[1] ?? "null");
   if (!data?.["@graph"]?.some((node) => node["@type"] === "BreadcrumbList")) throw new Error(`${route} schema is missing BreadcrumbList.`);
+  if (serviceRoutes.includes(route) && !data?.["@graph"]?.some((node) => node["@type"] === "Service")) throw new Error(`${route} schema is missing Service.`);
+}
+
+for (const route of serviceRoutes) {
+  if (!extractAnchorHrefs(index).includes(route) || !extractAnchorHrefs(pages.get("/servicios/")).includes(route)) throw new Error(`${route} is not linked from the home and services hub.`);
 }
 
 const legacyAliases = [["productsAndServices", "servicios", "section"], ["it-consulting", "consultoria-it", "article"], ["saas-solutions", "soluciones-saas", "article"], ["ourCustomers", "clientes", "section"], ["aboutUs", "nosotros", "section"], ["footer", "contacto", "section"]];
@@ -184,11 +222,14 @@ for (const [alias, target, element] of legacyAliases) {
 }
 if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) throw new Error("Clients heading changed unexpectedly.");
 if (!/<form\b[^>]*class="agent-preview"[^>]*data-chat-launcher/.test(index)) throw new Error("Hero launcher must remain a semantic form.");
-if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-27"') || !chatSource.includes('const CONSENT_STORAGE_KEY = "saltacode-chat-consent"')) throw new Error("Chat consent version or local key is incorrect.");
+if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-28"') || !chatSource.includes('const CONSENT_STORAGE_KEY = "saltacode-chat-consent"')) throw new Error("Chat consent version or local key is incorrect.");
 if (/transcript-consent|type="checkbox"/.test(chatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
 if (!chatSource.includes("Aceptar y enviar") || !chatSource.includes("event.isComposing") || !chatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");
 if ([chatSource, pageMotionSource].some((source) => source.includes("crypto.randomUUID"))) throw new Error("Public chat code must not require randomUUID on insecure LAN origins.");
 if (!clientMessageIdSource.includes("crypto.getRandomValues") || !clientMessageIdSource.includes("4000-8000")) throw new Error("The browser-compatible UUID v4 generator is missing.");
+if (!privacySource.includes('const STORAGE_VERSION = "saltacode-storage-2026-08-28"') || !privacySource.includes("globalPrivacyControl")) throw new Error("The privacy center version or GPC handling is missing.");
+if (!index.includes("data-privacy-notice") || !index.includes("data-privacy-center") || !index.includes("data-privacy-settings")) throw new Error("The first-visit privacy notice or persistent privacy center control is missing.");
+if (!index.includes("/icons/site-icons.svg#site-icon-whatsapp") || !pages.get("/contacto/").includes("/icons/site-icons.svg#site-icon-google-maps")) throw new Error("Standardized public brand icons are missing.");
 
 const clientList = index.match(/<ul class="client-group" data-client-group[^>]*>([\s\S]*?)<\/ul>/)?.[1];
 if (!clientList || (index.match(/<ul\b[^>]*\bdata-client-group\b/g) ?? []).length !== 1) throw new Error("Accessible client group is missing or duplicated.");
@@ -220,7 +261,8 @@ if (totalAssetVariantBytes > ASSET_LIBRARY_BUDGETS.totalVariantBytes) throw new 
 
 if (!robots.includes("Allow: /") || !robots.includes("https://saltacode.com.ar/sitemap.xml")) throw new Error("robots.txt is invalid.");
 for (const route of routeFiles.keys()) if (!sitemap.includes(`<loc>https://saltacode.com.ar${route}</loc>`)) throw new Error(`sitemap.xml is missing ${route}.`);
-for (const legalRoute of ["/legal/privacidad/", "/legal/cookies/", "/legal/terminos/"]) if (!pages.get(legalRoute).includes("27 de agosto de 2026")) throw new Error(`${legalRoute} has no legal version date.`);
+for (const legalRoute of ["/legal/privacidad/", "/legal/cookies/", "/legal/terminos/"]) if (!pages.get(legalRoute).includes("28 de agosto de 2026")) throw new Error(`${legalRoute} has no legal version date.`);
+if (!pages.get("/legal/privacidad/").includes("20-38213561-0") || !index.includes('"taxID":"20-38213561-0"')) throw new Error("The verified controller tax identifier is missing from legal or structured data output.");
 
 if (homeScripts.length !== 3) throw new Error("Homepage must ship the theme bootstrap, page shell and deferred hero loader only.");
 const notFoundScripts = extractExecutableScripts(notFound);

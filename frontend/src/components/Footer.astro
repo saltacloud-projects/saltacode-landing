@@ -2,6 +2,7 @@
 import { brandImages } from "../data/image-assets";
 import { services, site } from "../data/site-content";
 import ThemeImage from "./ThemeImage.astro";
+import SiteIcon from "./SiteIcon.astro";
 
 const year = new Date().getFullYear();
 ---
@@ -24,7 +25,7 @@ const year = new Date().getFullYear();
     <nav aria-label="Servicios en el pie">
       <strong>Servicios</strong>
       <ul class="footer-links">
-        {services.map((service) => <li><a href={`/servicios/#${service.id}`}>{service.title}</a></li>)}
+        {services.map((service) => <li><a href={service.href}>{service.title}</a></li>)}
       </ul>
     </nav>
 
@@ -43,6 +44,7 @@ const year = new Date().getFullYear();
         <li><a href="/legal/privacidad/">Privacidad</a></li>
         <li><a href="/legal/cookies/">Cookies y almacenamiento</a></li>
         <li><a href="/legal/terminos/">Términos de uso</a></li>
+        <li><a href="/legal/cookies/" data-privacy-settings>Preferencias de privacidad</a></li>
       </ul>
     </nav>
   </div>
@@ -54,7 +56,7 @@ const year = new Date().getFullYear();
     </div>
     <ul class="footer-social" aria-label="Redes sociales">
       {site.social.map((social) => (
-        <li><a href={social.href} target="_blank" rel="noopener noreferrer">{social.name}</a></li>
+        <li><a href={social.href} target="_blank" rel="noopener noreferrer"><SiteIcon name={social.icon} /> {social.name}</a></li>
       ))}
     </ul>
   </div>

@@ -75,3 +75,5 @@ window.addEventListener("storage", ({ key, newValue }) => {
   if (key !== storageKey) return;
   applyPreference(isPreference(newValue) ? newValue : "system");
 });
+
+setTimeout(() => void import("./privacy-preferences"), 0);

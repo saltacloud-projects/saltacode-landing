@@ -1,0 +1,107 @@
+---
+import "../../styles/interior.css";
+import { Picture } from "astro:assets";
+import Breadcrumbs from "../../components/Breadcrumbs.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import { services, type Service } from "../../data/site-content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export function getStaticPaths() {
+  return services.map((service) => ({ params: { slug: service.slug }, props: { service } }));
+}
+
+interface Props {
+  service: Service;
+}
+
+const { service } = Astro.props;
+const relatedServices = services.filter((candidate) => candidate.slug !== service.slug);
+const breadcrumbs = [
+  { name: "Inicio", path: "/" },
+  { name: "Servicios", path: "/servicios/" },
+  { name: service.title, path: service.href },
+];
+const schema = [
+  {
+    "@type": "Service",
+    "@id": new URL(`${service.href}#service`, Astro.site).href,
+    name: service.title,
+    description: service.seoDescription,
+    provider: { "@id": new URL("/#organization", Astro.site).href },
+    url: new URL(service.href, Astro.site).href,
+  },
+];
+---
+
+<BaseLayout title={service.seoTitle} description={service.seoDescription} breadcrumbs={breadcrumbs} schema={schema}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <section class="page-intro">
+      <div class="container narrow">
+        <Breadcrumbs items={[{ label: "Servicios", href: "/servicios/" }, { label: service.title }]} />
+        <p class="eyebrow">{service.title}</p>
+        <h1>{service.detailHeading}</h1>
+        <p class="page-lead">{service.detailLead}</p>
+      </div>
+    </section>
+
+    <section class="section service-detail-list" aria-labelledby="service-scope-title">
+      <div class="container">
+        <article class="service-detail" id={service.id}>
+          <div class:list={["service-detail-media", { "media-compact": service.id === "outsourcing" }]}>
+            <Picture
+              src={service.image}
+              formats={["avif"]}
+              fallbackFormat="webp"
+              widths={[480, 720, 960]}
+              sizes="(min-width: 900px) 520px, calc(100vw - 40px)"
+              alt={service.imageAlt}
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+          <div class="service-detail-copy">
+            <span class="service-number">{service.number}</span>
+            <h2 id="service-scope-title">Qué podemos abordar</h2>
+            <p>{service.description}</p>
+            <ul>
+              {service.features.map((feature) => (
+                <li><strong>{feature.title}</strong><span>{feature.copy}</span></li>
+              ))}
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="service-fit-title">
+      <div class="container approach-grid">
+        <div>
+          <p class="eyebrow">Cuándo puede servirte</p>
+          <h2 id="service-fit-title">Situaciones que podemos conversar</h2>
+          <p class="page-lead">No hace falta llegar con una solución definida. El primer paso es entender el problema y su contexto.</p>
+        </div>
+        <ol class="principle-list">
+          {service.situations.map((situation, index) => (
+            <li><span>0{index + 1}</span><div><p>{situation}</p></div></li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    <section class="section page-cta" aria-labelledby="service-next-title">
+      <div class="container narrow centered">
+        <p class="eyebrow">Próximo paso</p>
+        <h2 id="service-next-title">Empecemos por la necesidad, no por una tecnología</h2>
+        <p>Contanos qué está pasando, a quién afecta y qué resultado necesitás. Te orientamos sobre el camino posible.</p>
+        <a class="button" href="/contacto/">Hablar con SaltaCode</a>
+        <div class="contact-actions" aria-label="Otros servicios">
+          {relatedServices.map((related) => <a class="text-link" href={related.href}>{related.title}</a>)}
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

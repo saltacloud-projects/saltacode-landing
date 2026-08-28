@@ -9,7 +9,7 @@ def payload() -> dict[str, str]:
         "message": "Necesito información sobre sus servicios.",
         "locale": "es-AR",
         "transcript_consent": True,
-        "privacy_version": "saltacode-chat-privacy-2026-08-27",
+        "privacy_version": "saltacode-chat-privacy-2026-08-28",
     }
 
 

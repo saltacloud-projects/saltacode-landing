@@ -1,0 +1,14 @@
+---
+export type SiteIconName = "email" | "facebook" | "google-maps" | "instagram" | "linkedin" | "phone" | "whatsapp";
+
+interface Props {
+  name: SiteIconName;
+  size?: number;
+}
+
+const { name, size = 20 } = Astro.props;
+---
+
+<svg class="site-icon" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+  <use href={`/icons/site-icons.svg#site-icon-${name}`}></use>
+</svg>

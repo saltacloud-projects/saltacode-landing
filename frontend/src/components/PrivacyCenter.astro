@@ -1,0 +1,58 @@
+---
+import { site } from "../data/site-content";
+---
+
+<aside class="privacy-notice" data-privacy-notice hidden aria-labelledby="privacy-notice-title">
+  <div>
+    <strong id="privacy-notice-title">Tu privacidad, sin casillas engañosas</strong>
+    <p>Usamos almacenamiento necesario para el tema y el chat. Hoy no usamos analítica, publicidad ni seguimiento entre sitios.</p>
+  </div>
+  <div class="privacy-notice-actions">
+    <button type="button" data-privacy-accept>Aceptar configuración actual</button>
+    <button type="button" class="privacy-secondary" data-privacy-open>Revisar privacidad</button>
+  </div>
+</aside>
+
+<dialog class="privacy-center" data-privacy-center aria-labelledby="privacy-center-title">
+  <form method="dialog">
+    <header>
+      <div>
+        <p class="privacy-kicker">Centro de privacidad</p>
+        <h2 id="privacy-center-title">Controlá el almacenamiento del sitio</h2>
+      </div>
+      <button class="privacy-close" type="submit" value="close" aria-label="Cerrar centro de privacidad">×</button>
+    </header>
+
+    <p>La configuración actual utiliza sólo tecnologías necesarias. Si en el futuro agregamos categorías opcionales, estarán desactivadas hasta que puedas elegir.</p>
+
+    <fieldset>
+      <legend>Categorías</legend>
+      <label>
+        <span><strong>Necesarias</strong><small>Tema, constancia de privacidad y sesión segura del chat cuando lo usás.</small></span>
+        <input type="checkbox" checked disabled aria-label="Almacenamiento necesario activo" />
+      </label>
+      <label>
+        <span><strong>Analítica</strong><small>No utilizada actualmente.</small></span>
+        <input type="checkbox" disabled aria-label="Analítica inactiva" />
+      </label>
+      <label>
+        <span><strong>Marketing</strong><small>No utilizado actualmente.</small></span>
+        <input type="checkbox" disabled aria-label="Marketing inactivo" />
+      </label>
+    </fieldset>
+
+    <div class="privacy-signal">
+      <strong>Global Privacy Control</strong>
+      <span data-privacy-gpc>Comprobando la señal del navegador…</span>
+    </div>
+
+    <p class="privacy-help">El consentimiento específico del chat se solicita antes del primer envío. Para ejercer derechos sobre conversaciones o datos enviados, escribí a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
+    <p class="privacy-status" data-privacy-status role="status" aria-live="polite"></p>
+
+    <footer>
+      <button type="button" class="privacy-reset" data-privacy-reset>Restablecer preferencias locales</button>
+      <a href="/legal/cookies/">Ver política completa</a>
+      <button type="button" data-privacy-save>Guardar configuración</button>
+    </footer>
+  </form>
+</dialog>

@@ -116,6 +116,10 @@ try {
 
   const publicRoutes = [
     "/servicios/",
+    "/servicios/software-a-medida/",
+    "/servicios/consultoria-it/",
+    "/servicios/equipos-it/",
+    "/servicios/productos-saas/",
     "/nosotros/",
     "/contacto/",
     "/legal/privacidad/",
@@ -157,6 +161,7 @@ try {
   for (const [legacyPath, canonicalPath] of [
     ["/servicios", "/servicios/"],
     ["/servicios/index.html", "/servicios/"],
+    ["/servicios/software-a-medida", "/servicios/software-a-medida/"],
     ["/legal/privacidad", "/legal/privacidad/"],
     ["/legal/privacidad/index.html", "/legal/privacidad/"],
   ]) {
@@ -211,6 +216,11 @@ try {
   const asset = await fetch(`${baseUrl}/_astro/${assetName}`);
   if (asset.headers.get("cache-control") !== "public, max-age=31536000, immutable") {
     throw new Error("Fingerprint assets must be served with immutable caching.");
+  }
+
+  const iconSprite = await fetch(`${baseUrl}/icons/site-icons.svg`);
+  if (iconSprite.status !== 200 || !iconSprite.headers.get("content-type")?.startsWith("image/svg+xml")) {
+    throw new Error("The standardized channel icon sprite is not served as SVG.");
   }
 
   const animatedLockupName = astroAssets.find((name) =>
