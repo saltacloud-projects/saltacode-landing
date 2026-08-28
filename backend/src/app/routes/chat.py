@@ -34,7 +34,7 @@ _CHAT_RESPONSES = {
             }
         },
     },
-    400: _problem_response("Client address rejected."),
+    400: _problem_response("Client request rejected."),
     403: _problem_response("Origin rejected."),
     422: _problem_response("Request validation failed."),
     429: _problem_response("Rate limit exceeded."),
@@ -61,6 +61,13 @@ async def create_chat_message(
     sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
 ) -> StreamingResponse:
     enforce_allowed_origin(request, settings)
+    if payload.privacy_version != settings.chat_privacy_version:
+        raise ApiError(
+            status_code=400,
+            code="privacy_version_unsupported",
+            title="Privacy version unsupported",
+            detail="Please review and accept the current privacy notice before continuing.",
+        )
     client_identity = rate_limit_client_identity(request)
     try:
         decision = await rate_limiter.check(client_rate_limit_key(client_identity))

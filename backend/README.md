@@ -30,6 +30,7 @@ SALTACODE_AGENT_AI_BASE_URL=http://agent-platform:8000
 SALTACODE_AGENT_ROUTE_KEY=saltacode-landing
 SALTACODE_AGENT_INTERNAL_TOKEN_FILE=/run/secrets/agent_internal_token
 SALTACODE_SESSION_SIGNING_SECRET_FILE=/run/secrets/session_signing_secret
+SALTACODE_CHAT_PRIVACY_VERSION=saltacode-chat-privacy-2026-08-28
 SALTACODE_RATE_LIMIT_BACKEND=memory
 SALTACODE_RATE_LIMIT_REQUESTS=20
 SALTACODE_RATE_LIMIT_WINDOW_SECONDS=60
@@ -57,6 +58,11 @@ configured base URL retains the safe unavailable stub.
 `SALTACODE_ALLOWED_ORIGINS` is a comma-separated allowlist. Requests without an `Origin` header
 remain valid for same-host and server-to-server operation; browser cross-origin POST requests are
 rejected unless their exact origin is allowlisted.
+
+`SALTACODE_CHAT_PRIVACY_VERSION` is the only consent-notice version accepted by the public chat
+boundary. Unsupported versions fail with a safe `400 privacy_version_unsupported` response before
+the request consumes rate-limit capacity or creates a browser session. Update this value together
+with the public notice and browser consent UI whenever the notice changes.
 
 ## Client identity and rate limits
 

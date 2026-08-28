@@ -94,7 +94,7 @@ def test_redis_outage_returns_safe_http_failures() -> None:
         "message": message,
         "locale": "es-AR",
         "transcript_consent": True,
-        "privacy_version": "privacy-v1",
+        "privacy_version": "saltacode-chat-privacy-2026-08-28",
     }
 
     with TestClient(create_app(settings, rate_limiter=UnavailableRateLimiter())) as client:

@@ -9,7 +9,7 @@ def payload() -> dict[str, str]:
         "message": "Necesito información sobre sus servicios.",
         "locale": "es-AR",
         "transcript_consent": True,
-        "privacy_version": "privacy-v1",
+        "privacy_version": "saltacode-chat-privacy-2026-08-28",
     }
 
 
@@ -56,6 +56,24 @@ def test_invalid_request_does_not_echo_validation_input(client: TestClient) -> N
     assert response.status_code == 422
     assert response.json()["code"] == "request_validation_failed"
     assert "private-value" not in response.text
+
+
+def test_chat_rejects_unsupported_privacy_version_before_session_and_rate_limit() -> None:
+    from app.config import Settings
+    from app.main import create_app
+
+    settings = Settings(app_env="test", rate_limit_requests=1)
+    unsupported_payload = payload() | {"privacy_version": "retired-private-version"}
+    with TestClient(create_app(settings)) as client:
+        rejected = client.post("/api/v1/chat", json=unsupported_payload)
+        accepted = client.post("/api/v1/chat", json=payload())
+
+    assert rejected.status_code == 400
+    assert rejected.headers["content-type"].startswith("application/problem+json")
+    assert rejected.json()["code"] == "privacy_version_unsupported"
+    assert "retired-private-version" not in rejected.text
+    assert "set-cookie" not in rejected.headers
+    assert accepted.status_code == 200
 
 
 def test_chat_rate_limit_is_enforced() -> None:

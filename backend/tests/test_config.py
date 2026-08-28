@@ -44,6 +44,18 @@ def test_allowed_origin_rejects_paths() -> None:
         Settings(allowed_origins="https://saltacode.com.ar/api")
 
 
+def test_chat_privacy_version_uses_current_notice() -> None:
+    settings = Settings(app_env="test")
+
+    assert settings.chat_privacy_version == "saltacode-chat-privacy-2026-08-28"
+
+
+@pytest.mark.parametrize("value", ["Privacy Version 1", "a" * 81])
+def test_chat_privacy_version_rejects_unsafe_values(value: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(app_env="test", chat_privacy_version=value)
+
+
 def test_agent_ai_base_url_rejects_paths() -> None:
     with pytest.raises(ValidationError, match="must not contain a path"):
         Settings(agent_ai_base_url="http://agent-ai:8001/internal")
