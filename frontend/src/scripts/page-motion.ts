@@ -6,6 +6,11 @@ let openingChat = false;
 
 if (chatLauncher) chatLauncher.onsubmit = (event) => {
   event.preventDefault();
+  const shortcut = event.submitter;
+  const question = chatLauncher.elements.namedItem("question");
+  if (shortcut instanceof HTMLButtonElement && shortcut.value && question instanceof HTMLInputElement) {
+    question.value = `Quiero información sobre ${shortcut.value}.`;
+  }
   if (openingChat) return;
   openingChat = true;
   chatModulePromise ??= import("./chat-preview");

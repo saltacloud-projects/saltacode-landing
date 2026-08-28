@@ -39,14 +39,14 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 6 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, and the deferred privacy center. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, and privacy assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 7 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, and service shortcuts that submit a contextual first message through the existing chat launcher. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, and privacy assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
-| Resource or scenario | Version 6 limit | Gate |
+| Resource or scenario | Version 7 limit | Gate |
 |---|---:|---|
-| Generated home HTML | <= 29 KiB raw | Deterministic build assertion |
+| Generated home HTML | <= 29.25 KiB raw | Deterministic build assertion |
 | Homepage core CSS | <= 20 KiB raw | Deterministic build assertion |
 | Additional interior-route CSS | <= 5 KiB raw | Deterministic build assertion |
-| Initial executable JavaScript | <= 5.25 KiB raw | Deterministic build assertion |
+| Initial executable JavaScript | <= 5.5 KiB raw | Deterministic build assertion |
 | Non-chat executable JavaScript | <= 7 KiB raw | Deterministic build assertion |
 | Lazy chat chunk | <= 16 KiB raw | Deterministic build assertion |
 | Deferred privacy JavaScript | <= 3 KiB raw | Deterministic build assertion |
@@ -77,6 +77,8 @@ The footer redesign replaces the improvised mark-plus-system-text signature with
 The 2026-08-27 multipage and chat-consent checkpoint keeps the conversion homepage static while adding substantial Services, About, Contact, Privacy, Cookies, and Terms routes. The build records 27,596 bytes of home HTML, 20,352 bytes of homepage CSS, 4,275 bytes of interior-only CSS, 5,075 bytes of initial JavaScript, 6,412 bytes of non-chat JavaScript, and a 13,670-byte lazy chat chunk. The chat code is requested only after interaction; the interior stylesheet is not linked from the homepage. The split budgets make that isolation testable instead of raising a single aggregate limit that could hide critical-path growth. Public transfer measurements and field Core Web Vitals remain release-stage evidence and were not inferred from these raw build sizes.
 
 The 2026-08-28 service, brand-icon, and privacy checkpoint builds eleven indexable routes and records 29,681 bytes of home HTML, 20,315 bytes of homepage CSS, 5,076 bytes of interior CSS, 5,235 bytes of initial JavaScript including its static module dependency, 6,572 bytes of non-chat JavaScript, a 16,244-byte lazy chat chunk, a 1,789-byte deferred privacy chunk, and 3,752 bytes of deferred privacy CSS. The initial allowance was reviewed from 5 to 5.25 KiB only after the verifier was corrected to count the 1,342-byte static preload helper reached by the page-shell module; the actual feature delta remained bounded and privacy UI assets retain independent limits. Brand marks are a cacheable 5,677-byte SVG sprite instead of duplicated inline paths. These are raw local build measurements, not public transfer or field-performance claims.
+
+The service-shortcut checkpoint attributes an additional 123 bytes of home HTML, 24 bytes of homepage CSS, and 175 bytes of initial/non-chat JavaScript to four native submit controls that route a contextual service intent through the existing consent-aware launcher. The resulting build records 29,804 bytes of home HTML, 20,339 bytes of homepage CSS, 5,410 bytes of initial JavaScript, and 6,747 bytes of non-chat JavaScript; the lazy chat and privacy chunks are unchanged. The reviewed HTML and initial-JavaScript limits move to 29.25 KiB and 5.5 KiB respectively for this explicit interaction, not for an unexplained regression. Transfer and field Core Web Vitals remain separate release evidence.
 
 The last complete Chrome 150 mobile lab before that markup-only cleanup used 390x844, 150 ms latency, 1.6 Mbps download, 750 Kbps upload, 4x CPU throttling, disabled cache, and three cold runs per explicit theme. Light mode transferred 67,656 bytes in every run with 480/484/564 ms LCP, 21/28/48 ms TBT, and 0 CLS; dark mode transferred 66,642 bytes in every run with 476/488/564 ms LCP, 20/24/47 ms TBT, and 0 CLS. Functional checks at 320px, 390px, and 1440px found no horizontal document overflow, wrong theme variant, duplicate accessible client group, or runtime exception. The cleanup was verified against the rebuilt served HTML and static budgets, but the full throttled lab was not rerun. These remain local lab results, not public field evidence.
 

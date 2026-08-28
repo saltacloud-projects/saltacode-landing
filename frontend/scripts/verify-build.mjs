@@ -30,10 +30,10 @@ const clientMessageIdSource = await readFile(resolve(import.meta.dirname, "../sr
 const assetManifest = JSON.parse(await readFile(resolve(import.meta.dirname, "../src/assets/optimized/manifest.json"), "utf8"));
 
 const BUILD_BUDGETS = Object.freeze({
-  indexHtmlBytes: 29 * 1024,
+  indexHtmlBytes: 29.25 * 1024,
   coreCssBytes: 20 * 1024,
   additionalInteriorCssBytes: 5 * 1024,
-  initialExecutableJavaScriptBytes: 5.25 * 1024,
+  initialExecutableJavaScriptBytes: 5.5 * 1024,
   nonChatExecutableJavaScriptBytes: 7 * 1024,
   chatChunkBytes: 16 * 1024,
   privacyChunkBytes: 3 * 1024,
@@ -221,7 +221,9 @@ for (const [alias, target, element] of legacyAliases) {
   if (!new RegExp(`<${element}\\b[^>]*\\bid="${target}"[^>]*>\\s*<span\\b[^>]*\\bid="${alias}"`).test(index)) throw new Error(`Legacy fragment #${alias} is not mapped to #${target}.`);
 }
 if (!/<h2 id="clients-title">Nuestros clientes<\/h2>/.test(index)) throw new Error("Clients heading changed unexpectedly.");
-if (!/<form\b[^>]*class="agent-preview"[^>]*data-chat-launcher/.test(index)) throw new Error("Hero launcher must remain a semantic form.");
+if (!/<form\b[^>]*data-chat-launcher/.test(index) || !/<div class="agent-preview">/.test(index)) throw new Error("Hero launcher must remain a semantic form.");
+const quickLinks = index.match(/<div class="quick-links"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+if (!quickLinks || (quickLinks.match(/<button\b[^>]*type="submit"/g) ?? []).length !== 4 || /<a\b/.test(quickLinks) || !pageMotionSource.includes("event.submitter")) throw new Error("Service shortcuts must remain chat launchers.");
 if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-28"') || !chatSource.includes('const CONSENT_STORAGE_KEY = "saltacode-chat-consent"')) throw new Error("Chat consent version or local key is incorrect.");
 if (/transcript-consent|type="checkbox"/.test(chatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
 if (!chatSource.includes("Aceptar y enviar") || !chatSource.includes("event.isComposing") || !chatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");

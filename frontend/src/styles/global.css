@@ -646,7 +646,7 @@ ul {
   margin-bottom: clamp(2rem, 4vw, 3rem);
 }
 
-.quick-links a {
+.quick-links button {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -655,9 +655,10 @@ ul {
   border-radius: 999px;
   color: var(--muted);
   background: var(--chip-glass);
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.78rem;
   font-weight: 700;
-  text-decoration: none;
 }
 
 .quick-links svg {
@@ -1238,7 +1239,7 @@ ul {
     font-size: 0.82rem;
   }
 
-  .quick-links a {
+  .quick-links button {
     min-height: 44px;
   }
 

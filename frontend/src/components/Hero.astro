@@ -82,64 +82,63 @@ const circuitNodes = [
       concretas de tu negocio.
     </p>
 
-    <form
-      class="agent-preview"
-      data-chat-launcher
-    >
-      <span class="agent-symbol" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
-          <path d="M12 3.5c.7 4.4 2.1 5.8 6.5 6.5-4.4.7-5.8 2.1-6.5 6.5-.7-4.4-2.1-5.8-6.5-6.5 4.4-.7 5.8-2.1 6.5-6.5Z"></path>
-          <path d="M18.4 15.8c.3 1.8.9 2.4 2.6 2.7-1.7.3-2.3.9-2.6 2.5-.3-1.6-.9-2.2-2.6-2.5 1.7-.3 2.3-.9 2.6-2.7Z"></path>
-        </svg>
-      </span>
-      <label class="visually-hidden" for="agent-question">¿Qué necesitás resolver?</label>
-      <input
-        class="agent-input"
-        id="agent-question"
-        name="question"
-        type="text"
-        maxlength="280"
-        autocomplete="off"
-        enterkeyhint="send"
-        aria-describedby="agent-helper"
-        placeholder="¿Qué necesitás resolver en tu empresa?"
-      />
-      <button class="agent-send" type="submit" aria-label="Abrir chat con el asistente">
-        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" focusable="false">
-          <path d="m4 5 16-2-6.8 17-2.4-6.8L4 10.5 4 5Zm7.2 6.3 5-5.1-8.8 2 4 1.6-.2 1.5Z"></path>
-        </svg>
-      </button>
-    </form>
-    <p class="agent-helper" id="agent-helper">
-      Contanos el contexto y te orientamos sobre el servicio y el próximo paso.
-    </p>
+    <form data-chat-launcher>
+      <div class="agent-preview">
+        <span class="agent-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
+            <path d="M12 3.5c.7 4.4 2.1 5.8 6.5 6.5-4.4.7-5.8 2.1-6.5 6.5-.7-4.4-2.1-5.8-6.5-6.5 4.4-.7 5.8-2.1 6.5-6.5Z"></path>
+            <path d="M18.4 15.8c.3 1.8.9 2.4 2.6 2.7-1.7.3-2.3.9-2.6 2.5-.3-1.6-.9-2.2-2.6-2.5 1.7-.3 2.3-.9 2.6-2.7Z"></path>
+          </svg>
+        </span>
+        <label class="visually-hidden" for="agent-question">¿Qué necesitás resolver?</label>
+        <input
+          class="agent-input"
+          id="agent-question"
+          name="question"
+          type="text"
+          maxlength="280"
+          autocomplete="off"
+          enterkeyhint="send"
+          aria-describedby="agent-helper"
+          placeholder="¿Qué necesitás resolver en tu empresa?"
+        />
+        <button class="agent-send" type="submit" aria-label="Abrir chat con el asistente">
+          <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" focusable="false">
+            <path d="m4 5 16-2-6.8 17-2.4-6.8L4 10.5 4 5Zm7.2 6.3 5-5.1-8.8 2 4 1.6-.2 1.5Z"></path>
+          </svg>
+        </button>
+      </div>
+      <p class="agent-helper" id="agent-helper">
+        Contanos el contexto y te orientamos sobre el servicio y el próximo paso.
+      </p>
 
-    <nav class="quick-links" aria-label="Accesos rápidos a servicios">
-      <a href="#software-factory">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"></path>
-        </svg>
-        Software a medida
-      </a>
-      <a href="#consultoria-it">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M16 8h6M19 5v6M17 14h3a3 3 0 0 1 3 3v4"></path>
-        </svg>
-        Consultoría IT
-      </a>
-      <a href="#soluciones-saas">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M7 18H5a4 4 0 0 1-.4-8A7 7 0 0 1 18 8.5 4.8 4.8 0 0 1 1 9.5A4.3 4.3 0 0 1 18.5 18H7Z"></path>
-        </svg>
-        Soluciones SaaS
-      </a>
-      <a href="#outsourcing">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h8M8 16.5h8"></path>
-        </svg>
-        Equipos IT
-      </a>
-    </nav>
+      <div class="quick-links" role="group" aria-label="Iniciar chat sobre un servicio">
+        <button type="submit" value="Software a medida">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"></path>
+          </svg>
+          Software a medida
+        </button>
+        <button type="submit" value="Consultoría IT">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M16 8h6M19 5v6M17 14h3a3 3 0 0 1 3 3v4"></path>
+          </svg>
+          Consultoría IT
+        </button>
+        <button type="submit" value="Soluciones SaaS">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M7 18H5a4 4 0 0 1-.4-8A7 7 0 0 1 18 8.5 4.8 4.8 0 0 1 1 9.5A4.3 4.3 0 0 1 18.5 18H7Z"></path>
+          </svg>
+          Soluciones SaaS
+        </button>
+        <button type="submit" value="Equipos IT">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h8M8 16.5h8"></path>
+          </svg>
+          Equipos IT
+        </button>
+      </div>
+    </form>
 
     <Clients />
   </div>
