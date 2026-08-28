@@ -1,0 +1,76 @@
+---
+import "../../styles/interior.css";
+import { Picture } from "astro:assets";
+import Breadcrumbs from "../../components/Breadcrumbs.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import { services } from "../../data/site-content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const title = "Servicios de desarrollo de software y consultoría IT | SaltaCode";
+const description = "Software a medida e integraciones, consultoría IT, equipos técnicos y desarrollo de productos SaaS desde Salta, Argentina.";
+const breadcrumbs = [
+  { name: "Inicio", path: "/" },
+  { name: "Servicios", path: "/servicios/" },
+];
+---
+
+<BaseLayout title={title} description={description} breadcrumbs={breadcrumbs}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <section class="page-intro">
+      <div class="container narrow">
+        <Breadcrumbs items={[{ label: "Servicios" }]} />
+        <p class="eyebrow">Servicios</p>
+        <h1>Capacidades técnicas para construir y hacer evolucionar una solución</h1>
+        <p class="page-lead">
+          Partimos de la necesidad, el contexto y el equipo disponible para definir cómo podemos
+          aportar: desarrollo, consultoría, capacidad técnica o acompañamiento de producto.
+        </p>
+      </div>
+    </section>
+
+    <section class="section service-detail-list" aria-label="Servicios de SaltaCode">
+      <div class="container">
+        {services.map((service, index) => (
+          <article class:list={["service-detail", { reverse: index % 2 === 1 }]} id={service.id}>
+            <div class:list={["service-detail-media", { "media-compact": service.id === "outsourcing" }]}>
+              <Picture
+                src={service.image}
+                formats={["avif"]}
+                fallbackFormat="webp"
+                widths={[480, 720, 960]}
+                sizes="(min-width: 900px) 520px, calc(100vw - 40px)"
+                alt={service.imageAlt}
+                loading="lazy"
+                decoding="async"
+                style={`object-position:${service.imagePosition}`}
+              />
+            </div>
+            <div class="service-detail-copy">
+              <span class="service-number">{service.number}</span>
+              <h2>{service.title}</h2>
+              <p>{service.description}</p>
+              <ul>
+                {service.features.map((feature) => (
+                  <li><strong>{feature.title}</strong><span>{feature.copy}</span></li>
+                ))}
+              </ul>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="section page-cta" aria-labelledby="services-cta-title">
+      <div class="container narrow centered">
+        <p class="eyebrow">Próximo paso</p>
+        <h2 id="services-cta-title">No necesitás tener la solución definida para conversar</h2>
+        <p>Contanos el problema o la oportunidad. Podemos ayudarte a ordenar el punto de partida.</p>
+        <a class="button" href="/contacto/">Hablar con SaltaCode</a>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

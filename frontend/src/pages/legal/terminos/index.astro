@@ -1,0 +1,70 @@
+---
+import "../../../styles/interior.css";
+import Breadcrumbs from "../../../components/Breadcrumbs.astro";
+import Footer from "../../../components/Footer.astro";
+import Header from "../../../components/Header.astro";
+import { legalUpdatedAt, site } from "../../../data/site-content";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+
+const title = "Términos de uso | SaltaCode";
+const description = "Condiciones de uso del sitio, el contenido y el asistente con inteligencia artificial de SaltaCode.";
+const breadcrumbs = [
+  { name: "Inicio", path: "/" },
+  { name: "Términos de uso", path: "/legal/terminos/" },
+];
+---
+
+<BaseLayout title={title} description={description} breadcrumbs={breadcrumbs}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <article class="legal-page">
+      <div class="container legal-layout">
+        <header>
+          <Breadcrumbs items={[{ label: "Términos de uso" }]} />
+          <p class="eyebrow">Legal</p>
+          <h1>Términos de uso</h1>
+          <p class="legal-updated">Última actualización: {legalUpdatedAt}</p>
+          <p class="page-lead">Estas condiciones regulan el uso informativo del sitio y del asistente de SaltaCode.</p>
+        </header>
+
+        <div class="legal-content">
+          <section>
+            <h2>1. Alcance del sitio</h2>
+            <p>El contenido presenta información general sobre SaltaCode, sus capacidades y formas de contacto. Podés navegarlo y usar sus canales para realizar consultas de manera lícita y respetuosa.</p>
+          </section>
+          <section>
+            <h2>2. Chat y respuestas automáticas</h2>
+            <p>El chat utiliza inteligencia artificial para brindar una orientación inicial. Sus respuestas pueden ser incompletas o requerir verificación humana. No constituyen asesoramiento profesional, cotización, oferta, aceptación ni contrato vinculante.</p>
+            <p>No uses el chat para emergencias ni envíes contraseñas, credenciales, datos sensibles o contenido que no estés autorizado a compartir.</p>
+          </section>
+          <section>
+            <h2>3. Contratación de servicios</h2>
+            <p>Cualquier alcance, plazo, precio, responsabilidad o condición de un servicio se define únicamente en una propuesta o acuerdo separado aceptado por las partes. Una conversación por el sitio no reemplaza ese proceso.</p>
+          </section>
+          <section>
+            <h2>4. Propiedad intelectual</h2>
+            <p>El diseño, las marcas, textos, imágenes y demás contenidos propios del sitio están protegidos por la normativa aplicable. Podés consultarlos para evaluar nuestros servicios, pero no reproducirlos o explotarlos comercialmente sin autorización. Las marcas y contenidos de terceros pertenecen a sus respectivos titulares.</p>
+          </section>
+          <section>
+            <h2>5. Enlaces externos</h2>
+            <p>Algunos enlaces dirigen a mapas, redes sociales, WhatsApp u otros servicios externos. Esos servicios tienen sus propias condiciones y políticas; SaltaCode no controla su funcionamiento ni sus contenidos.</p>
+          </section>
+          <section>
+            <h2>6. Disponibilidad y uso adecuado</h2>
+            <p>Procuramos mantener el sitio y sus canales disponibles de manera razonable, pero pueden existir interrupciones por mantenimiento, fallas o causas externas. Podemos limitar usos abusivos, automatizados, ilícitos o que comprometan la seguridad del servicio.</p>
+          </section>
+          <section>
+            <h2>7. Ley aplicable y contacto</h2>
+            <p>Estos términos se interpretan conforme a las leyes de la República Argentina, sin afectar los derechos que resulten obligatorios para cada persona usuaria. Si tenés una consulta, escribinos a <a href={`mailto:${site.email}`}>{site.email}</a> o consultá los demás canales de <a href="/contacto/">contacto</a>.</p>
+          </section>
+          <section>
+            <h2>8. Modificaciones</h2>
+            <p>Podemos actualizar estos términos para reflejar cambios del sitio o de sus funciones. La versión vigente se identifica mediante la fecha publicada en esta página.</p>
+          </section>
+        </div>
+      </div>
+    </article>
+  </main>
+  <Footer />
+</BaseLayout>

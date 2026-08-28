@@ -1,9 +1,18 @@
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const chatLauncher = document.querySelector<HTMLFormElement>("[data-chat-launcher]");
+let chatModulePromise: Promise<typeof import("./chat-preview")> | undefined;
+let openingChat = false;
+
 if (chatLauncher) chatLauncher.onsubmit = (event) => {
   event.preventDefault();
-  void import("./chat-preview").then(({ openChatPreview }) => openChatPreview(chatLauncher));
+  if (openingChat) return;
+  openingChat = true;
+  const clientMessageId = crypto.randomUUID();
+  chatModulePromise ??= import("./chat-preview");
+  void chatModulePromise
+    .then(({ openChatPreview }) => openChatPreview(chatLauncher, clientMessageId))
+    .finally(() => { openingChat = false; });
 };
 
 function initializeClientCarousel(): void {

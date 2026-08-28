@@ -4,17 +4,22 @@ import ThemeImage from "./ThemeImage.astro";
 import ThemeSwitcher from "./ThemeSwitcher.astro";
 
 interface Props {
-  homePath?: "" | "/";
   revealOnScroll?: boolean;
 }
 
-const { homePath = "", revealOnScroll = false } = Astro.props;
-const homeFragment = (id: string) => `${homePath}#${id}`;
+const { revealOnScroll = false } = Astro.props;
+const currentPath = Astro.url.pathname;
+const navigation = [
+  { href: "/#clientes", label: "Clientes", match: "" },
+  { href: "/servicios/", label: "Servicios", match: "/servicios/" },
+  { href: "/nosotros/", label: "Nosotros", match: "/nosotros/" },
+  { href: "/contacto/", label: "Contacto", match: "/contacto/" },
+] as const;
 ---
 
 <header class="site-header" data-scroll-header={revealOnScroll ? "" : undefined}>
   <div class="container header-inner">
-    <a class="brand" href={homeFragment("top")} aria-label="SaltaCode, inicio">
+    <a class="brand" href="/" aria-label="SaltaCode, inicio">
       <ThemeImage
         variants={brandImages.lockup}
         width={320}
@@ -36,18 +41,20 @@ const homeFragment = (id: string) => `${homePath}#${id}`;
       <div class="header-menu-content">
         <nav class="header-navigation" aria-label="Navegación principal">
           <ul class="primary-nav">
-            <li><a href={homeFragment("clientes")}>Nuestros clientes</a></li>
-            <li><a href={homeFragment("servicios")}>Servicios y productos</a></li>
-            <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
-            <li><a href={homeFragment("contacto")}>Contactanos</a></li>
+            {navigation.map((item) => (
+              <li>
+                <a
+                  href={item.href}
+                  aria-current={item.match && currentPath === item.match ? "page" : undefined}
+                >{item.label}</a>
+              </li>
+            ))}
           </ul>
         </nav>
 
         <div class="header-actions">
           <ThemeSwitcher />
-          <a class="button button-small header-cta" href={homeFragment("contacto")}>
-            Hablar con un experto
-          </a>
+          <a class="button button-small header-cta" href="/contacto/">Hablemos</a>
         </div>
       </div>
     </details>

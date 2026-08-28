@@ -1,13 +1,19 @@
 ---
 import "../styles/global.css";
 
+interface Breadcrumb {
+  name: string;
+  path: string;
+}
+
 interface Props {
   title: string;
   description: string;
   indexable?: boolean;
+  breadcrumbs?: readonly Breadcrumb[];
 }
 
-const { title, description, indexable = true } = Astro.props;
+const { title, description, indexable = true, breadcrumbs = [] } = Astro.props;
 
 if (!Astro.site) {
   throw new Error("Astro site must be configured to generate canonical metadata.");
@@ -16,29 +22,64 @@ if (!Astro.site) {
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 const socialImageUrl = new URL("/images/social/saltacode-social.webp", Astro.site);
 const organizationId = new URL("/#organization", Astro.site);
+const websiteId = new URL("/#website", Astro.site);
+const webpageId = new URL(`${Astro.url.pathname}#webpage`, Astro.site);
 
-const structuredData = {
-  "@context": "https://schema.org",
-  "@type": ["Organization", "ProfessionalService"],
-  "@id": organizationId.href,
-  name: "SaltaCode",
-  url: Astro.site.href,
-  logo: new URL("/favicon.png", Astro.site).href,
-  email: "saltacodear@gmail.com",
-  telephone: "+54 9 387 529-6587",
-  address: {
-    "@type": "PostalAddress",
-    streetAddress: "Zuviría 333, Oficina 4C",
-    addressLocality: "Salta",
-    addressRegion: "Salta",
-    addressCountry: "AR",
+const graph: Record<string, unknown>[] = [
+  {
+    "@type": ["Organization", "ProfessionalService"],
+    "@id": organizationId.href,
+    name: "SaltaCode",
+    url: Astro.site.href,
+    logo: new URL("/favicon.png", Astro.site).href,
+    email: "saltacodear@gmail.com",
+    telephone: "+54 9 387 529-6587",
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: "Zuviría 333, Oficina 4C",
+      addressLocality: "Salta",
+      addressRegion: "Salta",
+      addressCountry: "AR",
+    },
+    sameAs: [
+      "https://www.linkedin.com/company/saltacode/",
+      "https://www.facebook.com/saltacode.ar",
+      "https://www.instagram.com/saltacode.ar/",
+    ],
   },
-  sameAs: [
-    "https://www.linkedin.com/company/saltacode/",
-    "https://www.facebook.com/saltacode.ar",
-    "https://www.instagram.com/saltacode.ar/",
-  ],
-};
+  {
+    "@type": "WebSite",
+    "@id": websiteId.href,
+    url: Astro.site.href,
+    name: "SaltaCode",
+    publisher: { "@id": organizationId.href },
+    inLanguage: "es-AR",
+  },
+  {
+    "@type": "WebPage",
+    "@id": webpageId.href,
+    url: canonicalUrl.href,
+    name: title,
+    description,
+    isPartOf: { "@id": websiteId.href },
+    about: { "@id": organizationId.href },
+    inLanguage: "es-AR",
+  },
+];
+
+if (breadcrumbs.length > 0) {
+  graph.push({
+    "@type": "BreadcrumbList",
+    itemListElement: breadcrumbs.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: new URL(item.path, Astro.site).href,
+    })),
+  });
+}
+
+const structuredData = { "@context": "https://schema.org", "@graph": graph };
 ---
 
 <!doctype html>

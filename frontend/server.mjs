@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -25,9 +25,18 @@ function inlineExecutableSources(markup) {
     .map((match) => match[2]);
 }
 
-const staticPageMarkup = await Promise.all(
-  ["index.html", "404.html"].map((file) => readFile(resolve(staticRoot, file), "utf8")),
-);
+async function listHtmlMarkup(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const markup = [];
+  for (const entry of entries) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) markup.push(...(await listHtmlMarkup(path)));
+    else if (entry.isFile() && entry.name.endsWith(".html")) markup.push(await readFile(path, "utf8"));
+  }
+  return markup;
+}
+
+const staticPageMarkup = await listHtmlMarkup(staticRoot);
 const inlineScriptHashes = [
   ...new Set(
     staticPageMarkup
@@ -281,10 +290,11 @@ async function handleRequest(request, response) {
     return;
   }
 
-  if (pathname === "/index.html") {
+  if (pathname === "/index.html" || pathname.endsWith("/index.html")) {
+    const canonicalPath = pathname === "/index.html" ? "/" : pathname.slice(0, -"index.html".length);
     response.statusCode = 301;
     response.setHeader("Cache-Control", "public, max-age=3600");
-    response.setHeader("Location", `/${requestUrl.search}`);
+    response.setHeader("Location", `${canonicalPath}${requestUrl.search}`);
     response.end();
     return;
   }
@@ -295,6 +305,17 @@ async function handleRequest(request, response) {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     sendBody(request, response, '{"status":"ok"}\n');
     return;
+  }
+
+  if (!pathname.endsWith("/") && !extname(pathname)) {
+    const directoryIndex = await resolveRequestPath(`${pathname}/`);
+    if (directoryIndex) {
+      response.statusCode = 301;
+      response.setHeader("Cache-Control", "public, max-age=3600");
+      response.setHeader("Location", `${pathname}/${requestUrl.search}`);
+      response.end();
+      return;
+    }
   }
 
   const asset = await resolveRequestPath(pathname);

@@ -114,6 +114,32 @@ try {
     }
   }
 
+  const publicRoutes = [
+    "/servicios/",
+    "/nosotros/",
+    "/contacto/",
+    "/legal/privacidad/",
+    "/legal/cookies/",
+    "/legal/terminos/",
+  ];
+  for (const route of publicRoutes) {
+    const page = await fetch(`${baseUrl}${route}`);
+    const markup = await page.text();
+    if (page.status !== 200 || !page.headers.get("content-type")?.startsWith("text/html")) {
+      throw new Error(`${route} was not served as HTML with status 200.`);
+    }
+    if ((markup.match(/<h1(?:\s|>)/g) ?? []).length !== 1 || !markup.includes("class=\"breadcrumbs\"")) {
+      throw new Error(`${route} lost its static h1 or visible breadcrumbs.`);
+    }
+    const policy = page.headers.get("content-security-policy") ?? "";
+    const inline = [...markup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)].filter(
+      (script) => !/\bsrc=/.test(script[1]) && !/\btype="application\/ld\+json"/.test(script[1]),
+    );
+    if (!inline.every((script) => policy.includes(`'sha256-${createHash("sha256").update(script[2]).digest("base64")}'`))) {
+      throw new Error(`${route} contains an inline script missing from the generated CSP.`);
+    }
+  }
+
   const legacyQuery = "utm_source=legacy&encoded=%2B%2F%3F&space=one+two&empty=&repeat=one&repeat=two";
   for (const method of ["GET", "HEAD"]) {
     const legacyIndex = await fetch(`${baseUrl}/index.html?${legacyQuery}`, {
@@ -125,6 +151,18 @@ try {
     }
     if ((await legacyIndex.text()) !== "") {
       throw new Error(`${method} /index.html redirect must not return a response body.`);
+    }
+  }
+
+  for (const [legacyPath, canonicalPath] of [
+    ["/servicios", "/servicios/"],
+    ["/servicios/index.html", "/servicios/"],
+    ["/legal/privacidad", "/legal/privacidad/"],
+    ["/legal/privacidad/index.html", "/legal/privacidad/"],
+  ]) {
+    const redirect = await fetch(`${baseUrl}${legacyPath}?${legacyQuery}`, { redirect: "manual" });
+    if (redirect.status !== 301 || redirect.headers.get("location") !== `${canonicalPath}?${legacyQuery}`) {
+      throw new Error(`${legacyPath} must redirect to ${canonicalPath} and preserve its query string.`);
     }
   }
 
@@ -194,7 +232,7 @@ try {
     throw new Error("HEAD requests must return headers without a body.");
   }
 
-  console.log("Verified health, compression, index redirect, real 404s, fail-closed API proxy, cache policy, security headers, and HEAD support.");
+  console.log("Verified health, compression, nested-route redirects, all public pages, CSP hashes, real 404s, fail-closed API proxy, cache policy, security headers, and HEAD support.");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolveExit) => {

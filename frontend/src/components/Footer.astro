@@ -1,78 +1,61 @@
 ---
 import { brandImages } from "../data/image-assets";
+import { services, site } from "../data/site-content";
 import ThemeImage from "./ThemeImage.astro";
 
-interface Props {
-  homePath?: "" | "/";
-}
-
-const { homePath = "" } = Astro.props;
-const homeFragment = (id: string) => `${homePath}#${id}`;
 const year = new Date().getFullYear();
 ---
 
 <footer class="site-footer">
-  <div class="container">
-    <div class="footer-main">
-      <div class="footer-intro">
-        <a class="brand footer-brand" href={homeFragment("top")} aria-label="SaltaCode, volver al inicio">
-        <ThemeImage
-          variants={brandImages.lockup}
-          width={320}
-          alt=""
-          loading="lazy"
-          decoding="async"
-        />
-        </a>
-        <p>
-          Creamos software a medida y sumamos capacidades IT para resolver procesos, integrar sistemas
-          y acompañar el crecimiento de empresas.
-        </p>
-        <a class="footer-cta" href={homeFragment("contacto")}>Conversemos sobre tu proyecto</a>
-      </div>
+  <div class="container footer-callout">
+    <p class="eyebrow">¿Tenés un proyecto en mente?</p>
+    <h2>Conversemos sobre el punto de partida</h2>
+    <a class="button" href="/contacto/">Contactar a SaltaCode</a>
+  </div>
 
-      <div class="footer-directory">
-        <nav aria-label="Servicios en el pie">
-          <strong>Servicios</strong>
-          <ul class="footer-links">
-            <li><a href={homeFragment("software-factory")}>Software a medida</a></li>
-            <li><a href={homeFragment("consultoria-it")}>Consultoría IT</a></li>
-            <li><a href={homeFragment("outsourcing")}>Equipos IT</a></li>
-            <li><a href={homeFragment("soluciones-saas")}>Soluciones SaaS</a></li>
-          </ul>
-        </nav>
-
-        <nav aria-label="Empresa en el pie">
-          <strong>SaltaCode</strong>
-          <ul class="footer-links">
-            <li><a href={homeFragment("clientes")}>Clientes</a></li>
-            <li><a href={homeFragment("nosotros")}>Nosotros</a></li>
-            <li><a href={homeFragment("contacto")}>Contacto</a></li>
-          </ul>
-        </nav>
-      </div>
-
-      <div class="footer-contact">
-        <strong>Hablemos</strong>
-        <address>
-          <a href="mailto:saltacodear@gmail.com">saltacodear@gmail.com</a>
-          <a href="https://wa.me/5493875296587" target="_blank" rel="noopener noreferrer">
-            +54 9 387 529-6587
-          </a>
-          <a href="https://maps.app.goo.gl/RKfbDFHbga3HUNvH7" target="_blank" rel="noopener noreferrer">
-            Zuviría 333, Oficina 4C<br />Salta, Argentina
-          </a>
-        </address>
-      </div>
+  <div class="container footer-main">
+    <div class="footer-intro">
+      <a class="brand footer-brand" href="/" aria-label="SaltaCode, volver al inicio">
+        <ThemeImage variants={brandImages.lockup} width={320} alt="" loading="lazy" decoding="async" />
+      </a>
+      <p>Software a medida, consultoría y equipos IT desde Salta, Argentina.</p>
     </div>
 
-    <div class="footer-bottom">
-      <small>© {year} SaltaCode. Todos los derechos reservados.</small>
-      <ul class="footer-social" aria-label="Redes sociales">
-        <li><a href="https://www.linkedin.com/company/saltacode/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
-        <li><a href="https://www.instagram.com/saltacode.ar/" target="_blank" rel="noopener noreferrer">Instagram</a></li>
-        <li><a href="https://www.facebook.com/saltacode.ar" target="_blank" rel="noopener noreferrer">Facebook</a></li>
+    <nav aria-label="Servicios en el pie">
+      <strong>Servicios</strong>
+      <ul class="footer-links">
+        {services.map((service) => <li><a href={`/servicios/#${service.id}`}>{service.title}</a></li>)}
       </ul>
+    </nav>
+
+    <nav aria-label="SaltaCode en el pie">
+      <strong>SaltaCode</strong>
+      <ul class="footer-links">
+        <li><a href="/#clientes">Clientes</a></li>
+        <li><a href="/nosotros/">Nosotros</a></li>
+        <li><a href="/contacto/">Contacto</a></li>
+      </ul>
+    </nav>
+
+    <nav aria-label="Información legal en el pie">
+      <strong>Legal</strong>
+      <ul class="footer-links">
+        <li><a href="/legal/privacidad/">Privacidad</a></li>
+        <li><a href="/legal/cookies/">Cookies y almacenamiento</a></li>
+        <li><a href="/legal/terminos/">Términos de uso</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div class="container footer-bottom">
+    <div>
+      <small>© {year} SaltaCode.</small>
+      <a href={`mailto:${site.email}`}>{site.email}</a>
     </div>
+    <ul class="footer-social" aria-label="Redes sociales">
+      {site.social.map((social) => (
+        <li><a href={social.href} target="_blank" rel="noopener noreferrer">{social.name}</a></li>
+      ))}
+    </ul>
   </div>
 </footer>

@@ -1,40 +1,30 @@
+---
+import { site } from "../data/site-content";
+---
+
 <section class="section contact legacy-fragment-target" id="contacto" aria-labelledby="contact-title">
   <span id="footer" class="legacy-fragment-alias" aria-hidden="true"></span>
-  <div class="container contact-card">
+  <div class="container contact-panel">
     <div class="contact-intro">
-      <p class="eyebrow">Contactanos</p>
-      <h2 id="contact-title">Contanos qué necesitás resolver</h2>
-      <p>Compartí el proceso, sistema o necesidad de equipo. Te ayudamos a definir un primer paso concreto.</p>
+      <p class="eyebrow">Contacto</p>
+      <h2 id="contact-title">Empecemos por entender qué necesitás resolver</h2>
+      <p>
+        Contanos sobre el proceso, sistema, producto o equipo. Podemos conversar por el canal que te
+        resulte más cómodo.
+      </p>
       <div class="contact-actions">
-        <a class="button" href="mailto:saltacodear@gmail.com">Escribinos por email</a>
-        <a
-          class="button button-secondary"
-          href="https://wa.me/5493875296587?text=Hola%2C%20quisiera%20informaci%C3%B3n%20sobre%20sus%20servicios"
-          target="_blank"
-          rel="noopener noreferrer"
-        >WhatsApp</a>
+        <a class="button" href={`mailto:${site.email}`}>Escribinos por email</a>
+        <a class="button button-secondary" href={site.whatsapp} target="_blank" rel="noopener noreferrer">WhatsApp</a>
       </div>
     </div>
 
-    <address class="contact-details">
-      <div>
-        <strong>Email</strong>
-        <a href="mailto:saltacodear@gmail.com">saltacodear@gmail.com</a>
-      </div>
-      <div>
-        <strong>Oficina</strong>
-        <a href="https://maps.app.goo.gl/RKfbDFHbga3HUNvH7" target="_blank" rel="noopener noreferrer">
-          Zuviría 333, Oficina 4C — Salta, Argentina
-        </a>
-      </div>
-      <div>
-        <strong>Redes</strong>
-        <ul class="social-links">
-          <li><a href="https://www.linkedin.com/company/saltacode/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
-          <li><a href="https://www.facebook.com/saltacode.ar" target="_blank" rel="noopener noreferrer">Facebook</a></li>
-          <li><a href="https://www.instagram.com/saltacode.ar/" target="_blank" rel="noopener noreferrer">Instagram</a></li>
-        </ul>
-      </div>
+    <address class="contact-directory">
+      <a href={`mailto:${site.email}`}><span>Email</span><strong>{site.email}</strong></a>
+      <a href={site.phoneHref}><span>Teléfono</span><strong>{site.phoneDisplay}</strong></a>
+      <a href={site.maps} target="_blank" rel="noopener noreferrer">
+        <span>Oficina</span><strong>{site.address}<br />{site.locality}</strong>
+      </a>
+      <a href="/contacto/"><span>Todos los canales</span><strong>Ver contacto <span aria-hidden="true">→</span></strong></a>
     </address>
   </div>
 </section>

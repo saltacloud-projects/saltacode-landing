@@ -1,0 +1,68 @@
+---
+import "../../../styles/interior.css";
+import Breadcrumbs from "../../../components/Breadcrumbs.astro";
+import Footer from "../../../components/Footer.astro";
+import Header from "../../../components/Header.astro";
+import { legalUpdatedAt, site } from "../../../data/site-content";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+
+const title = "Política de cookies y almacenamiento | SaltaCode";
+const description = "Detalle del almacenamiento técnico, preferencia de tema y consentimiento del chat utilizados por SaltaCode.";
+const breadcrumbs = [
+  { name: "Inicio", path: "/" },
+  { name: "Cookies y almacenamiento", path: "/legal/cookies/" },
+];
+---
+
+<BaseLayout title={title} description={description} breadcrumbs={breadcrumbs}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <article class="legal-page">
+      <div class="container legal-layout">
+        <header>
+          <Breadcrumbs items={[{ label: "Cookies y almacenamiento" }]} />
+          <p class="eyebrow">Legal</p>
+          <h1>Política de cookies y almacenamiento</h1>
+          <p class="legal-updated">Última actualización: {legalUpdatedAt}</p>
+          <p class="page-lead">Usamos únicamente almacenamiento necesario para el funcionamiento del sitio, el tema visual y el consentimiento del chat.</p>
+        </header>
+
+        <div class="legal-content">
+          <section>
+            <h2>1. Qué tecnologías utiliza el sitio</h2>
+            <p>El sitio puede guardar información en una cookie técnica y en el almacenamiento local del navegador. Actualmente no usamos cookies de analítica, publicidad, seguimiento entre sitios ni marketing.</p>
+          </section>
+          <section>
+            <h2>2. Sesión del chat</h2>
+            <div class="storage-table" role="region" aria-label="Detalle de la cookie del chat" tabindex="0">
+              <table>
+                <thead><tr><th>Nombre</th><th>Finalidad</th><th>Duración</th><th>Alcance</th></tr></thead>
+                <tbody><tr><td><code>saltacode_chat_session</code></td><td>Vincular de forma segura la conversación con una sesión anónima.</td><td>Hasta 30 días</td><td>Cookie HttpOnly, SameSite=Lax, ruta <code>/api/v1/chat</code>.</td></tr></tbody>
+              </table>
+            </div>
+            <p>La cookie se crea al enviar un mensaje aceptado al chat. Al ser HttpOnly, el código del navegador no puede leer su contenido.</p>
+          </section>
+          <section>
+            <h2>3. Preferencia de tema</h2>
+            <p>La clave local <code>saltacode-theme</code> recuerda si elegiste modo claro u oscuro. Si preferís “sistema”, no necesitamos guardar esa elección y usamos la configuración de tu dispositivo.</p>
+          </section>
+          <section>
+            <h2>4. Consentimiento del chat</h2>
+            <p>La clave local <code>saltacode-chat-consent</code> guarda exclusivamente la versión de privacidad aceptada y la fecha de aceptación. No contiene mensajes ni respuestas. Permanece en el navegador hasta que borres los datos del sitio o sea reemplazada por una versión posterior.</p>
+          </section>
+          <section>
+            <h2>5. Cómo controlar este almacenamiento</h2>
+            <p>Podés eliminar cookies y datos locales desde la configuración de tu navegador. Al hacerlo, el sitio volverá a usar el tema del sistema, podrá solicitar nuevamente el consentimiento del chat y comenzará una nueva sesión de conversación.</p>
+          </section>
+          <section>
+            <h2>6. Cambios futuros</h2>
+            <p>Hoy no hace falta un banner global porque no usamos categorías opcionales. Si incorporamos analítica, marketing u otra tecnología no necesaria, actualizaremos esta política y ofreceremos un control previo para aceptar o rechazar esas categorías.</p>
+            <p>Para consultas escribinos a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
+          </section>
+        </div>
+      </div>
+    </article>
+  </main>
+  <Footer />
+</BaseLayout>

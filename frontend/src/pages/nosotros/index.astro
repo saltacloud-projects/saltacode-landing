@@ -1,0 +1,76 @@
+---
+import "../../styles/interior.css";
+import { Picture } from "astro:assets";
+import Breadcrumbs from "../../components/Breadcrumbs.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import { about, site } from "../../data/site-content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const title = "Sobre SaltaCode | Equipo de desarrollo de software en Salta";
+const description = "Conocé a SaltaCode, un equipo de Salta que trabaja en desarrollo de software, consultoría y equipos IT para empresas.";
+const breadcrumbs = [
+  { name: "Inicio", path: "/" },
+  { name: "Nosotros", path: "/nosotros/" },
+];
+---
+
+<BaseLayout title={title} description={description} breadcrumbs={breadcrumbs}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <section class="page-intro about-page-intro">
+      <div class="container">
+        <Breadcrumbs items={[{ label: "Nosotros" }]} />
+        <div class="page-intro-grid">
+          <div>
+            <p class="eyebrow">Nosotros</p>
+            <h1>Un equipo tecnológico con base en Salta</h1>
+            <p class="page-lead">{about.summary}</p>
+          </div>
+          <div class="page-intro-media">
+            <Picture
+              src={about.image}
+              formats={["avif"]}
+              fallbackFormat="webp"
+              widths={[480, 720, 960]}
+              sizes="(min-width: 900px) 520px, calc(100vw - 40px)"
+              alt={about.imageAlt}
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="approach-title">
+      <div class="container approach-grid">
+        <div>
+          <p class="eyebrow">Cómo nos orientamos</p>
+          <h2 id="approach-title">La tecnología es parte de la respuesta, no el punto de partida</h2>
+        </div>
+        <ol class="principle-list">
+          {about.principles.map((principle, index) => (
+            <li><span>0{index + 1}</span><div><h3>{principle.title}</h3><p>{principle.copy}</p></div></li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    <section class="section location-band" aria-labelledby="location-title">
+      <div class="container location-grid">
+        <div>
+          <p class="eyebrow">Dónde estamos</p>
+          <h2 id="location-title">Trabajamos desde Salta</h2>
+          <p>Podés encontrarnos en {site.address}, {site.locality}.</p>
+        </div>
+        <div class="contact-actions">
+          <a class="button" href={site.maps} target="_blank" rel="noopener noreferrer">Ver ubicación</a>
+          <a class="button button-secondary" href="/contacto/">Contactarnos</a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

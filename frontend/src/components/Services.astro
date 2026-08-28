@@ -1,119 +1,48 @@
 ---
 import { Picture } from "astro:assets";
-import consultingImage from "../assets/services/consulting.webp";
-import outsourcingImage from "../assets/services/outsourcing.webp";
-import saasImage from "../assets/services/saas.webp";
-import softwareImage from "../assets/services/software-factory.webp";
-
-const services = [
-  {
-    id: "software-factory",
-    legacyAlias: null,
-    title: "Software a medida",
-    description:
-      "Diseñamos y desarrollamos sistemas web y móviles adaptados a tus procesos, integraciones y objetivos de negocio.",
-    image: softwareImage,
-    imageAlt: "Tarjeta de presentación de SaltaCode",
-    features: [
-      ["Procesos más simples", "Digitalizamos tareas y flujos que hoy consumen tiempo."],
-      ["Sistemas integrados", "Conectamos herramientas y datos para evitar trabajo duplicado."],
-      ["Web y mobile", "Construimos experiencias para clientes y equipos internos."],
-      ["Evolución por etapas", "Priorizamos entregas según el valor que necesita el proyecto."],
-    ],
-  },
-  {
-    id: "outsourcing",
-    legacyAlias: null,
-    title: "Equipos IT",
-    description:
-      "Sumamos perfiles técnicos o equipos completos para iniciar un proyecto, ampliar capacidad o complementar tu equipo interno.",
-    image: outsourcingImage,
-    imageAlt: "Taza de SaltaCode en una oficina",
-    features: [
-      ["Perfiles adecuados", "Armamos el equipo según el desafío y la etapa del proyecto."],
-      ["Integración", "Trabajamos con tus responsables, procesos y herramientas."],
-      ["Escala necesaria", "Ajustamos la composición a medida que cambia el proyecto."],
-      ["Seguimiento técnico", "Mantenemos objetivos, comunicación y calidad visibles."],
-    ],
-  },
-  {
-    id: "consultoria-it",
-    legacyAlias: "it-consulting",
-    title: "Consultoría IT",
-    description:
-      "Analizamos tu contexto y te ayudamos a decidir arquitectura, tecnologías y plan de implementación antes de invertir.",
-    image: consultingImage,
-    imageAlt: "Saludo profesional de un integrante de SaltaCode",
-    features: [
-      ["Arquitectura de software", "Definimos límites, integraciones y criterios de evolución."],
-      ["Selección tecnológica", "Comparamos opciones según costo, equipo y mantenimiento."],
-      ["Revisión de sistemas", "Detectamos riesgos, cuellos de botella y deuda técnica."],
-      ["Hoja de ruta", "Ordenamos prioridades y próximos pasos ejecutables."],
-    ],
-  },
-  {
-    id: "soluciones-saas",
-    legacyAlias: "saas-solutions",
-    title: "Productos SaaS",
-    description:
-      "Diseñamos, construimos y evolucionamos productos SaaS preparados para operar y crecer con usuarios reales.",
-    image: saasImage,
-    imageAlt: "Equipo de SaltaCode colaborando frente a una computadora",
-    features: [
-      ["Definición del producto", "Aterrizamos el problema, el alcance y la experiencia de uso."],
-      ["Modelo multiusuario", "Preparamos cuentas, permisos y operación del servicio."],
-      ["Integraciones", "Conectamos datos y servicios según cada caso."],
-      ["Evolución continua", "Planificamos mantenimiento y nuevas capacidades."],
-    ],
-  },
-];
+import { services } from "../data/site-content";
 ---
 
 <section class="section services legacy-fragment-target" id="servicios" aria-labelledby="services-title">
   <span id="productsAndServices" class="legacy-fragment-alias" aria-hidden="true"></span>
-  <div class="container section-heading centered">
-    <p class="eyebrow">Servicios y productos</p>
-    <h2 id="services-title">Servicios IT según lo que tu empresa necesita</h2>
-    <p>
-      Podemos desarrollar una solución, sumar capacidad a tu equipo, revisar decisiones técnicas o
-      acompañar un producto SaaS.
-    </p>
+  <div class="container editorial-heading">
+    <div>
+      <p class="eyebrow">Servicios</p>
+      <h2 id="services-title">Tecnología aplicada a una necesidad concreta</h2>
+    </div>
+    <div>
+      <p>
+        Podemos construir una solución, revisar decisiones técnicas, sumar capacidad a un equipo o
+        acompañar el desarrollo de un producto SaaS.
+      </p>
+      <a class="text-link" href="/servicios/">Conocé cómo trabajamos <span aria-hidden="true">→</span></a>
+    </div>
   </div>
 
-  <div class="container service-list">
-    {services.map((service, index) => (
-      <article
-        class:list={["service", { reverse: index % 2 === 1, "legacy-fragment-target": service.legacyAlias }]}
-        id={service.id}
-      >
+  <div class="container service-cards">
+    {services.map((service) => (
+      <article class:list={["service-card", { "legacy-fragment-target": service.legacyAlias }]} id={service.id}>
         {service.legacyAlias && (
           <span id={service.legacyAlias} class="legacy-fragment-alias" aria-hidden="true"></span>
         )}
-        <div class="service-media">
+        <div class="service-card-media">
           <Picture
             src={service.image}
             formats={["avif"]}
             fallbackFormat="webp"
-            widths={[480, 720, 960]}
-            sizes="(min-width: 960px) 560px, calc(100vw - 40px)"
+            widths={[360, 560, 720]}
+            sizes="(min-width: 960px) 540px, calc(100vw - 40px)"
             alt={service.imageAlt}
             loading="lazy"
             decoding="async"
+            style={`object-position:${service.imagePosition}`}
           />
         </div>
-
-        <div class="service-content">
+        <div class="service-card-copy">
+          <span class="service-number">{service.number}</span>
           <h3>{service.title}</h3>
-          <p>{service.description}</p>
-          <ul class="feature-grid">
-            {service.features.map(([title, copy]) => (
-              <li>
-                <span class="feature-mark" aria-hidden="true"></span>
-                <h4>{title}</h4>
-                <p>{copy}</p>
-              </li>
-            ))}
-          </ul>
+          <p>{service.shortDescription}</p>
+          <a class="text-link" href={`/servicios/#${service.id}`}>Ver este servicio <span aria-hidden="true">→</span></a>
         </div>
       </article>
     ))}

@@ -1,0 +1,72 @@
+---
+import "../../../styles/interior.css";
+import Breadcrumbs from "../../../components/Breadcrumbs.astro";
+import Footer from "../../../components/Footer.astro";
+import Header from "../../../components/Header.astro";
+import { legalUpdatedAt, site } from "../../../data/site-content";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+
+const title = "Política de privacidad | SaltaCode";
+const description = "Cómo SaltaCode trata los datos enviados por contacto y por el asistente con inteligencia artificial.";
+const breadcrumbs = [
+  { name: "Inicio", path: "/" },
+  { name: "Política de privacidad", path: "/legal/privacidad/" },
+];
+---
+
+<BaseLayout title={title} description={description} breadcrumbs={breadcrumbs}>
+  <div id="top"></div>
+  <Header />
+  <main id="contenido">
+    <article class="legal-page">
+      <div class="container legal-layout">
+        <header>
+          <Breadcrumbs items={[{ label: "Política de privacidad" }]} />
+          <p class="eyebrow">Legal</p>
+          <h1>Política de privacidad</h1>
+          <p class="legal-updated">Última actualización: {legalUpdatedAt}</p>
+          <p class="page-lead">Esta política explica qué datos recibe SaltaCode, para qué los utiliza y cómo podés ejercer tus derechos.</p>
+        </header>
+
+        <div class="legal-content">
+          <section>
+            <h2>1. Responsable y contacto</h2>
+            <p>El responsable de este sitio y del tratamiento descrito es SaltaCode, con domicilio publicado en {site.address}, {site.locality}. Para consultas de privacidad o ejercicio de derechos podés escribir a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
+          </section>
+          <section>
+            <h2>2. Datos que podemos recibir</h2>
+            <p>Tratamos los datos que decidís proporcionar al contactarnos por email, teléfono, WhatsApp, redes sociales o mediante el chat del sitio. Esto puede incluir nombre, datos de contacto, empresa, contenido de la consulta y el historial necesario para continuar la conversación.</p>
+            <p>El sitio también utiliza almacenamiento técnico y de preferencias. Su detalle está en la <a href="/legal/cookies/">Política de cookies y almacenamiento</a>.</p>
+          </section>
+          <section>
+            <h2>3. Finalidades y base del tratamiento</h2>
+            <p>Usamos estos datos para responder consultas, orientar sobre nuestros servicios, continuar una conversación, organizar una posible propuesta y proteger el funcionamiento del servicio. El chat conserva su historial sólo después de que aceptás de forma expresa la versión de privacidad presentada antes del primer envío.</p>
+          </section>
+          <section>
+            <h2>4. Asistente con inteligencia artificial y proveedores</h2>
+            <p>El chat puede procesar la consulta mediante proveedores tecnológicos necesarios para operar infraestructura, comunicaciones e inteligencia artificial. La respuesta es automática y orientativa. No envíes contraseñas, credenciales, información financiera, datos de salud ni otros datos sensibles.</p>
+            <p>Algunos proveedores pueden procesar información desde otros países. Cuando exista una transferencia internacional, SaltaCode procurará aplicar medidas contractuales, técnicas y organizativas apropiadas al tipo de información tratada.</p>
+          </section>
+          <section>
+            <h2>5. Conservación y seguridad</h2>
+            <p>Conservamos la información sólo durante el tiempo necesario para atender la consulta, continuar la relación, cumplir obligaciones aplicables y proteger el servicio. Aplicamos medidas razonables para limitar accesos, pérdida, alteración o divulgación no autorizada, aunque ningún sistema conectado a Internet ofrece seguridad absoluta.</p>
+          </section>
+          <section>
+            <h2>6. Tus derechos</h2>
+            <p>Podés solicitar acceso, rectificación, actualización o supresión de tus datos escribiendo a <a href={`mailto:${site.email}`}>{site.email}</a>. Podemos pedir información mínima para verificar que la solicitud corresponde a la persona titular.</p>
+            <p>La Agencia de Acceso a la Información Pública (AAIP), autoridad de aplicación en Argentina, recibe denuncias y reclamos relacionados con la protección de datos personales. Podés consultar sus canales en <a href="https://www.argentina.gob.ar/aaip" target="_blank" rel="noopener noreferrer">argentina.gob.ar/aaip</a>.</p>
+          </section>
+          <section>
+            <h2>7. Menores y datos sensibles</h2>
+            <p>Este sitio y su chat están orientados a consultas comerciales y profesionales, no a menores de edad. No solicitamos datos sensibles. Si advertimos que fueron enviados sin ser necesarios, podremos eliminarlos o pedir que la conversación continúe por un canal adecuado.</p>
+          </section>
+          <section>
+            <h2>8. Cambios a esta política</h2>
+            <p>Podemos actualizar esta política cuando cambien el sitio, el chat o las obligaciones aplicables. Publicaremos la fecha de la nueva versión y, si el cambio afecta el consentimiento del chat, volveremos a solicitar una aceptación expresa.</p>
+          </section>
+        </div>
+      </div>
+    </article>
+  </main>
+  <Footer />
+</BaseLayout>
