@@ -23,6 +23,7 @@ router = APIRouter(
 
 @router.get("/", response_model=list[ConversationSummaryOut])
 async def list_conversations(
+    agent_id: uuid.UUID,
     channel: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -48,6 +49,7 @@ async def list_conversations(
         .join(AgentProfile, AgentProfile.id == ChatConversation.agent_id)
         .join(Principal, Principal.id == ChatConversation.principal_id)
         .outerjoin(counts, counts.c.conversation_id == ChatConversation.id)
+        .where(ChatConversation.agent_id == agent_id)
         .order_by(
             func.coalesce(counts.c.last_message_at, ChatConversation.updated_at).desc()
         )
@@ -64,6 +66,8 @@ async def list_conversations(
             principal_id=str(conversation.principal_id),
             display_name=display_name,
             channel=conversation.channel,
+            route_key=conversation.route_key,
+            external_thread_id=conversation.external_thread_id,
             status=conversation.status,
             message_count=message_count or 0,
             last_message_at=last_message_at,
@@ -77,11 +81,22 @@ async def list_conversations(
 @router.get("/{conversation_id}/messages", response_model=list[ConversationMessageOut])
 async def get_conversation_history(
     conversation_id: str,
+    agent_id: uuid.UUID,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     conversation_uuid = _uuid_or_404(conversation_id)
+    owned_conversation = (
+        await db.execute(
+            select(ChatConversation.id).where(
+                ChatConversation.id == conversation_uuid,
+                ChatConversation.agent_id == agent_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if owned_conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     messages = list(
         (
             await db.execute(
@@ -104,10 +119,17 @@ async def get_conversation_history(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_permission(AdminPermission.CONVERSATIONS_MANAGE))],
 )
-async def delete_conversation(conversation_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_conversation(
+    conversation_id: str,
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
     conversation_uuid = _uuid_or_404(conversation_id)
     result = await db.execute(
-        delete(ChatConversation).where(ChatConversation.id == conversation_uuid)
+        delete(ChatConversation).where(
+            ChatConversation.id == conversation_uuid,
+            ChatConversation.agent_id == agent_id,
+        )
     )
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Conversation not found")

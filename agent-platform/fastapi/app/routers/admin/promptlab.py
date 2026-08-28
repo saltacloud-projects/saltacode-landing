@@ -10,14 +10,15 @@ from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.temporal_context import build_temporal_context
 from app.dependencies import get_db
 from app.models.admin_user import AdminUser
 from app.models.authorized_user import AuthorizedUser
-from app.models.conversation_message import ConversationMessage
+from app.models.platform import ChatConversation, Principal
+from app.models.platform import ChatMessage as ChatMessageModel
 from app.models.rag import OrganizationArea
 from app.models.tool_config import ToolConfig
 from app.routers.admin.auth import require_admin, require_permission
@@ -93,7 +94,11 @@ class TestAgentResponse(BaseModel):
 
 class ConversationSearchResult(BaseModel):
     id: str
-    phone_number: str
+    conversation_id: str
+    display_name: str | None
+    channel: str
+    route_key: str
+    external_thread_id: str
     role: str
     content: str
     created_at: str
@@ -386,29 +391,48 @@ async def test_agent(
 
 @router.get("/search-conversations", response_model=list[ConversationSearchResult])
 async def search_conversations(
+    agent_id: uuid.UUID,
     q: str = Query(min_length=2),
-    phone: str | None = None,
+    channel: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    """Busca texto en el contenido de los mensajes de conversación."""
+    """Search neutral conversation history owned by one explicit agent."""
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
     stmt = (
-        select(ConversationMessage)
-        .where(ConversationMessage.content.ilike(f"%{q}%"))
-        .order_by(ConversationMessage.created_at.desc())
+        select(ChatMessageModel, ChatConversation, Principal.display_name)
+        .join(
+            ChatConversation,
+            ChatConversation.id == ChatMessageModel.conversation_id,
+        )
+        .join(Principal, Principal.id == ChatConversation.principal_id)
+        .where(
+            ChatConversation.agent_id == agent_id,
+            or_(
+                ChatMessageModel.content.ilike(pattern, escape="\\"),
+                Principal.display_name.ilike(pattern, escape="\\"),
+                ChatConversation.external_thread_id.ilike(pattern, escape="\\"),
+            ),
+        )
+        .order_by(ChatMessageModel.created_at.desc())
         .limit(limit)
     )
-    if phone:
-        stmt = stmt.where(ConversationMessage.phone_number == phone)
+    if channel:
+        stmt = stmt.where(ChatConversation.channel == channel)
 
-    result = await db.execute(stmt)
+    rows = (await db.execute(stmt)).all()
     return [
         ConversationSearchResult(
-            id=str(m.id),
-            phone_number=m.phone_number,
-            role=m.role,
-            content=m.content[:500],
-            created_at=m.created_at.isoformat(),
+            id=str(message.id),
+            conversation_id=str(conversation.id),
+            display_name=display_name,
+            channel=conversation.channel,
+            route_key=conversation.route_key,
+            external_thread_id=conversation.external_thread_id,
+            role=message.role,
+            content=message.content[:500],
+            created_at=message.created_at.isoformat(),
         )
-        for m in result.scalars().all()
+        for message, conversation, display_name in rows
     ]

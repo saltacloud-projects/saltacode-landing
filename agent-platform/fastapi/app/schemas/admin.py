@@ -433,6 +433,8 @@ class ConversationSummaryOut(BaseModel):
     principal_id: str
     display_name: str | None
     channel: str
+    route_key: str
+    external_thread_id: str
     status: str
     message_count: int
     last_message_at: datetime | None
