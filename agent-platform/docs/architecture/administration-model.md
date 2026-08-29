@@ -52,7 +52,7 @@ An external API source is configured in the global source library with its base 
 | Channel routes | Agent | Yes | Map one channel and `route_key` through one connection to one agent. |
 | Conversations, messages, executions | Agent | Yes | Durable history keyed by agent, channel, route, and principal. |
 | PromptLab request | Selected agent | No separate configuration record | Reads the selected persisted profile/runtime/resources; preview inputs are a validation workspace. |
-| Audit log | Platform-wide today | Yes | Read-only global view because `audit_logs` does not yet persist agent ownership. |
+| Audit log | Agent for routed activity | Yes | New routed records persist agent and channel-route ownership; selected-agent reads require `agent_id`. |
 | Panel users and roles | Platform-wide | Yes | Administrative access, independent from end-user channel access. |
 
 Conversations are not inferred from the current panel selection. Every durable conversation stores `agent_id`, `channel`, `route_key`, principal, messages, and executions, so changing the selected agent in the panel cannot move or merge history.
@@ -89,6 +89,6 @@ Each WhatsApp number or business route therefore needs its own channel connectio
 
 The browser never selects an agent ID or route. The SaltaCode BFF owns `SALTACODE_AGENT_ROUTE_KEY` and sends it on the authenticated private execution request. The agent platform resolves that persisted public web route to one active agent, provider runtime, and web connection. Changing the browser payload cannot bypass that server-owned mapping.
 
-## Known ownership gap
+## Historical audit policy
 
-The primary conversation model is agent-scoped, but the legacy `audit_logs` table has no `agent_id` or channel-route foreign key. Audit must remain a platform-wide view until a migration persists ownership at write time and existing records receive an explicit migration policy. UI filtering alone would not make those records agent-owned.
+The primary conversation model and new routed audit records are agent-scoped. Historical audit rows created before ownership was persisted keep nullable `agent_id` and `channel_route_id` values because that ownership cannot be reconstructed safely. Selected-agent reads exclude those rows; the platform does not infer or backfill an agent merely to make legacy history appear scoped.
