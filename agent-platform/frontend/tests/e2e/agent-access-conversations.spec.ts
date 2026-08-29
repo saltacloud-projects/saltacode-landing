@@ -171,18 +171,24 @@ test("conversation list, history, and deletion always include the selected agent
   await expect.poll(() => calls.some((call) => call.operation === "list" && call.agentId === AGENT_B)).toBe(true);
 });
 
-test("audit remains a platform-level view and legacy agent route redirects", async ({ page }) => {
+test("audit remains inside the selected agent and filters server-side", async ({ page }) => {
   await prepare(page);
+  const auditAgentIds: string[] = [];
   await page.route("**/api/admin/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
     const handled = common(path, route);
     if (handled) return handled;
-    if (path.endsWith("/audit/")) return json(route, []);
+    if (path.endsWith("/audit/")) {
+      auditAgentIds.push(url.searchParams.get("agent_id") ?? "");
+      return json(route, []);
+    }
     return json(route, { detail: `Mock missing: ${route.request().method()} ${path}` }, 500);
   });
 
   await page.goto(`/agents/${AGENT_A}/audit`);
-  await expect(page).toHaveURL(/\/audit$/);
-  await expect(page.getByRole("heading", { name: "Auditoría global" })).toBeVisible();
-  await expect(page.getByText("Esta vista no representa aislamiento por agente.")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_A}/audit$`));
+  await expect(page.getByRole("heading", { name: "Auditoría", exact: true })).toBeVisible();
+  await expect(page.getByText(/Eventos operativos atribuidos a Agent Alpha/)).toBeVisible();
+  await expect.poll(() => auditAgentIds).toContain(AGENT_A);
 });

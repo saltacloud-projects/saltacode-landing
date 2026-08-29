@@ -4,6 +4,7 @@ Agent Platform — Router: Admin Audit
 """
 
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -24,6 +25,7 @@ router = APIRouter(
 
 @router.get("/", response_model=list[AuditLogAdminOut])
 async def list_audit_logs(
+    agent_id: UUID,
     phone: str | None = None,
     status: str | None = None,
     source_system: str | None = None,
@@ -39,6 +41,7 @@ async def list_audit_logs(
     stmt = (
         select(AuditLog, AuthorizedUser.name)
         .outerjoin(AuthorizedUser, AuditLog.phone_number == AuthorizedUser.phone_number)
+        .where(AuditLog.agent_id == agent_id)
         .order_by(AuditLog.created_at.desc())
     )
 

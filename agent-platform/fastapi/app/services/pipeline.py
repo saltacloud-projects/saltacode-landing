@@ -798,6 +798,10 @@ class PipelineService:
                     # -----------------------------------------------------------
                     await self._log_audit(
                         db,
+                        agent_id=profile.id if resolved_runtime is not None else None,
+                        channel_route_id=channel_route_id
+                        if resolved_runtime is not None
+                        else None,
                         request_id=request_id,
                         phone=phone,
                         input_type=input_type,
@@ -879,6 +883,8 @@ class PipelineService:
         self,
         db,
         *,
+        agent_id: uuid.UUID | None,
+        channel_route_id: uuid.UUID | None,
         request_id,
         phone,
         input_type,
@@ -910,6 +916,8 @@ class PipelineService:
             await audit_service.log(
                 db,
                 AuditLogCreate(
+                    agent_id=agent_id,
+                    channel_route_id=channel_route_id,
                     request_id=request_id,
                     phone_number=phone,
                     channel=ChannelEnum.whatsapp,
@@ -1010,6 +1018,12 @@ class PipelineService:
                     )
             await self._log_audit(
                 db,
+                agent_id=resolved_runtime.profile.id
+                if resolved_runtime is not None
+                else None,
+                channel_route_id=channel_route_id
+                if resolved_runtime is not None
+                else None,
                 request_id=request_id,
                 phone=phone,
                 input_type=input_type,

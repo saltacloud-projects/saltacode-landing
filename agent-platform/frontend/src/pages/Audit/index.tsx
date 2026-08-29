@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { ClipboardList, ListFilter, LoaderCircle, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { api } from "../../api/client";
-import { ClipboardList, Search, LoaderCircle, ListFilter } from "lucide-react";
 
 interface ToolCall {
   tool: string;
@@ -9,12 +10,25 @@ interface ToolCall {
 }
 
 interface AuditLog {
-  id: string; request_id: string; phone_number: string; user_name: string | null;
-  channel: string; input_type: string; intent: string | null; source_system: string | null;
-  tool_used: string | null; duration_ms: number | null; status: string;
-  error_code: string | null; error_message: string | null;
-  response_preview: string | null; user_message: string | null;
-  tool_calls: ToolCall[]; created_at: string;
+  id: string;
+  agent_id: string | null;
+  channel_route_id: string | null;
+  request_id: string;
+  phone_number: string;
+  user_name: string | null;
+  channel: string;
+  input_type: string;
+  intent: string | null;
+  source_system: string | null;
+  tool_used: string | null;
+  duration_ms: number | null;
+  status: string;
+  error_code: string | null;
+  error_message: string | null;
+  response_preview: string | null;
+  user_message: string | null;
+  tool_calls: ToolCall[];
+  created_at: string;
 }
 
 // Formatea los argumentos de una tool para el tooltip ("con qué parámetros").
@@ -42,30 +56,63 @@ function statusBadge(status: string): string {
 }
 
 export default function AuditPage() {
+  const { selectedAgent } = useAgentWorkspace();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [phoneFilter, setPhoneFilter] = useState("");
+  const phoneFilterRef = useRef(phoneFilter);
+  phoneFilterRef.current = phoneFilter;
 
-  const load = () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (statusFilter) params.set("status", statusFilter);
-    if (phoneFilter) params.set("phone", phoneFilter);
-    params.set("limit", "100");
-    api<AuditLog[]>(`/audit/?${params}`).then(setLogs).finally(() => setLoading(false));
-  };
+  const fetchLogs = useCallback(
+    (status: string, phone: string) => {
+      if (!selectedAgent) return;
+      setLoading(true);
+      setError("");
+      const params = new URLSearchParams();
+      params.set("agent_id", selectedAgent.id);
+      if (status) params.set("status", status);
+      if (phone) params.set("phone", phone);
+      params.set("limit", "100");
+      api<AuditLog[]>(`/audit/?${params}`)
+        .then(setLogs)
+        .catch((value) => {
+          setLogs([]);
+          setError(value instanceof Error ? value.message : "No se pudo cargar la auditoría.");
+        })
+        .finally(() => setLoading(false));
+    },
+    [selectedAgent],
+  );
+  const load = useCallback(
+    () => fetchLogs(statusFilter, phoneFilter),
+    [fetchLogs, phoneFilter, statusFilter],
+  );
 
   // Recarga al cambiar el filtro de estado
-  useEffect(() => { load(); }, [statusFilter]);
+  useEffect(() => {
+    fetchLogs(statusFilter, phoneFilterRef.current);
+  }, [fetchLogs, statusFilter]);
+
+  if (!selectedAgent) {
+    return (
+      <p className="text-sm text-[var(--text-muted)]" role="status">
+        Seleccioná un agente para consultar su auditoría.
+      </p>
+    );
+  }
 
   return (
     <div>
       <div className="mb-6 flex items-start gap-2">
         <ClipboardList size={22} className="text-[var(--accent)]" />
         <div>
-          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Auditoría global</h2>
-          <p className="text-sm text-[var(--text-muted)]">Eventos operativos de toda la plataforma. Esta vista no representa aislamiento por agente.</p>
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Auditoría</h2>
+          <p className="text-sm text-[var(--text-muted)]">
+            Eventos operativos atribuidos a {selectedAgent.name}. Los registros históricos sin
+            agente identificado no se muestran acá.
+          </p>
         </div>
       </div>
 
@@ -93,12 +140,22 @@ export default function AuditPage() {
           className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-3 py-2 text-sm w-56 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
         />
         <button
+          type="button"
           onClick={load}
           className="flex items-center gap-2 px-4 py-2 text-sm rounded-md bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white transition-colors"
         >
           <Search size={16} /> Buscar
         </button>
       </div>
+
+      {error && (
+        <p
+          className="mb-4 rounded border border-[var(--error)]/30 bg-[var(--error)]/10 px-3 py-2 text-sm text-[var(--error)]"
+          role="alert"
+        >
+          {error}
+        </p>
+      )}
 
       {/* Tabla */}
       <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg overflow-hidden overflow-x-auto">
@@ -124,28 +181,35 @@ export default function AuditPage() {
                   {l.user_name ? (
                     <div>
                       <span className="text-[var(--text-primary)]">{l.user_name}</span>
-                      <span className="block font-mono text-[10px] text-[var(--text-muted)]">{l.phone_number}</span>
+                      <span className="block font-mono text-[10px] text-[var(--text-muted)]">
+                        {l.phone_number}
+                      </span>
                     </div>
                   ) : (
                     <span className="font-mono text-[var(--text-primary)]">{l.phone_number}</span>
                   )}
                 </td>
                 <td className="px-3 py-2.5 max-w-[16rem]">
-                  <span className="block truncate text-[var(--text-secondary)]" title={l.user_message || ""}>
+                  <span
+                    className="block truncate text-[var(--text-secondary)]"
+                    title={l.user_message || ""}
+                  >
                     {l.user_message || "—"}
                   </span>
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(l.status)}`}>
+                  <span
+                    className={`px-2 py-0.5 rounded text-xs font-medium ${statusBadge(l.status)}`}
+                  >
                     {l.status}
                   </span>
                 </td>
                 <td className="px-3 py-2.5 max-w-[20rem]">
                   {l.tool_calls && l.tool_calls.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
-                      {l.tool_calls.map((tc, i) => (
+                      {l.tool_calls.map((tc) => (
                         <span
-                          key={i}
+                          key={`${tc.tool}:${tc.status ?? ""}:${formatArgs(tc.args)}`}
                           title={formatArgs(tc.args)}
                           className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] cursor-help ${
                             tc.status && tc.status !== "success"
@@ -155,7 +219,9 @@ export default function AuditPage() {
                         >
                           {tc.tool}
                           {tc.args && Object.keys(tc.args).length > 0 && (
-                            <span className="text-[var(--text-muted)]">({Object.keys(tc.args).length})</span>
+                            <span className="text-[var(--text-muted)]">
+                              ({Object.keys(tc.args).length})
+                            </span>
                           )}
                         </span>
                       ))}
@@ -186,7 +252,10 @@ export default function AuditPage() {
             )}
             {loading && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-[var(--text-secondary)] text-sm">
+                <td
+                  colSpan={7}
+                  className="px-3 py-6 text-center text-[var(--text-secondary)] text-sm"
+                >
                   <span className="inline-flex items-center gap-2">
                     <LoaderCircle size={16} className="animate-spin" /> Cargando logs...
                   </span>

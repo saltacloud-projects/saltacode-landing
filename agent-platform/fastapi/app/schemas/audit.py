@@ -5,6 +5,7 @@ Registro detallado de cada request procesado por el agente.
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +13,8 @@ from app.schemas.common import ChannelEnum, InputTypeEnum, SourceSystemEnum, Sta
 
 
 class AuditLogCreate(BaseModel):
+    agent_id: UUID | None = None
+    channel_route_id: UUID | None = None
     request_id: str
     phone_number: str
     channel: ChannelEnum = ChannelEnum.whatsapp
@@ -34,6 +37,8 @@ class AuditLogCreate(BaseModel):
 
 class AuditLogOut(BaseModel):
     id: str
+    agent_id: str | None = None
+    channel_route_id: str | None = None
     request_id: str
     phone_number: str
     channel: str
@@ -60,6 +65,10 @@ class AuditLogOut(BaseModel):
     def from_orm_model(cls, obj) -> "AuditLogOut":
         return cls(
             id=str(obj.id),
+            agent_id=str(obj.agent_id) if obj.agent_id else None,
+            channel_route_id=str(obj.channel_route_id)
+            if obj.channel_route_id
+            else None,
             request_id=str(obj.request_id),
             phone_number=obj.phone_number,
             channel=obj.channel,
@@ -83,6 +92,8 @@ class AuditLogOut(BaseModel):
 
 
 class AuditListFilter(BaseModel):
+    agent_id: UUID | None = None
+    channel_route_id: UUID | None = None
     phone_number: str | None = None
     status: StatusEnum | None = None
     source_system: SourceSystemEnum | None = None

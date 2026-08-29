@@ -475,6 +475,8 @@ class SummaryUpdateRequest(BaseModel):
 
 class AuditLogAdminOut(BaseModel):
     id: str
+    agent_id: str | None = None
+    channel_route_id: str | None = None
     request_id: str
     phone_number: str
     user_name: str | None = None
@@ -498,6 +500,10 @@ class AuditLogAdminOut(BaseModel):
     def from_orm_model(cls, obj, user_name: str | None = None) -> "AuditLogAdminOut":
         return cls(
             id=str(obj.id),
+            agent_id=str(obj.agent_id) if obj.agent_id else None,
+            channel_route_id=str(obj.channel_route_id)
+            if obj.channel_route_id
+            else None,
             request_id=str(obj.request_id),
             phone_number=obj.phone_number,
             user_name=user_name,

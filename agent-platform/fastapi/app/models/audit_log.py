@@ -5,7 +5,7 @@ Agent Platform — Modelo: AuditLog (auditoría por request)
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import UUID, Integer, Numeric, String, Text
+from sqlalchemy import UUID, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +15,18 @@ from app.models.base import TimestampedModel
 class AuditLog(TimestampedModel):
     __tablename__ = "audit_logs"
 
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    channel_route_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("channel_agent_routes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True, default=uuid.uuid4
     )

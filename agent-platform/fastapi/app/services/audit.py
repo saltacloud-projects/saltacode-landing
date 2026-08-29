@@ -25,6 +25,8 @@ class AuditService:
             req_id = _uuid.uuid5(_uuid.NAMESPACE_DNS, str(data.request_id))
 
         entry = AuditLog(
+            agent_id=data.agent_id,
+            channel_route_id=data.channel_route_id,
             request_id=req_id,
             phone_number=data.phone_number,
             channel=data.channel.value,
@@ -52,6 +54,10 @@ class AuditService:
             "audit_logged",
             extra={
                 "request_id": str(req_id),
+                "agent_id": str(data.agent_id) if data.agent_id else None,
+                "channel_route_id": str(data.channel_route_id)
+                if data.channel_route_id
+                else None,
                 "phone": data.phone_number,
                 "status": data.status.value,
                 "tool": data.tool_used,
@@ -63,6 +69,10 @@ class AuditService:
         self, db: AsyncSession, filters: AuditListFilter
     ) -> list[AuditLog]:
         query = select(AuditLog).order_by(AuditLog.created_at.desc())
+        if filters.agent_id:
+            query = query.where(AuditLog.agent_id == filters.agent_id)
+        if filters.channel_route_id:
+            query = query.where(AuditLog.channel_route_id == filters.channel_route_id)
         if filters.phone_number:
             query = query.where(AuditLog.phone_number == filters.phone_number)
         if filters.status:
