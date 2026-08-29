@@ -26,7 +26,9 @@ export const PERMISSIONS = {
 } as const;
 
 export function hasPermission(user: AdminUser | null, permission: string): boolean {
-  return Boolean(user?.permissions?.includes(PERMISSIONS.ALL) || user?.permissions?.includes(permission));
+  return Boolean(
+    user?.permissions?.includes(PERMISSIONS.ALL) || user?.permissions?.includes(permission),
+  );
 }
 
 export function defaultPanelPath(user: AdminUser | null): string {

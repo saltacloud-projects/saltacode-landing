@@ -1,21 +1,96 @@
-import { useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus, Trash2, Wrench, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { useAgentResourceLibrary } from "../../agents/useAgentResourceLibrary";
 import { api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 
-interface Source { id: string; name: string; slug: string; is_active: boolean }
-interface ParamSpec { type?: string; description?: string; required?: boolean }
-interface HttpConfig { method?: string; path?: string; parameter_locations?: Record<string, string>; require_any?: string[]; idempotency_key_param?: string | null }
-interface Tool { id: string; tool_name: string; description: string | null; source_id: string | null; is_enabled: boolean; params_schema: Record<string, ParamSpec>; timeout_seconds: number; result_type: string; handler_kind: string; http_config: HttpConfig | null; allowed_channels: string[]; risk_level: string; requires_confirmation: boolean }
-interface ParamRow { name: string; type: string; description: string; required: boolean; location: string }
-interface FormState { tool_name: string; description: string; source_id: string; method: string; path: string; timeout_seconds: number; result_type: string; allowed_channels: string[]; risk_level: string; requires_confirmation: boolean; idempotency_key_param: string; require_any: string }
+interface Source {
+  id: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
+}
+interface ParamSpec {
+  type?: string;
+  description?: string;
+  required?: boolean;
+}
+interface HttpConfig {
+  method?: string;
+  path?: string;
+  parameter_locations?: Record<string, string>;
+  require_any?: string[];
+  idempotency_key_param?: string | null;
+}
+interface Tool {
+  id: string;
+  tool_name: string;
+  description: string | null;
+  source_id: string | null;
+  is_enabled: boolean;
+  params_schema: Record<string, ParamSpec>;
+  timeout_seconds: number;
+  result_type: string;
+  handler_kind: string;
+  http_config: HttpConfig | null;
+  allowed_channels: string[];
+  risk_level: string;
+  requires_confirmation: boolean;
+}
+interface ParamRow {
+  clientId: string;
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+  location: string;
+}
+interface FormState {
+  tool_name: string;
+  description: string;
+  source_id: string;
+  method: string;
+  path: string;
+  timeout_seconds: number;
+  result_type: string;
+  allowed_channels: string[];
+  risk_level: string;
+  requires_confirmation: boolean;
+  idempotency_key_param: string;
+  require_any: string;
+}
 
-const emptyForm = (): FormState => ({ tool_name: "", description: "", source_id: "", method: "GET", path: "/", timeout_seconds: 30, result_type: "json", allowed_channels: ["web", "whatsapp"], risk_level: "read_only", requires_confirmation: false, idempotency_key_param: "", require_any: "" });
-const INPUT = "w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]";
-const buildRequireAny = (value: string) => [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+const emptyForm = (): FormState => ({
+  tool_name: "",
+  description: "",
+  source_id: "",
+  method: "GET",
+  path: "/",
+  timeout_seconds: 30,
+  result_type: "json",
+  allowed_channels: ["web", "whatsapp"],
+  risk_level: "read_only",
+  requires_confirmation: false,
+  idempotency_key_param: "",
+  require_any: "",
+});
+const INPUT =
+  "w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]";
+let paramRowSequence = 0;
+const createParamRow = (row: Omit<ParamRow, "clientId">): ParamRow => ({
+  clientId: `parameter-row-${paramRowSequence++}`,
+  ...row,
+});
+const buildRequireAny = (value: string) => [
+  ...new Set(
+    value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ),
+];
 
 export default function ToolsPage({ scope = "agent" }: { scope?: "agent" | "library" }) {
   const { user } = useAuth();
@@ -33,42 +108,573 @@ export default function ToolsPage({ scope = "agent" }: { scope?: "agent" | "libr
 
   useEffect(() => {
     const path = agentId ? `/agents/${agentId}/sources` : "/sources/";
-    api<Source[]>(path).then(setSources).catch(() => setSources([]));
+    api<Source[]>(path)
+      .then(setSources)
+      .catch(() => setSources([]));
   }, [agentId]);
 
-  const sourceName = (id: string | null) => sources.find((source) => source.id === id)?.name || "Fuente no asignada a este agente";
-  const openCreate = () => { setEditing(null); setForm({ ...emptyForm(), source_id: sources.find((source) => source.is_active)?.id || "" }); setParams([]); setError(""); setShowForm(true); };
-  const openEdit = (tool: Tool) => { setEditing(tool); setForm({ tool_name: tool.tool_name, description: tool.description || "", source_id: tool.source_id || "", method: tool.http_config?.method || "GET", path: tool.http_config?.path || "/", timeout_seconds: tool.timeout_seconds, result_type: tool.result_type, allowed_channels: tool.allowed_channels, risk_level: tool.risk_level, requires_confirmation: tool.requires_confirmation, idempotency_key_param: tool.http_config?.idempotency_key_param || "", require_any: tool.http_config?.require_any?.join(", ") || "" }); setParams(Object.entries(tool.params_schema || {}).map(([name, spec]) => ({ name, type: spec.type || "string", description: spec.description || "", required: Boolean(spec.required), location: tool.http_config?.parameter_locations?.[name] || "query" }))); setError(""); setShowForm(true); };
-  const updateParam = (index: number, patch: Partial<ParamRow>) => setParams((rows) => rows.map((row, position) => position === index ? { ...row, ...patch } : row));
+  const sourceName = (id: string | null) =>
+    sources.find((source) => source.id === id)?.name || "Fuente no asignada a este agente";
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ ...emptyForm(), source_id: sources.find((source) => source.is_active)?.id || "" });
+    setParams([]);
+    setError("");
+    setShowForm(true);
+  };
+  const openEdit = (tool: Tool) => {
+    setEditing(tool);
+    setForm({
+      tool_name: tool.tool_name,
+      description: tool.description || "",
+      source_id: tool.source_id || "",
+      method: tool.http_config?.method || "GET",
+      path: tool.http_config?.path || "/",
+      timeout_seconds: tool.timeout_seconds,
+      result_type: tool.result_type,
+      allowed_channels: tool.allowed_channels,
+      risk_level: tool.risk_level,
+      requires_confirmation: tool.requires_confirmation,
+      idempotency_key_param: tool.http_config?.idempotency_key_param || "",
+      require_any: tool.http_config?.require_any?.join(", ") || "",
+    });
+    setParams(
+      Object.entries(tool.params_schema || {}).map(([name, spec]) =>
+        createParamRow({
+          name,
+          type: spec.type || "string",
+          description: spec.description || "",
+          required: Boolean(spec.required),
+          location: tool.http_config?.parameter_locations?.[name] || "query",
+        }),
+      ),
+    );
+    setError("");
+    setShowForm(true);
+  };
+  const updateParam = (index: number, patch: Partial<ParamRow>) =>
+    setParams((rows) =>
+      rows.map((row, position) => (position === index ? { ...row, ...patch } : row)),
+    );
 
   const save = async () => {
     setError("");
-    if (!editing && !/^[a-z][a-z0-9_]*$/.test(form.tool_name.trim())) return setError("El nombre debe usar snake_case.");
+    if (!editing && !/^[a-z][a-z0-9_]*$/.test(form.tool_name.trim()))
+      return setError("El nombre debe usar snake_case.");
     if (!form.source_id) return setError("Seleccioná una fuente asignada al agente.");
     if (!form.path.startsWith("/")) return setError("El path debe ser relativo y empezar con '/'.");
-    if (form.risk_level === "write" && (!form.requires_confirmation || !form.idempotency_key_param)) return setError("Una escritura requiere confirmación e idempotency key.");
-    const params_schema = Object.fromEntries(params.filter((row) => row.name.trim()).map((row) => [row.name.trim(), { type: row.type, description: row.description || undefined, required: row.required || undefined }]));
-    const parameter_locations = Object.fromEntries(params.filter((row) => row.name.trim()).map((row) => [row.name.trim(), row.location]));
+    if (form.risk_level === "write" && (!form.requires_confirmation || !form.idempotency_key_param))
+      return setError("Una escritura requiere confirmación e idempotency key.");
+    const params_schema = Object.fromEntries(
+      params
+        .filter((row) => row.name.trim())
+        .map((row) => [
+          row.name.trim(),
+          {
+            type: row.type,
+            description: row.description || undefined,
+            required: row.required || undefined,
+          },
+        ]),
+    );
+    const parameter_locations = Object.fromEntries(
+      params.filter((row) => row.name.trim()).map((row) => [row.name.trim(), row.location]),
+    );
     const require_any = buildRequireAny(form.require_any);
-    const body = { description: form.description || null, source_id: form.source_id, params_schema, timeout_seconds: Number(form.timeout_seconds), result_type: form.result_type, cost_category: "low", allowed_channels: form.allowed_channels, risk_level: form.risk_level, requires_confirmation: form.requires_confirmation, http_config: { method: form.method, path: form.path, parameter_locations, ...(require_any.length ? { require_any } : {}), idempotency_key_param: form.idempotency_key_param || null } };
+    const body = {
+      description: form.description || null,
+      source_id: form.source_id,
+      params_schema,
+      timeout_seconds: Number(form.timeout_seconds),
+      result_type: form.result_type,
+      cost_category: "low",
+      allowed_channels: form.allowed_channels,
+      risk_level: form.risk_level,
+      requires_confirmation: form.requires_confirmation,
+      http_config: {
+        method: form.method,
+        path: form.path,
+        parameter_locations,
+        ...(require_any.length ? { require_any } : {}),
+        idempotency_key_param: form.idempotency_key_param || null,
+      },
+    };
     setSaving(true);
     try {
-      if (editing) await api(`/tools/${editing.tool_name}`, { method: "PATCH", body: JSON.stringify(body) });
+      if (editing)
+        await api(`/tools/${editing.tool_name}`, { method: "PATCH", body: JSON.stringify(body) });
       else {
-        const created = await api<Tool>("/tools/", { method: "POST", body: JSON.stringify({ ...body, tool_name: form.tool_name.trim(), is_enabled: true }) });
+        const created = await api<Tool>("/tools/", {
+          method: "POST",
+          body: JSON.stringify({ ...body, tool_name: form.tool_name.trim(), is_enabled: true }),
+        });
         if (agentId) await api(`/agents/${agentId}/tools/${created.id}`, { method: "PUT" });
       }
-      setShowForm(false); setEditing(null); await resources.refresh();
-    } catch (value) { setError(value instanceof Error ? value.message : "No se pudo guardar la herramienta."); }
-    finally { setSaving(false); }
+      setShowForm(false);
+      setEditing(null);
+      await resources.refresh();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "No se pudo guardar la herramienta.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const toggle = async (tool: Tool) => { await api(`/tools/${tool.tool_name}`, { method: "PATCH", body: JSON.stringify({ is_enabled: !tool.is_enabled }) }); await resources.refresh(); };
-  const remove = async (tool: Tool) => { if (!confirm(`¿Eliminar ${tool.tool_name} de la biblioteca compartida?`)) return; await api(`/tools/${tool.tool_name}`, { method: "DELETE" }); await resources.refresh(); };
+  const toggle = async (tool: Tool) => {
+    await api(`/tools/${tool.tool_name}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_enabled: !tool.is_enabled }),
+    });
+    await resources.refresh();
+  };
+  const remove = async (tool: Tool) => {
+    if (!confirm(`¿Eliminar ${tool.tool_name} de la biblioteca compartida?`)) return;
+    await api(`/tools/${tool.tool_name}`, { method: "DELETE" });
+    await resources.refresh();
+  };
 
-  const ToolCard = ({ tool, assignment }: { tool: Tool; assignment?: "assigned" | "available" }) => <article className={`rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4 ${tool.is_enabled ? "" : "opacity-60"}`}><div className="flex flex-wrap items-start gap-2"><div className="min-w-0 flex-1"><code className="font-semibold">{tool.tool_name}</code><p className="mt-1 text-sm text-[var(--text-secondary)]">{tool.description || "Sin descripción"}</p></div><span className="rounded bg-[var(--accent)]/15 px-2 py-1 text-xs text-[var(--accent)]">{tool.http_config?.method || tool.handler_kind}</span></div><p className="mt-3 truncate font-mono text-xs text-[var(--text-muted)]">{sourceName(tool.source_id)} · {tool.http_config?.path || "nativa"}</p><div className="mt-3 flex flex-wrap gap-1">{tool.allowed_channels.map((channel) => <span key={channel} className="rounded border border-[var(--border-color)] px-2 py-0.5 text-xs">{channel}</span>)}<span className="rounded border border-[var(--border-color)] px-2 py-0.5 text-xs">{tool.risk_level}</span></div>{canEdit && <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => toggle(tool)} className="rounded border border-[var(--border-color)] px-2 py-1.5 text-xs">{tool.is_enabled ? "Desactivar globalmente" : "Activar globalmente"}</button>{tool.handler_kind === "http_api" && <><button onClick={() => openEdit(tool)} className="flex items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"><Pencil size={13} /> Editar biblioteca</button><button onClick={() => remove(tool)} className="flex items-center gap-1 rounded border border-[var(--error)]/40 px-2 py-1.5 text-xs text-[var(--error)]"><Trash2 size={13} /> Eliminar</button></>}{assignment === "assigned" && <button onClick={() => resources.unassign(tool.id)} disabled={resources.busyId === tool.id} className="rounded border border-amber-500/40 px-2 py-1.5 text-xs text-amber-300">Desasignar</button>}{assignment === "available" && <button onClick={() => resources.assign(tool.id)} disabled={resources.busyId === tool.id} className="rounded bg-[var(--accent)] px-2 py-1.5 text-xs text-white">Asignar</button>}</div>}</article>;
+  const ToolCard = ({
+    tool,
+    assignment,
+  }: {
+    tool: Tool;
+    assignment?: "assigned" | "available";
+  }) => (
+    <article
+      className={`rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4 ${tool.is_enabled ? "" : "opacity-60"}`}
+    >
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <code className="font-semibold">{tool.tool_name}</code>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {tool.description || "Sin descripción"}
+          </p>
+        </div>
+        <span className="rounded bg-[var(--accent)]/15 px-2 py-1 text-xs text-[var(--accent)]">
+          {tool.http_config?.method || tool.handler_kind}
+        </span>
+      </div>
+      <p className="mt-3 truncate font-mono text-xs text-[var(--text-muted)]">
+        {sourceName(tool.source_id)} · {tool.http_config?.path || "nativa"}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1">
+        {tool.allowed_channels.map((channel) => (
+          <span
+            key={channel}
+            className="rounded border border-[var(--border-color)] px-2 py-0.5 text-xs"
+          >
+            {channel}
+          </span>
+        ))}
+        <span className="rounded border border-[var(--border-color)] px-2 py-0.5 text-xs">
+          {tool.risk_level}
+        </span>
+      </div>
+      {canEdit && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => toggle(tool)}
+            className="rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"
+          >
+            {tool.is_enabled ? "Desactivar globalmente" : "Activar globalmente"}
+          </button>
+          {tool.handler_kind === "http_api" && (
+            <>
+              <button
+                type="button"
+                onClick={() => openEdit(tool)}
+                className="flex items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"
+              >
+                <Pencil size={13} /> Editar biblioteca
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(tool)}
+                className="flex items-center gap-1 rounded border border-[var(--error)]/40 px-2 py-1.5 text-xs text-[var(--error)]"
+              >
+                <Trash2 size={13} /> Eliminar
+              </button>
+            </>
+          )}
+          {assignment === "assigned" && (
+            <button
+              type="button"
+              onClick={() => resources.unassign(tool.id)}
+              disabled={resources.busyId === tool.id}
+              className="rounded border border-amber-500/40 px-2 py-1.5 text-xs text-amber-300"
+            >
+              Desasignar
+            </button>
+          )}
+          {assignment === "available" && (
+            <button
+              type="button"
+              onClick={() => resources.assign(tool.id)}
+              disabled={resources.busyId === tool.id}
+              className="rounded bg-[var(--accent)] px-2 py-1.5 text-xs text-white"
+            >
+              Asignar
+            </button>
+          )}
+        </div>
+      )}
+    </article>
+  );
 
-  return <div className="max-w-7xl space-y-6"><header className="flex flex-wrap items-center gap-3"><Wrench className="text-[var(--accent)]" size={22} /><div><h2 className="text-xl font-semibold">{agentId ? `Herramientas de ${selectedAgent?.name}` : "Biblioteca de herramientas"}</h2><p className="text-sm text-[var(--text-muted)]">{agentId ? "Asigná capacidades al agente. Editarlas modifica la definición compartida." : "Operaciones HTTP reutilizables y sus políticas globales."}</p></div>{canEdit && <button onClick={openCreate} className="ml-auto flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white"><Plus size={16} /> Nueva herramienta</button>}</header>{(error || resources.error) && <p className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400" role="alert">{error || resources.error}</p>}{agentId && sources.length === 0 && <p className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">Asigná al menos una fuente antes de crear herramientas HTTP para este agente.</p>}{resources.loading ? <p className="flex items-center gap-2 text-sm text-[var(--text-muted)]" role="status"><LoaderCircle className="animate-spin" size={16} /> Cargando…</p> : agentId ? <><section><h3 className="mb-3 font-semibold">Asignadas ({resources.assigned.length})</h3><div className="grid gap-3 lg:grid-cols-2">{resources.assigned.map((tool) => <ToolCard key={tool.id} tool={tool} assignment="assigned" />)}{resources.assigned.length === 0 && <p className="text-sm text-[var(--text-muted)]">Sin herramientas asignadas.</p>}</div></section><section><h3 className="mb-3 font-semibold">Disponibles ({resources.available.length})</h3><div className="grid gap-3 lg:grid-cols-2">{resources.available.map((tool) => <ToolCard key={tool.id} tool={tool} assignment="available" />)}{resources.available.length === 0 && <p className="text-sm text-[var(--text-muted)]">No quedan herramientas disponibles.</p>}</div></section></> : <div className="grid gap-3 lg:grid-cols-2">{resources.library.map((tool) => <ToolCard key={tool.id} tool={tool} />)}{resources.library.length === 0 && <p className="text-sm text-[var(--text-muted)]">No hay herramientas en la biblioteca.</p>}</div>}
-  {showForm && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onMouseDown={(event) => { if (event.currentTarget === event.target && !saving) setShowForm(false); }}><section role="dialog" aria-modal="true" aria-labelledby="tool-title" className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)]"><header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-card)] p-4"><h3 id="tool-title" className="font-semibold">{editing ? `Editar recurso compartido ${editing.tool_name}` : "Nueva herramienta HTTP"}</h3><button aria-label="Cerrar" onClick={() => setShowForm(false)}><X size={18} /></button></header><div className="grid gap-4 p-4 md:grid-cols-2"><label className="text-xs">Nombre<input disabled={Boolean(editing)} className={`${INPUT} mt-1 font-mono disabled:opacity-60`} value={form.tool_name} onChange={(event) => setForm({ ...form, tool_name: event.target.value })} /></label><label className="text-xs">Fuente asignada<select className={`${INPUT} mt-1`} value={form.source_id} onChange={(event) => setForm({ ...form, source_id: event.target.value })}><option value="">Seleccionar…</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</select></label><label className="text-xs">Método<select className={`${INPUT} mt-1`} value={form.method} onChange={(event) => setForm({ ...form, method: event.target.value })}>{["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method}>{method}</option>)}</select></label><label className="text-xs">Path relativo<input className={`${INPUT} mt-1 font-mono`} value={form.path} onChange={(event) => setForm({ ...form, path: event.target.value })} /></label><label className="text-xs md:col-span-2">Descripción<textarea rows={2} className={`${INPUT} mt-1`} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><label className="text-xs">Riesgo<select className={`${INPUT} mt-1`} value={form.risk_level} onChange={(event) => setForm({ ...form, risk_level: event.target.value })}><option value="read_only">Solo lectura</option><option value="idempotent">Idempotente</option><option value="write">Escritura</option></select></label><label className="text-xs">Timeout<input type="number" min={1} max={300} className={`${INPUT} mt-1`} value={form.timeout_seconds} onChange={(event) => setForm({ ...form, timeout_seconds: Number(event.target.value) })} /></label><label className="text-xs md:col-span-2">Requerir al menos uno, separado por comas<input className={`${INPUT} mt-1 font-mono`} value={form.require_any} onChange={(event) => setForm({ ...form, require_any: event.target.value })} /></label><fieldset className="md:col-span-2"><legend className="mb-2 text-xs">Canales permitidos</legend><div className="flex flex-wrap gap-3">{["web", "whatsapp", "api"].map((channel) => <label key={channel} className="text-sm"><input type="checkbox" checked={form.allowed_channels.includes(channel)} onChange={(event) => setForm({ ...form, allowed_channels: event.target.checked ? [...form.allowed_channels, channel] : form.allowed_channels.filter((item) => item !== channel) })} /> <span className="ml-1">{channel}</span></label>)}</div></fieldset>{form.risk_level === "write" && <><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.requires_confirmation} onChange={(event) => setForm({ ...form, requires_confirmation: event.target.checked })} /> Exigir confirmación explícita</label><label className="text-xs">Parámetro idempotency key<input className={`${INPUT} mt-1 font-mono`} value={form.idempotency_key_param} onChange={(event) => setForm({ ...form, idempotency_key_param: event.target.value })} /></label></>}<div className="md:col-span-2"><div className="mb-2 flex items-center justify-between"><h4 className="text-sm font-medium">Parámetros</h4><button onClick={() => setParams([...params, { name: "", type: "string", description: "", required: false, location: form.method === "GET" ? "query" : "body" }])} className="rounded border border-[var(--border-color)] px-2 py-1 text-xs">Agregar</button></div><div className="space-y-2">{params.map((param, index) => <div key={index} className="grid gap-2 rounded border border-[var(--border-color)] p-2 md:grid-cols-[1fr_.8fr_.8fr_2fr_auto]"><input aria-label="Nombre" className={INPUT} value={param.name} onChange={(event) => updateParam(index, { name: event.target.value })} /><select aria-label="Tipo" className={INPUT} value={param.type} onChange={(event) => updateParam(index, { type: event.target.value })}>{["string", "integer", "number", "boolean", "object", "array"].map((type) => <option key={type}>{type}</option>)}</select><select aria-label="Ubicación" className={INPUT} value={param.location} onChange={(event) => updateParam(index, { location: event.target.value })}>{["path", "query", "body", "header"].map((location) => <option key={location}>{location}</option>)}</select><input aria-label="Descripción" className={INPUT} value={param.description} onChange={(event) => updateParam(index, { description: event.target.value })} /><button aria-label="Quitar parámetro" onClick={() => setParams(params.filter((_, position) => position !== index))}><X size={16} /></button><label className="text-xs md:col-span-5"><input type="checkbox" checked={param.required} onChange={(event) => updateParam(index, { required: event.target.checked })} /> <span className="ml-1">Obligatorio</span></label></div>)}</div></div>{error && <p className="text-sm text-[var(--error)] md:col-span-2" role="alert">{error}</p>}</div><footer className="flex justify-end gap-2 border-t border-[var(--border-color)] p-4"><button onClick={() => setShowForm(false)} className="rounded border border-[var(--border-color)] px-3 py-2 text-sm">Cancelar</button><button onClick={save} disabled={saving} className="flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white disabled:opacity-50">{saving && <LoaderCircle className="animate-spin" size={14} />} Guardar</button></footer></section></div>}
-  </div>;
+  return (
+    <div className="max-w-7xl space-y-6">
+      <header className="flex flex-wrap items-center gap-3">
+        <Wrench className="text-[var(--accent)]" size={22} />
+        <div>
+          <h2 className="text-xl font-semibold">
+            {agentId ? `Herramientas de ${selectedAgent?.name}` : "Biblioteca de herramientas"}
+          </h2>
+          <p className="text-sm text-[var(--text-muted)]">
+            {agentId
+              ? "Asigná capacidades al agente. Editarlas modifica la definición compartida."
+              : "Operaciones HTTP reutilizables y sus políticas globales."}
+          </p>
+        </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="ml-auto flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white"
+          >
+            <Plus size={16} /> Nueva herramienta
+          </button>
+        )}
+      </header>
+      {(error || resources.error) && (
+        <p
+          className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+          role="alert"
+        >
+          {error || resources.error}
+        </p>
+      )}
+      {agentId && sources.length === 0 && (
+        <p className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">
+          Asigná al menos una fuente antes de crear herramientas HTTP para este agente.
+        </p>
+      )}
+      {resources.loading ? (
+        <p className="flex items-center gap-2 text-sm text-[var(--text-muted)]" role="status">
+          <LoaderCircle className="animate-spin" size={16} /> Cargando…
+        </p>
+      ) : agentId ? (
+        <>
+          <section>
+            <h3 className="mb-3 font-semibold">Asignadas ({resources.assigned.length})</h3>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {resources.assigned.map((tool) => (
+                <ToolCard key={tool.id} tool={tool} assignment="assigned" />
+              ))}
+              {resources.assigned.length === 0 && (
+                <p className="text-sm text-[var(--text-muted)]">Sin herramientas asignadas.</p>
+              )}
+            </div>
+          </section>
+          <section>
+            <h3 className="mb-3 font-semibold">Disponibles ({resources.available.length})</h3>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {resources.available.map((tool) => (
+                <ToolCard key={tool.id} tool={tool} assignment="available" />
+              ))}
+              {resources.available.length === 0 && (
+                <p className="text-sm text-[var(--text-muted)]">
+                  No quedan herramientas disponibles.
+                </p>
+              )}
+            </div>
+          </section>
+        </>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {resources.library.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} />
+          ))}
+          {resources.library.length === 0 && (
+            <p className="text-sm text-[var(--text-muted)]">
+              No hay herramientas en la biblioteca.
+            </p>
+          )}
+        </div>
+      )}
+      {showForm && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            className="absolute inset-0 cursor-default"
+            onClick={() => {
+              if (!saving) setShowForm(false);
+            }}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tool-title"
+            className="relative max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)]"
+          >
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-card)] p-4">
+              <h3 id="tool-title" className="font-semibold">
+                {editing
+                  ? `Editar recurso compartido ${editing.tool_name}`
+                  : "Nueva herramienta HTTP"}
+              </h3>
+              <button type="button" aria-label="Cerrar" onClick={() => setShowForm(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className="grid gap-4 p-4 md:grid-cols-2">
+              <label className="text-xs">
+                Nombre
+                <input
+                  disabled={Boolean(editing)}
+                  className={`${INPUT} mt-1 font-mono disabled:opacity-60`}
+                  value={form.tool_name}
+                  onChange={(event) => setForm({ ...form, tool_name: event.target.value })}
+                />
+              </label>
+              <label className="text-xs">
+                Fuente asignada
+                <select
+                  className={`${INPUT} mt-1`}
+                  value={form.source_id}
+                  onChange={(event) => setForm({ ...form, source_id: event.target.value })}
+                >
+                  <option value="">Seleccionar…</option>
+                  {sources.map((source) => (
+                    <option key={source.id} value={source.id}>
+                      {source.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs">
+                Método
+                <select
+                  className={`${INPUT} mt-1`}
+                  value={form.method}
+                  onChange={(event) => setForm({ ...form, method: event.target.value })}
+                >
+                  {["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => (
+                    <option key={method}>{method}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs">
+                Path relativo
+                <input
+                  className={`${INPUT} mt-1 font-mono`}
+                  value={form.path}
+                  onChange={(event) => setForm({ ...form, path: event.target.value })}
+                />
+              </label>
+              <label className="text-xs md:col-span-2">
+                Descripción
+                <textarea
+                  rows={2}
+                  className={`${INPUT} mt-1`}
+                  value={form.description}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
+                />
+              </label>
+              <label className="text-xs">
+                Riesgo
+                <select
+                  className={`${INPUT} mt-1`}
+                  value={form.risk_level}
+                  onChange={(event) => setForm({ ...form, risk_level: event.target.value })}
+                >
+                  <option value="read_only">Solo lectura</option>
+                  <option value="idempotent">Idempotente</option>
+                  <option value="write">Escritura</option>
+                </select>
+              </label>
+              <label className="text-xs">
+                Timeout
+                <input
+                  type="number"
+                  min={1}
+                  max={300}
+                  className={`${INPUT} mt-1`}
+                  value={form.timeout_seconds}
+                  onChange={(event) =>
+                    setForm({ ...form, timeout_seconds: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="text-xs md:col-span-2">
+                Requerir al menos uno, separado por comas
+                <input
+                  className={`${INPUT} mt-1 font-mono`}
+                  value={form.require_any}
+                  onChange={(event) => setForm({ ...form, require_any: event.target.value })}
+                />
+              </label>
+              <fieldset className="md:col-span-2">
+                <legend className="mb-2 text-xs">Canales permitidos</legend>
+                <div className="flex flex-wrap gap-3">
+                  {["web", "whatsapp", "api"].map((channel) => (
+                    <label key={channel} className="text-sm">
+                      <input
+                        type="checkbox"
+                        checked={form.allowed_channels.includes(channel)}
+                        onChange={(event) =>
+                          setForm({
+                            ...form,
+                            allowed_channels: event.target.checked
+                              ? [...form.allowed_channels, channel]
+                              : form.allowed_channels.filter((item) => item !== channel),
+                          })
+                        }
+                      />{" "}
+                      <span className="ml-1">{channel}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              {form.risk_level === "write" && (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.requires_confirmation}
+                      onChange={(event) =>
+                        setForm({ ...form, requires_confirmation: event.target.checked })
+                      }
+                    />{" "}
+                    Exigir confirmación explícita
+                  </label>
+                  <label className="text-xs">
+                    Parámetro idempotency key
+                    <input
+                      className={`${INPUT} mt-1 font-mono`}
+                      value={form.idempotency_key_param}
+                      onChange={(event) =>
+                        setForm({ ...form, idempotency_key_param: event.target.value })
+                      }
+                    />
+                  </label>
+                </>
+              )}
+              <div className="md:col-span-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-medium">Parámetros</h4>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setParams([
+                        ...params,
+                        createParamRow({
+                          name: "",
+                          type: "string",
+                          description: "",
+                          required: false,
+                          location: form.method === "GET" ? "query" : "body",
+                        }),
+                      ])
+                    }
+                    className="rounded border border-[var(--border-color)] px-2 py-1 text-xs"
+                  >
+                    Agregar
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {params.map((param, index) => (
+                    <div
+                      key={param.clientId}
+                      className="grid gap-2 rounded border border-[var(--border-color)] p-2 md:grid-cols-[1fr_.8fr_.8fr_2fr_auto]"
+                    >
+                      <input
+                        aria-label="Nombre"
+                        className={INPUT}
+                        value={param.name}
+                        onChange={(event) => updateParam(index, { name: event.target.value })}
+                      />
+                      <select
+                        aria-label="Tipo"
+                        className={INPUT}
+                        value={param.type}
+                        onChange={(event) => updateParam(index, { type: event.target.value })}
+                      >
+                        {["string", "integer", "number", "boolean", "object", "array"].map(
+                          (type) => (
+                            <option key={type}>{type}</option>
+                          ),
+                        )}
+                      </select>
+                      <select
+                        aria-label="Ubicación"
+                        className={INPUT}
+                        value={param.location}
+                        onChange={(event) => updateParam(index, { location: event.target.value })}
+                      >
+                        {["path", "query", "body", "header"].map((location) => (
+                          <option key={location}>{location}</option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label="Descripción"
+                        className={INPUT}
+                        value={param.description}
+                        onChange={(event) =>
+                          updateParam(index, { description: event.target.value })
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label="Quitar parámetro"
+                        onClick={() =>
+                          setParams(params.filter((_, position) => position !== index))
+                        }
+                      >
+                        <X size={16} />
+                      </button>
+                      <label className="text-xs md:col-span-5">
+                        <input
+                          type="checkbox"
+                          checked={param.required}
+                          onChange={(event) =>
+                            updateParam(index, { required: event.target.checked })
+                          }
+                        />{" "}
+                        <span className="ml-1">Obligatorio</span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {error && (
+                <p className="text-sm text-[var(--error)] md:col-span-2" role="alert">
+                  {error}
+                </p>
+              )}
+            </div>
+            <footer className="flex justify-end gap-2 border-t border-[var(--border-color)] p-4">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="rounded border border-[var(--border-color)] px-3 py-2 text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={save}
+                disabled={saving}
+                className="flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {saving && <LoaderCircle className="animate-spin" size={14} />} Guardar
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+    </div>
+  );
 }

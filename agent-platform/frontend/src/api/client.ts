@@ -38,10 +38,7 @@ async function refreshAccessToken(): Promise<string | null> {
   return data.access_token;
 }
 
-export async function api<T = unknown>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const tokens = getTokens();
 
   const headers: Record<string, string> = {
@@ -52,7 +49,7 @@ export async function api<T = unknown>(
   }
 
   if (tokens?.access_token) {
-    headers["Authorization"] = `Bearer ${tokens.access_token}`;
+    headers.Authorization = `Bearer ${tokens.access_token}`;
   }
 
   let res = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -61,7 +58,7 @@ export async function api<T = unknown>(
   if (res.status === 401 && tokens?.refresh_token) {
     const newToken = await refreshAccessToken();
     if (newToken) {
-      headers["Authorization"] = `Bearer ${newToken}`;
+      headers.Authorization = `Bearer ${newToken}`;
       res = await fetch(`${API_BASE}${path}`, { ...options, headers });
     }
   }
@@ -78,9 +75,10 @@ export async function api<T = unknown>(
 
 export async function download(path: string, fallbackName: string): Promise<void> {
   let tokens = getTokens();
-  const request = (accessToken?: string) => fetch(`${API_BASE}${path}`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
+  const request = (accessToken?: string) =>
+    fetch(`${API_BASE}${path}`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
   let res = await request(tokens?.access_token);
   if (res.status === 401 && tokens?.refresh_token) {
     const accessToken = await refreshAccessToken();
@@ -93,7 +91,7 @@ export async function download(path: string, fallbackName: string): Promise<void
     throw new ApiError(res.status, detail || "No se pudo descargar el archivo");
   }
   const disposition = res.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^";]+)/i);
+  const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
   const filename = match ? decodeURIComponent(match[1].replace(/"$/, "")) : fallbackName;
   const url = URL.createObjectURL(await res.blob());
   const anchor = document.createElement("a");
@@ -108,12 +106,12 @@ export async function download(path: string, fallbackName: string): Promise<void
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-export { getTokens, setTokens, clearTokens };
 export type { TokenPair };
+export { clearTokens, getTokens, setTokens };

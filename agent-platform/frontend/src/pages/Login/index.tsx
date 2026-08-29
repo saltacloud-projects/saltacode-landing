@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import { Bot, Loader2 } from "lucide-react";
+import { type FormEvent, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
 export default function LoginPage() {
@@ -32,31 +32,42 @@ export default function LoginPage() {
           <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[var(--accent)]/15 mb-3">
             <Bot size={24} className="text-[var(--accent)]" />
           </div>
-          <h1 className="text-2xl font-bold text-center text-[var(--text-primary)]">Agent Platform</h1>
-          <p className="text-[var(--text-secondary)] text-center text-sm mt-1">Panel de administración</p>
+          <h1 className="text-2xl font-bold text-center text-[var(--text-primary)]">
+            Agent Platform
+          </h1>
+          <p className="text-[var(--text-secondary)] text-center text-sm mt-1">
+            Panel de administración
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+            <label
+              htmlFor="panel-email"
+              className="block text-xs font-medium text-[var(--text-secondary)] mb-1"
+            >
               Email
             </label>
             <input
+              id="panel-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              autoFocus
               className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
               placeholder="admin@example.com"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+            <label
+              htmlFor="panel-password"
+              className="block text-xs font-medium text-[var(--text-secondary)] mb-1"
+            >
               Contraseña
             </label>
             <input
+              id="panel-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

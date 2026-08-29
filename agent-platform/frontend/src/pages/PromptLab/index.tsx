@@ -1,10 +1,10 @@
+import { AlertTriangle, Eye, Loader2, Search, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Eye, Send, Search, AlertTriangle, Loader2 } from "lucide-react";
-import { api, ApiError } from "../../api/client";
+import type { AgentAuthorizedUser } from "../../access/types";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
+import { ApiError, api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
-import type { AgentAuthorizedUser } from "../../access/types";
 
 interface PromptPreviewResponse {
   system_prompt: string;
@@ -27,7 +27,13 @@ interface TestAgentResponse {
   total_tool_calls: number;
   duration_ms: number;
   status: string;
-  rag_hits: { reference_code: string; title: string; page: number | null; location: string | null; score: number }[];
+  rag_hits: {
+    reference_code: string;
+    title: string;
+    page: number | null;
+    location: string | null;
+    score: number;
+  }[];
 }
 interface ConversationSearchResult {
   id: string;
@@ -57,6 +63,7 @@ export default function PromptLabPage() {
   const { user } = useAuth();
   const canReadUsers = hasPermission(user, PERMISSIONS.USERS_READ);
   const activeAgentId = useRef<string | null>(selectedAgent?.id ?? null);
+  const resetAgentId = useRef<string | null>(selectedAgent?.id ?? null);
   activeAgentId.current = selectedAgent?.id ?? null;
   // --- Preview del system prompt ---
   const [prompt, setPrompt] = useState<PromptPreviewResponse | null>(null);
@@ -78,7 +85,8 @@ export default function PromptLabPage() {
       });
       if (activeAgentId.current === agentId) setPrompt(res);
     } catch (e) {
-      if (activeAgentId.current === agentId) setPromptError(e instanceof ApiError ? e.message : "Error al cargar el prompt");
+      if (activeAgentId.current === agentId)
+        setPromptError(e instanceof ApiError ? e.message : "Error al cargar el prompt");
     } finally {
       if (activeAgentId.current === agentId) setLoadingPrompt(false);
     }
@@ -98,11 +106,20 @@ export default function PromptLabPage() {
     if (!canReadUsers || !agentId) return;
     let active = true;
     api<AgentAuthorizedUser[]>(`/agents/${agentId}/authorized-users`)
-      .then((rows) => { if (active) setUsers(rows.filter((row) => row.is_active)); })
-      .catch(() => { if (active) setUsers([]); });
-    return () => { active = false; };
+      .then((rows) => {
+        if (active) setUsers(rows.filter((row) => row.is_active));
+      })
+      .catch(() => {
+        if (active) setUsers([]);
+      });
+    return () => {
+      active = false;
+    };
   }, [canReadUsers, selectedAgent?.id]);
   useEffect(() => {
+    const agentId = selectedAgent?.id ?? null;
+    if (resetAgentId.current === agentId) return;
+    resetAgentId.current = agentId;
     setPrompt(null);
     setTestResult(null);
     setResults([]);
@@ -123,11 +140,16 @@ export default function PromptLabPage() {
     try {
       const res = await api<TestAgentResponse>("/promptlab/test-agent", {
         method: "POST",
-        body: JSON.stringify({ agent_id: agentId, message: message.trim(), user_id: testUserId || null }),
+        body: JSON.stringify({
+          agent_id: agentId,
+          message: message.trim(),
+          user_id: testUserId || null,
+        }),
       });
       if (activeAgentId.current === agentId) setTestResult(res);
     } catch (e) {
-      if (activeAgentId.current === agentId) setTestError(e instanceof ApiError ? e.message : "Error al ejecutar la prueba");
+      if (activeAgentId.current === agentId)
+        setTestError(e instanceof ApiError ? e.message : "Error al ejecutar la prueba");
     } finally {
       if (activeAgentId.current === agentId) setTesting(false);
     }
@@ -155,13 +177,14 @@ export default function PromptLabPage() {
     try {
       const params = new URLSearchParams({ q: query.trim(), agent_id: agentId });
       const res = await api<ConversationSearchResult[]>(
-        `/promptlab/search-conversations?${params}`
+        `/promptlab/search-conversations?${params}`,
       );
       if (activeAgentId.current !== agentId) return;
       setResults(res);
       setSearched(true);
     } catch (e) {
-      if (activeAgentId.current === agentId) setSearchError(e instanceof ApiError ? e.message : "Error en la búsqueda");
+      if (activeAgentId.current === agentId)
+        setSearchError(e instanceof ApiError ? e.message : "Error en la búsqueda");
     } finally {
       if (activeAgentId.current === agentId) setSearching(false);
     }
@@ -172,10 +195,16 @@ export default function PromptLabPage() {
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)]">PromptLab</h2>
         <p className={HELP}>
-          Inspeccioná el system prompt real, probá el agente y buscá en el historial de conversaciones.
+          Inspeccioná el system prompt real, probá el agente y buscá en el historial de
+          conversaciones.
         </p>
       </div>
-      {selectedAgent && <p className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-300">El preview, el test y la búsqueda se ejecutan explícitamente para <strong>{selectedAgent.name}</strong>.</p>}
+      {selectedAgent && (
+        <p className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-300">
+          El preview, el test y la búsqueda se ejecutan explícitamente para{" "}
+          <strong>{selectedAgent.name}</strong>.
+        </p>
+      )}
 
       {/* Paneles superiores: Preview + Test */}
       <div className="flex flex-col gap-6 lg:flex-row">
@@ -187,24 +216,27 @@ export default function PromptLabPage() {
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">System prompt</h3>
             </div>
             <button
+              type="button"
               onClick={loadPrompt}
               disabled={loadingPrompt}
               className="inline-flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {loadingPrompt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+              {loadingPrompt ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
               {loadingPrompt ? "Cargando..." : "Cargar prompt actual"}
             </button>
           </div>
 
           <div className="space-y-3 p-4">
             <p className={HELP}>
-              Este es el system prompt completo que recibe el modelo. Incluye identidad, directivas, hints
-              de bases de datos y memoria.
+              Este es el system prompt completo que recibe el modelo. Incluye identidad, directivas,
+              hints de bases de datos y memoria.
             </p>
 
-            {promptError && (
-              <p className="text-xs text-[var(--error)]">{promptError}</p>
-            )}
+            {promptError && <p className="text-xs text-[var(--error)]">{promptError}</p>}
 
             {prompt && (
               <div className="flex flex-wrap gap-2">
@@ -235,24 +267,44 @@ export default function PromptLabPage() {
 
           <div className="space-y-3 p-4">
             <p className={HELP}>
-              Ejecuta una consulta real contra el agente. Puede usar las herramientas habilitadas para el contexto elegido. No
-              persiste la conversación.
+              Ejecuta una consulta real contra el agente. Puede usar las herramientas habilitadas
+              para el contexto elegido. No persiste la conversación.
             </p>
 
             <div className="flex items-start gap-2 rounded border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-3 py-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)]" />
               <p className="text-xs text-[var(--warning)]">
-                Las pruebas pueden ejecutar integraciones reales. Usá fuentes de prueba y evitá efectos no deseados.
+                Las pruebas pueden ejecutar integraciones reales. Usá fuentes de prueba y evitá
+                efectos no deseados.
               </p>
             </div>
 
             <div>
-              <label htmlFor="promptlab-access-context" className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Contexto de acceso</label>
-              <select id="promptlab-access-context" value={testUserId} onChange={(e) => setTestUserId(e.target.value)} className="mb-3 w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 text-sm text-[var(--text-primary)]">
+              <label
+                htmlFor="promptlab-access-context"
+                className="mb-1 block text-xs font-medium text-[var(--text-secondary)]"
+              >
+                Contexto de acceso
+              </label>
+              <select
+                id="promptlab-access-context"
+                value={testUserId}
+                onChange={(e) => setTestUserId(e.target.value)}
+                className="mb-3 w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 text-sm text-[var(--text-primary)]"
+              >
                 <option value="">Administrador (área General)</option>
-                {users.map((item) => <option key={item.id} value={item.id}>{item.name || item.phone_number}</option>)}
+                {users.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name || item.phone_number}
+                  </option>
+                ))}
               </select>
-              <label htmlFor="promptlab-message" className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Mensaje</label>
+              <label
+                htmlFor="promptlab-message"
+                className="mb-1 block text-xs font-medium text-[var(--text-secondary)]"
+              >
+                Mensaje
+              </label>
               <textarea
                 id="promptlab-message"
                 value={message}
@@ -268,11 +320,16 @@ export default function PromptLabPage() {
             </div>
 
             <button
+              type="button"
               onClick={runTest}
               disabled={testing || !message.trim()}
               className="inline-flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {testing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
               {testing ? "Ejecutando..." : "Enviar"}
             </button>
 
@@ -288,14 +345,32 @@ export default function PromptLabPage() {
                 <div className="flex flex-wrap gap-2">
                   <Pill
                     label="tools"
-                    value={testResult.tools_used.length ? testResult.tools_used.join(", ") : "ninguna"}
+                    value={
+                      testResult.tools_used.length ? testResult.tools_used.join(", ") : "ninguna"
+                    }
                   />
                   <Pill label="iteraciones" value={testResult.iterations} />
                   <Pill label="tool_calls" value={testResult.total_tool_calls} />
                   <Pill label="duración" value={`${testResult.duration_ms} ms`} />
                   <Pill label="status" value={testResult.status} />
                 </div>
-                {testResult.rag_hits?.length > 0 && <div className="rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3"><p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">Evidencia RAG</p>{testResult.rag_hits.map((hit, index) => <p key={index} className="text-xs text-[var(--text-muted)]">{hit.reference_code} · {hit.title} · {hit.location || (hit.page ? `página ${hit.page}` : "sin ubicación")} · {Math.round(hit.score * 100)}%</p>)}</div>}
+                {testResult.rag_hits?.length > 0 && (
+                  <div className="rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3">
+                    <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
+                      Evidencia RAG
+                    </p>
+                    {testResult.rag_hits.map((hit) => (
+                      <p
+                        key={`${hit.reference_code}:${hit.location ?? hit.page ?? ""}:${hit.score}`}
+                        className="text-xs text-[var(--text-muted)]"
+                      >
+                        {hit.reference_code} · {hit.title} ·{" "}
+                        {hit.location || (hit.page ? `página ${hit.page}` : "sin ubicación")} ·{" "}
+                        {Math.round(hit.score * 100)}%
+                      </p>
+                    ))}
+                  </div>
+                )}
 
                 {testResult.tool_invocations && testResult.tool_invocations.length > 0 && (
                   <div className="space-y-2">
@@ -303,13 +378,15 @@ export default function PromptLabPage() {
                       Llamadas a herramientas ({testResult.tool_invocations.length})
                     </p>
                     <div className="space-y-1.5">
-                      {testResult.tool_invocations.map((ti, i) => (
+                      {testResult.tool_invocations.map((ti) => (
                         <div
-                          key={i}
+                          key={`${ti.tool}:${ti.status ?? ""}:${JSON.stringify(ti.args ?? {})}`}
                           className="rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-[var(--accent)]">{ti.tool}</span>
+                            <span className="font-mono text-xs text-[var(--accent)]">
+                              {ti.tool}
+                            </span>
                             {ti.status && (
                               <span
                                 className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -327,7 +404,9 @@ export default function PromptLabPage() {
                               {JSON.stringify(ti.args, null, 2)}
                             </pre>
                           ) : (
-                            <p className="mt-1 text-[10px] text-[var(--text-muted)]">sin parámetros</p>
+                            <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                              sin parámetros
+                            </p>
                           )}
                         </div>
                       ))}
@@ -344,14 +423,20 @@ export default function PromptLabPage() {
       <section className="rounded border border-[var(--border-color)] bg-[var(--bg-card)]">
         <div className="flex items-center gap-2 border-b border-[var(--border-color)] px-4 py-3">
           <Search className="h-4 w-4 text-[var(--accent)]" />
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Búsqueda en conversaciones</h3>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+            Búsqueda en conversaciones
+          </h3>
         </div>
 
         <div className="space-y-3 p-4">
-          <p className={HELP}>Busca mensajes únicamente dentro del historial neutral del agente seleccionado.</p>
+          <p className={HELP}>
+            Busca mensajes únicamente dentro del historial neutral del agente seleccionado.
+          </p>
 
           <div className="flex gap-2">
-            <label htmlFor="promptlab-conversation-search" className="sr-only">Texto a buscar en conversaciones</label>
+            <label htmlFor="promptlab-conversation-search" className="sr-only">
+              Texto a buscar en conversaciones
+            </label>
             <input
               id="promptlab-conversation-search"
               value={query}
@@ -363,11 +448,16 @@ export default function PromptLabPage() {
               className="flex-1 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
             />
             <button
+              type="button"
               onClick={search}
               disabled={searching}
               className="inline-flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {searching ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
               Buscar
             </button>
           </div>
@@ -388,9 +478,18 @@ export default function PromptLabPage() {
                 {results.map((r) => (
                   <tr key={r.id} className="transition-colors hover:bg-[var(--bg-hover)]">
                     <td className="px-3 py-2 text-xs text-[var(--text-primary)]">
-                      <span className="block font-medium">{r.display_name || "Identidad sin nombre"}</span>
-                      <span className="mt-0.5 block text-[var(--text-muted)]"><span className="uppercase">{r.channel}</span> · <code>{r.route_key}</code></span>
-                      <span className="block max-w-48 truncate font-mono text-[10px] text-[var(--text-muted)]" title={r.external_thread_id}>{r.external_thread_id}</span>
+                      <span className="block font-medium">
+                        {r.display_name || "Identidad sin nombre"}
+                      </span>
+                      <span className="mt-0.5 block text-[var(--text-muted)]">
+                        <span className="uppercase">{r.channel}</span> · <code>{r.route_key}</code>
+                      </span>
+                      <span
+                        className="block max-w-48 truncate font-mono text-[10px] text-[var(--text-muted)]"
+                        title={r.external_thread_id}
+                      >
+                        {r.external_thread_id}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">{r.role}</td>
                     <td className="px-3 py-2 text-[var(--text-primary)]">
@@ -403,7 +502,10 @@ export default function PromptLabPage() {
                 ))}
                 {results.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-sm text-[var(--text-muted)]">
+                    <td
+                      colSpan={4}
+                      className="px-3 py-6 text-center text-sm text-[var(--text-muted)]"
+                    >
                       {searched ? "Sin resultados." : "Ingresá un término para buscar."}
                     </td>
                   </tr>

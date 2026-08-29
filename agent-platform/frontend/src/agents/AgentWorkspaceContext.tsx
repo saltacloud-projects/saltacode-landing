@@ -1,11 +1,11 @@
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
 import { api } from "../api/client";
@@ -71,10 +71,12 @@ export function AgentWorkspaceProvider({ children }: { children: ReactNode }) {
   const selectedAgent = profiles.find((profile) => profile.id === selectedId) ?? null;
   const preferredAgent = useMemo(() => {
     const stored = storedAgentId();
-    return profiles.find((profile) => profile.id === stored)
-      ?? profiles.find((profile) => profile.is_active)
-      ?? profiles[0]
-      ?? null;
+    return (
+      profiles.find((profile) => profile.id === stored) ??
+      profiles.find((profile) => profile.is_active) ??
+      profiles[0] ??
+      null
+    );
   }, [profiles]);
 
   useEffect(() => {
@@ -86,14 +88,17 @@ export function AgentWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedAgent]);
 
-  const value = useMemo<AgentWorkspaceState>(() => ({
-    profiles,
-    selectedAgent,
-    preferredAgent,
-    loading,
-    error,
-    refreshProfiles,
-  }), [profiles, selectedAgent, preferredAgent, loading, error, refreshProfiles]);
+  const value = useMemo<AgentWorkspaceState>(
+    () => ({
+      profiles,
+      selectedAgent,
+      preferredAgent,
+      loading,
+      error,
+      refreshProfiles,
+    }),
+    [profiles, selectedAgent, preferredAgent, loading, error, refreshProfiles],
+  );
 
   return <AgentWorkspaceContext.Provider value={value}>{children}</AgentWorkspaceContext.Provider>;
 }

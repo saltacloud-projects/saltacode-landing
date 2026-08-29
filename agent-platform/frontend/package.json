@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check": "biome check src",
+    "check:write": "biome check --write src",
     "preview": "vite preview",
     "test:e2e": "playwright test"
   },
@@ -17,6 +19,7 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.11",
     "@playwright/test": "^1.61.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

@@ -1,11 +1,5 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  type ReactNode,
-} from "react";
-import { api, setTokens, clearTokens, getTokens } from "../api/client";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { api, clearTokens, getTokens, setTokens } from "../api/client";
 
 export interface AdminUser {
   id: string;
@@ -67,9 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>
   );
 }
 
