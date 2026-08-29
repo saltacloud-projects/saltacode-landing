@@ -4,7 +4,7 @@
   "themeContract": {
     "onLight": "Use when the logo is rendered on a light surface.",
     "onDark": "Use when the logo is rendered on a dark surface.",
-    "runtimeThemeSwitching": "Prepared but intentionally not implemented."
+    "runtimeThemeSwitching": "Implemented by the pre-paint bootstrap and theme-controller.ts."
   },
   "assets": [
     {
@@ -551,6 +551,38 @@
             "height": 160
           }
         }
+      }
+    }
+  ],
+  "appIcons": [
+    {
+      "id": "favicon",
+      "source": {
+        "path": "src/assets/brand/logo_nav_light.png",
+        "bytes": 108143,
+        "sha256": "e3e7202d53260694b2bf1f69cbefec34659f7fc8fd77151e8127f464744e926a"
+      },
+      "output": {
+        "path": "public/favicon.png",
+        "bytes": 18699,
+        "sha256": "380dcf228b254a629b234f3eef525ed54cfcf699027ee14ad3daf7be10e5390e",
+        "width": 256,
+        "height": 256
+      }
+    },
+    {
+      "id": "apple-touch-icon",
+      "source": {
+        "path": "src/assets/brand/logo_nav_light.png",
+        "bytes": 108143,
+        "sha256": "e3e7202d53260694b2bf1f69cbefec34659f7fc8fd77151e8127f464744e926a"
+      },
+      "output": {
+        "path": "public/apple-touch-icon.png",
+        "bytes": 10720,
+        "sha256": "99e52a22ee7c2843828c763344535860e42b9e347bc1d870a5d4e48ebac93c1b",
+        "width": 180,
+        "height": 180
       }
     }
   ]

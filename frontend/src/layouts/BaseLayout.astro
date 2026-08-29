@@ -32,32 +32,28 @@ const graph: Record<string, unknown>[] = [
   {
     "@type": ["Organization", "ProfessionalService"],
     "@id": organizationId.href,
-    name: "SaltaCode",
+    name: site.name,
     legalName: site.legalName,
     taxID: site.taxId,
     url: Astro.site.href,
     logo: new URL("/favicon.png", Astro.site).href,
-    email: "saltacodear@gmail.com",
-    telephone: "+54 9 387 529-6587",
+    email: site.email,
+    telephone: site.phoneDisplay,
     founder: { "@type": "Person", name: site.legalName },
     address: {
       "@type": "PostalAddress",
-      streetAddress: "Zuviría 333, Oficina 4C",
-      addressLocality: "Salta",
-      addressRegion: "Salta",
-      addressCountry: "AR",
+      streetAddress: site.address,
+      addressLocality: site.addressLocality,
+      addressRegion: site.addressRegion,
+      addressCountry: site.addressCountry,
     },
-    sameAs: [
-      "https://www.linkedin.com/company/saltacode/",
-      "https://www.facebook.com/saltacode.ar",
-      "https://www.instagram.com/saltacode.ar/",
-    ],
+    sameAs: site.social.map(({ href }) => href),
   },
   {
     "@type": "WebSite",
     "@id": websiteId.href,
     url: Astro.site.href,
-    name: "SaltaCode",
+    name: site.name,
     publisher: { "@id": organizationId.href },
     inLanguage: "es-AR",
   },
@@ -123,8 +119,8 @@ const structuredData = { "@context": "https://schema.org", "@graph": graph };
     <meta name="twitter:image" content={socialImageUrl} />
     <meta name="twitter:image:alt" content="Tarjeta de SaltaCode Innovación y Desarrollo" />
 
-    <link rel="icon" href="/favicon.png" type="image/png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon.png" type="image/png" sizes="256x256" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
     <meta name="theme-color" content="#ffffff" />
     <script is:inline data-theme-bootstrap>
       (()=>{let p="system";try{const s=localStorage.getItem("saltacode-theme");if(s==="light"||s==="dark")p=s}catch{}const t=p==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p,m=matchMedia("(prefers-reduced-motion: reduce)").matches,r=document.documentElement;r.dataset.theme=t;r.dataset.themePreference=p;r.style.colorScheme=t;document.querySelector('meta[name="theme-color"]')?.setAttribute("content",t==="dark"?"#111016":"#ffffff");const i=e=>{const s=m?(t==="dark"?e.dataset.themeSrcReducedDark:e.dataset.themeSrcReducedLight):null,f=s||(t==="dark"?e.dataset.themeSrcDark:e.dataset.themeSrcLight);if(f)e.src=f},a=n=>{if(n.nodeType!==1)return;if(n.matches("[data-theme-image]"))i(n);n.querySelectorAll("[data-theme-image]").forEach(i)},o=new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(a)));o.observe(r,{childList:true,subtree:true});addEventListener("DOMContentLoaded",()=>o.disconnect(),{once:true})})();

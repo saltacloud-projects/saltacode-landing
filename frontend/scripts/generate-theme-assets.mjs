@@ -9,6 +9,23 @@ const outputRoot = resolve(frontendRoot, "src/assets/optimized");
 const manifestPath = resolve(outputRoot, "manifest.json");
 const checkOnly = process.argv.includes("--check");
 
+const appIcons = [
+  {
+    id: "favicon",
+    source: "src/assets/brand/logo_nav_light.png",
+    output: "public/favicon.png",
+    canvas: { width: 256, height: 256, maxWidth: 224, maxHeight: 224 },
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  },
+  {
+    id: "apple-touch-icon",
+    source: "src/assets/brand/logo_nav_light.png",
+    output: "public/apple-touch-icon.png",
+    canvas: { width: 180, height: 180, maxWidth: 144, maxHeight: 144 },
+    background: "#ffffff",
+  },
+];
+
 const clientCanvas = Object.freeze({ width: 360, height: 160, maxWidth: 320, maxHeight: 120 });
 const clientPalette = Object.freeze({ onLight: "#74747D", onDark: "#D8D8E0" });
 
@@ -157,6 +174,40 @@ async function createInkMask(sourceBuffer, settings) {
   return sharp(data, { raw: info }).png().toBuffer();
 }
 
+async function trimAndResize(sourceBuffer, canvas) {
+  const trimmed = await sharp(sourceBuffer)
+    .ensureAlpha()
+    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+  const resized = await sharp(trimmed.data)
+    .resize({
+      width: canvas.maxWidth,
+      height: canvas.maxHeight,
+      fit: "inside",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false,
+    })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+
+  return { resized, trimmed };
+}
+
+function placeOnCanvas(foreground, foregroundInfo, canvas, background) {
+  const left = Math.round((canvas.width - foregroundInfo.width) / 2);
+  const top = Math.round((canvas.height - foregroundInfo.height) / 2);
+
+  return sharp({
+    create: {
+      width: canvas.width,
+      height: canvas.height,
+      channels: 4,
+      background,
+    },
+  }).composite([{ input: foreground, left, top }]);
+}
+
 async function renderVariant(asset, variant) {
   const sourcePath = resolve(frontendRoot, variant.source);
   const sourceBuffer = await readFile(sourcePath);
@@ -166,21 +217,7 @@ async function renderVariant(asset, variant) {
   const maskedSource = variant.inkMask
     ? await createInkMask(preparedSource, variant.inkMask)
     : preparedSource;
-  const trimmed = await sharp(maskedSource)
-    .ensureAlpha()
-    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
-    .png()
-    .toBuffer({ resolveWithObject: true });
-  const resized = await sharp(trimmed.data)
-    .resize({
-      width: asset.canvas.maxWidth,
-      height: asset.canvas.maxHeight,
-      fit: "inside",
-      kernel: sharp.kernel.lanczos3,
-      withoutEnlargement: false,
-    })
-    .png()
-    .toBuffer({ resolveWithObject: true });
+  const { resized, trimmed } = await trimAndResize(maskedSource, asset.canvas);
 
   const foreground = variant.color
     ? await sharp({
@@ -196,17 +233,12 @@ async function renderVariant(asset, variant) {
         .toBuffer()
     : resized.data;
 
-  const left = Math.round((asset.canvas.width - resized.info.width) / 2);
-  const top = Math.round((asset.canvas.height - resized.info.height) / 2);
-  const output = await sharp({
-    create: {
-      width: asset.canvas.width,
-      height: asset.canvas.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite([{ input: foreground, left, top }])
+  const output = await placeOnCanvas(
+    foreground,
+    resized.info,
+    asset.canvas,
+    { r: 0, g: 0, b: 0, alpha: 0 },
+  )
     .webp({ lossless: true, effort: 6, alphaQuality: 100 })
     .toBuffer();
 
@@ -222,8 +254,26 @@ async function renderVariant(asset, variant) {
   };
 }
 
+async function renderAppIcon(icon) {
+  const sourceBuffer = await readFile(resolve(frontendRoot, icon.source));
+  const { resized } = await trimAndResize(sourceBuffer, icon.canvas);
+  const output = await placeOnCanvas(resized.data, resized.info, icon.canvas, icon.background)
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toBuffer();
+
+  return {
+    source: {
+      path: icon.source,
+      bytes: sourceBuffer.byteLength,
+      sha256: sha256(sourceBuffer),
+    },
+    output,
+  };
+}
+
 const expectedOutputs = new Set();
 const manifestAssets = [];
+const manifestAppIcons = [];
 const drift = [];
 
 for (const asset of assets) {
@@ -264,6 +314,30 @@ for (const asset of assets) {
   });
 }
 
+for (const icon of appIcons) {
+  const rendered = await renderAppIcon(icon);
+  const target = resolve(frontendRoot, icon.output);
+  manifestAppIcons.push({
+    id: icon.id,
+    source: rendered.source,
+    output: {
+      path: icon.output,
+      bytes: rendered.output.byteLength,
+      sha256: sha256(rendered.output),
+      width: icon.canvas.width,
+      height: icon.canvas.height,
+    },
+  });
+
+  if (checkOnly) {
+    const current = await readFile(target).catch(() => null);
+    if (!current || !current.equals(rendered.output)) drift.push(icon.output);
+  } else {
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, rendered.output);
+  }
+}
+
 const manifest = `${JSON.stringify(
   {
     schemaVersion: 1,
@@ -271,9 +345,10 @@ const manifest = `${JSON.stringify(
     themeContract: {
       onLight: "Use when the logo is rendered on a light surface.",
       onDark: "Use when the logo is rendered on a dark surface.",
-      runtimeThemeSwitching: "Prepared but intentionally not implemented.",
+      runtimeThemeSwitching: "Implemented by the pre-paint bootstrap and theme-controller.ts.",
     },
     assets: manifestAssets,
+    appIcons: manifestAppIcons,
   },
   null,
   2,

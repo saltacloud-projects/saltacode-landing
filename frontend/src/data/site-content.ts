@@ -14,6 +14,9 @@ export const site = {
   phoneDisplay: "+54 9 387 529-6587",
   phoneHref: "tel:+5493875296587",
   address: "Zuviría 333, Oficina 4C",
+  addressLocality: "Salta",
+  addressRegion: "Salta",
+  addressCountry: "AR",
   locality: "Salta, Argentina",
   maps: "https://maps.app.goo.gl/RKfbDFHbga3HUNvH7",
   whatsapp:
