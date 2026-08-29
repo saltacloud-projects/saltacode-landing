@@ -6,7 +6,7 @@ x-agent-environment: &agent-environment
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   POSTGRES_DSN: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://redis:6379/0
-  FASTAPI_API_KEY: ${FASTAPI_API_KEY}
+  FASTAPI_API_KEY_FILE: /run/secrets/internal_api_token
   JWT_SECRET_KEY: ${JWT_SECRET_KEY}
   ADMIN_INITIAL_EMAIL: ${ADMIN_INITIAL_EMAIL}
   ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
@@ -32,7 +32,12 @@ x-api-base: &api-base
     dockerfile: Dockerfile
   environment: *agent-environment
   secrets:
-    - source_master_key
+    - source: internal_api_token
+      target: internal_api_token
+      mode: "0400"
+    - source: source_master_key
+      target: source_master_key
+      mode: "0400"
   volumes:
     - document_data:/data/documents
   networks:
@@ -142,6 +147,25 @@ services:
           cpus: "1.50"
           memory: 2G
 
+  integration-tests:
+    image: localhost/saltacode/agent-platform-api-tests:${APP_VERSION:-dev}
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+      target: test
+    profiles: ["test"]
+    restart: "no"
+    environment:
+      <<: *agent-environment
+      FASTAPI_API_KEY_FILE: ""
+      FASTAPI_API_KEY: integration-test-only
+    networks:
+      - private
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["pytest", "-q", "-m", "integration"]
+
   panel:
     image: localhost/saltacode/agent-platform-panel:${APP_VERSION:-dev}
     build:
@@ -187,5 +211,7 @@ volumes:
     name: saltacode_agent_platform_documents
 
 secrets:
+  internal_api_token:
+    file: ./.secrets/internal_api_token
   source_master_key:
     file: ./.secrets/source_master.key

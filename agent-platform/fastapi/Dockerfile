@@ -18,9 +18,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml uv.lock ./
 
-# Crear venv relocatable y sincronizar dependencias (incluye dev para tests)
+# Create the production environment without development/test dependencies.
+RUN uv venv --relocatable .venv \
+    && uv sync --frozen --no-install-project --no-dev
+
+# ---- Test ------------------------------------------------------------------
+# Tests run in an explicit build target and never ship in the runtime image.
+FROM python:3.12.8-slim AS test
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /uvx /bin/
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml uv.lock ./
 RUN uv venv --relocatable .venv \
     && uv sync --frozen --no-install-project
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+COPY app/ ./app/
+COPY scripts/ ./scripts/
+COPY tests/ ./tests/
+
+CMD ["pytest", "-q"]
 
 # ---- Stage 2: Runtime -------------------------------------------------------
 FROM python:3.12.8-slim AS runtime
@@ -61,22 +86,15 @@ COPY --chown=appuser:appuser app/ ./app/
 COPY --chown=appuser:appuser alembic-platform.ini ./
 COPY --chown=appuser:appuser migrations_platform/ ./migrations_platform/
 
-# Scripts operativos versionados. No se ejecutan al importar ni al iniciar la app.
-COPY --chown=appuser:appuser scripts/ ./scripts/
-
 # The privileged entrypoint must not live in an appuser-writable directory:
 # otherwise a compromised service could replace it before a container restart.
 COPY --chown=root:root scripts/container_entrypoint.py /usr/local/libexec/agent-entrypoint.py
-
-# Tests y configuración
-COPY --chown=appuser:appuser tests/ ./tests/
-COPY --chown=appuser:appuser pyproject.toml .
 
 EXPOSE 8000
 
 # Healthcheck a nivel Docker (complementa el del docker-compose)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8000/ready || exit 1
 
 ENTRYPOINT ["python", "/usr/local/libexec/agent-entrypoint.py"]
 

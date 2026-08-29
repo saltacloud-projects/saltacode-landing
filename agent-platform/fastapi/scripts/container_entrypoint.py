@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Copy a Compose-mounted root secret, drop privileges, then exec the service."""
+"""Prepare file-mounted secrets, drop privileges, then exec the service."""
 
 from __future__ import annotations
 
 import os
 import pwd
 import sys
+from collections.abc import MutableMapping
 from pathlib import Path
 
 _SECRET_SOURCE_DEFAULT = "/run/secrets/source_master_key"
 _SECRET_TARGET_DEFAULT = "/run/agent-secrets/source_master.key"
 _SECRET_TARGET_ROOT = Path("/run/agent-secrets")
+_INTERNAL_API_KEY_SOURCE_DEFAULT = "/run/secrets/internal_api_token"
 _MAX_SECRET_BYTES = 4096
+_LOCAL_ENVIRONMENTS = frozenset({"development", "testing"})
+_JWT_PLACEHOLDER = "CHANGE-ME-IN-PRODUCTION"
 
 
 def _copy_secret(source: Path, target: Path, *, uid: int, gid: int) -> None:
@@ -54,6 +58,50 @@ def _set_unprivileged_environment(*, username: str, home: str) -> None:
     os.environ["LOGNAME"] = username
 
 
+def _read_secret(source: Path, *, label: str) -> str:
+    payload = bytearray()
+    try:
+        with source.open("rb") as handle:
+            payload.extend(handle.read(_MAX_SECRET_BYTES + 1))
+        if not payload or len(payload) > _MAX_SECRET_BYTES:
+            raise RuntimeError(f"{label} has an invalid size")
+        value = bytes(payload).strip().decode("utf-8")
+        if not value:
+            raise RuntimeError(f"{label} is empty")
+        return value
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"{label} could not be loaded") from exc
+    finally:
+        for index in range(len(payload)):
+            payload[index] = 0
+
+
+def _configure_security_environment(
+    environment: MutableMapping[str, str],
+) -> None:
+    runtime_environment = environment.get("FASTAPI_ENV", "production").lower()
+    api_key_source = Path(
+        environment.get("FASTAPI_API_KEY_FILE", _INTERNAL_API_KEY_SOURCE_DEFAULT)
+    )
+
+    if api_key_source.is_file():
+        environment["FASTAPI_API_KEY"] = _read_secret(
+            api_key_source,
+            label="internal API token",
+        )
+    elif not (
+        runtime_environment in _LOCAL_ENVIRONMENTS
+        and environment.get("FASTAPI_API_KEY")
+    ):
+        raise RuntimeError("internal API token file is required")
+
+    jwt_secret = environment.get("JWT_SECRET_KEY", "")
+    if runtime_environment not in _LOCAL_ENVIRONMENTS and (
+        jwt_secret == _JWT_PLACEHOLDER or len(jwt_secret) < 32
+    ):
+        raise RuntimeError("a strong JWT secret is required outside local environments")
+
+
 def main() -> None:
     if os.geteuid() != 0:
         raise RuntimeError("container entrypoint must start as root")
@@ -61,6 +109,7 @@ def main() -> None:
         raise RuntimeError("container command is required")
 
     account = pwd.getpwnam("appuser")
+    _configure_security_environment(os.environ)
     source = Path(
         os.environ.get("CREDENTIAL_ENCRYPTION_KEY_SOURCE_FILE", _SECRET_SOURCE_DEFAULT)
     )

@@ -8,7 +8,6 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI, HTTPException
-from fastapi.routing import APIRoute
 
 from app.routers.admin.conversations import (
     delete_conversation,
@@ -105,20 +104,16 @@ def test_all_admin_conversation_contracts_require_agent_id():
         ("/api/admin/conversations/{conversation_id}", "DELETE"),
         ("/api/admin/promptlab/search-conversations", "GET"),
     }
-    found = set()
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
-        for method in route.methods:
-            contract = (route.path, method)
-            if contract not in expected:
-                continue
-            agent_param = next(
-                item for item in route.dependant.query_params if item.name == "agent_id"
-            )
-            assert agent_param.required is True
-            found.add(contract)
-    assert found == expected
+    schema = app.openapi()
+
+    for path, method in expected:
+        operation = schema["paths"][path][method.lower()]
+        agent_param = next(
+            item
+            for item in operation["parameters"]
+            if item["name"] == "agent_id" and item["in"] == "query"
+        )
+        assert agent_param["required"] is True
 
 
 @pytest.mark.asyncio

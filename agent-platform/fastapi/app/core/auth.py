@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 
 from app.config import settings
 
@@ -63,5 +64,5 @@ def decode_token(token: str) -> dict | None:
     """Decodifica un JWT. Retorna el payload o None si es inválido/expirado."""
     try:
         return jwt.decode(token, settings.jwt_secret_key, algorithms=[ALGORITHM])
-    except JWTError:
+    except PyJWTError:
         return None

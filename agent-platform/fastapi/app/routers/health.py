@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import text
 
 from app.core.database import engine
@@ -21,7 +21,7 @@ async def health():
 
 
 @router.get("/ready")
-async def ready(request: Request):
+async def ready(request: Request, response: Response):
     """
     Readiness probe — verifica conectividad con PostgreSQL y Redis.
     Usa el cliente Redis compartido (app.state.redis) sin abrir nueva conexión.
@@ -35,7 +35,7 @@ async def ready(request: Request):
         checks["database"] = "ok"
     except Exception as exc:
         logger.warning("database_health_check_failed", extra={"error": str(exc)})
-        checks["database"] = f"error: {exc}"
+        checks["database"] = "error"
 
     # Verificar Redis — cliente compartido desde app.state
     try:
@@ -43,7 +43,9 @@ async def ready(request: Request):
         checks["redis"] = "ok"
     except Exception as exc:
         logger.warning("redis_health_check_failed", extra={"error": str(exc)})
-        checks["redis"] = f"error: {exc}"
+        checks["redis"] = "error"
 
     all_ok = all(v == "ok" for v in checks.values())
+    if not all_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {"status": "ok" if all_ok else "degraded", "checks": checks}

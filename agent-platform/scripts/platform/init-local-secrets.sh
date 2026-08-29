@@ -30,6 +30,13 @@ assert_secret_matches_env() {
     exit 1
   fi
 }
+# Migrate the former environment copy after proving that the file-mounted
+# value is identical. New installations never write this duplicate.
+remove_legacy_env_key() {
+  local key="$1"
+  [[ -f .env.platform.local ]] || return 0
+  sed -i "/^${key}=/d" .env.platform.local
+}
 write_secret .secrets/internal_api_token FASTAPI_API_KEY
 write_secret .secrets/jwt_secret JWT_SECRET_KEY
 write_secret .secrets/postgres_password POSTGRES_PASSWORD
@@ -51,7 +58,6 @@ POSTGRES_DB=agent_platform
 POSTGRES_USER=agent_platform
 POSTGRES_PASSWORD=$(cat .secrets/postgres_password)
 REDIS_MAX_MEMORY=256mb
-FASTAPI_API_KEY=$(cat .secrets/internal_api_token)
 JWT_SECRET_KEY=$(cat .secrets/jwt_secret)
 ADMIN_INITIAL_EMAIL=admin@local.saltacode.com
 ADMIN_INITIAL_PASSWORD=$(cat .secrets/admin_password)
@@ -67,6 +73,7 @@ AGENT_PANEL_PORT=23000
 ENV
 fi
 assert_secret_matches_env FASTAPI_API_KEY .secrets/internal_api_token
+remove_legacy_env_key FASTAPI_API_KEY
 assert_secret_matches_env JWT_SECRET_KEY .secrets/jwt_secret
 assert_secret_matches_env POSTGRES_PASSWORD .secrets/postgres_password
 assert_secret_matches_env ADMIN_INITIAL_PASSWORD .secrets/admin_password

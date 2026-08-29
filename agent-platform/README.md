@@ -47,7 +47,7 @@ Default local endpoints:
 | Agent API and OpenAPI | `http://127.0.0.1:28082/docs` |
 | Agent readiness | `http://127.0.0.1:28082/ready` |
 
-The initialization script writes ignored local credentials to `.env.platform.local` and `.secrets/`. Do not commit either path. The generated administrator must change the temporary password before any shared or production deployment.
+The initialization script writes ignored local credentials to `.env.platform.local` and `.secrets/`. Do not commit either path. The BFF-to-agent token is mounted from `.secrets/internal_api_token`; it is not injected through Compose environment interpolation. The generated administrator must change the temporary password before any shared or production deployment.
 
 Stop the stack with:
 
@@ -73,13 +73,21 @@ See [`docs/architecture/administration-model.md`](docs/architecture/administrati
 ```bash
 cd fastapi
 uv sync --locked
+# Hermetic tests; integration tests are excluded by default.
 uv run pytest -q
 uv run ruff check .
+uv run pip-audit
 
-cd ../frontend
+cd ..
+# PostgreSQL integration tests run in an isolated test image with dev dependencies.
+docker compose --env-file .env.platform.local --profile test run --rm integration-tests
+
+cd frontend
 npm ci
 npm run build
 ```
+
+The production API image installs only runtime dependencies and excludes tests and maintenance scripts. The dedicated `test` build target owns the test suite and development tools. A non-development container fails closed when the internal API token file is absent or the JWT secret is missing, short, or still uses the placeholder value.
 
 The clean platform schema lives in `fastapi/migrations_platform/` and is selected with `fastapi/alembic-platform.ini`.
 The administration panel intentionally uses npm and its committed `package-lock.json`; the repository landing uses pnpm from the repository root.

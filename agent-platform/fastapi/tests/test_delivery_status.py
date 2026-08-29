@@ -4,12 +4,11 @@ Regresión (integración) — Tracking de entrega de WhatsApp (message_statuses)
 Verifica el problema de "dice enviado pero no llega": el HTTP 200 al enviar solo
 es `accepted`; la entrega real llega async por webhooks y debe persistirse.
 
-Estos tests usan la DB real del contenedor (AsyncSessionLocal → PostgreSQL,
-porque delivery_status usa pg_insert/ON CONFLICT). Son herméticos: usan
+Estos tests requieren PostgreSQL (AsyncSessionLocal → PostgreSQL) porque
+delivery_status usa pg_insert/ON CONFLICT. Aíslan sus registros con
 meta_message_id efímeros (wamid.test.<uuid>) y limpian al final.
 
-Ejecutar (dentro del contenedor, con Postgres):
-    docker compose exec -T fastapi pytest tests/test_delivery_status.py -v
+Ejecutar mediante el servicio Compose de integración documentado en el README.
 """
 
 import os
@@ -27,6 +26,8 @@ from sqlalchemy import delete, select
 from app.core.database import AsyncSessionLocal
 from app.models.message_status import MessageStatus
 from app.services import delivery_status
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(autouse=True)
