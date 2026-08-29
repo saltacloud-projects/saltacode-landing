@@ -11,6 +11,13 @@
     "build": "pnpm --filter @saltacode/frontend build",
     "check": "pnpm --filter @saltacode/frontend check",
     "test": "pnpm --filter @saltacode/frontend test",
-    "preview": "pnpm --filter @saltacode/frontend preview"
+    "preview": "pnpm --filter @saltacode/frontend preview",
+    "verify": "bash scripts/quality/verify.sh",
+    "verify:frontend": "bash scripts/quality/verify.sh frontend",
+    "verify:backend": "bash scripts/quality/verify.sh backend",
+    "verify:agent-api": "bash scripts/quality/verify.sh agent-api",
+    "verify:agent-panel": "bash scripts/quality/verify.sh agent-panel",
+    "verify:infrastructure": "bash scripts/quality/verify.sh infrastructure",
+    "verify:agentic": "bash scripts/quality/verify.sh agentic"
   }
 }

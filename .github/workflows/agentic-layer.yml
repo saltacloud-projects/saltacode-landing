@@ -11,6 +11,7 @@ on:
       - "docs/**"
       - "scripts/agentic/**"
       - ".github/workflows/agentic-layer.yml"
+      - ".github/workflows/platform-quality.yml"
   push:
     branches:
       - main
@@ -23,6 +24,7 @@ on:
       - "docs/**"
       - "scripts/agentic/**"
       - ".github/workflows/agentic-layer.yml"
+      - ".github/workflows/platform-quality.yml"
 
 permissions:
   contents: read

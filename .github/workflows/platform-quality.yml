@@ -34,19 +34,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check frontend
-        run: pnpm check
-
-      - name: Test frontend
-        run: pnpm test
+      - name: Verify frontend
+        run: bash scripts/quality/verify.sh frontend
 
   backend:
     name: Backend
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -64,27 +58,16 @@ jobs:
           cache-dependency-glob: backend/uv.lock
 
       - name: Install locked dependencies
+        working-directory: backend
         run: uv sync --locked --all-groups
 
-      - name: Check formatting
-        run: uv run ruff format --check .
+      - name: Verify backend
+        run: bash scripts/quality/verify.sh backend
 
-      - name: Lint
-        run: uv run ruff check .
-
-      - name: Test
-        run: uv run pytest
-
-      - name: Check contract schema drift
-        run: uv run python scripts/export_contracts.py --check
-
-  agent-ai:
-    name: Agent AI
+  agent-api:
+    name: Agent API
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: agent-ai
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -99,19 +82,40 @@ jobs:
         with:
           version: "0.11.23"
           enable-cache: true
-          cache-dependency-glob: agent-ai/uv.lock
+          cache-dependency-glob: agent-platform/fastapi/uv.lock
 
       - name: Install locked dependencies
+        working-directory: agent-platform/fastapi
         run: uv sync --locked --all-groups
 
-      - name: Check formatting
-        run: uv run ruff format --check .
+      - name: Verify agent API
+        run: bash scripts/quality/verify.sh agent-api
 
-      - name: Lint
-        run: uv run ruff check .
+  agent-panel:
+    name: Agent administration panel
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
 
-      - name: Test
-        run: uv run pytest
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: agent-platform/frontend/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: agent-platform/frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: agent-platform/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify agent panel
+        run: bash scripts/quality/verify.sh agent-panel
 
   infrastructure:
     name: Infrastructure
@@ -121,51 +125,5 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Check shell syntax
-        shell: bash
-        run: |
-          while IFS= read -r -d '' script; do
-            bash -n "${script}"
-          done < <(find infrastructure/scripts scripts/agentic -type f -name '*.sh' -print0)
-
-      - name: Validate Compose models
-        shell: bash
-        run: |
-          token_file="${RUNNER_TEMP}/agent-internal-token"
-          env_file="${RUNNER_TEMP}/platform.env"
-
-          install -m 0640 /dev/null "${token_file}"
-          printf '%s\n' 'ci-placeholder-token-not-a-secret-000000000000' >"${token_file}"
-          token_gid="$(stat -c '%g' "${token_file}")"
-          cat >"${env_file}" <<EOF
-          SALTACODE_RELEASE=ci-validation
-          SALTACODE_FRONTEND_PORT=18080
-          SALTACODE_BACKEND_PORT=18081
-          SALTACODE_APP_ENV=production
-          SALTACODE_ALLOWED_ORIGINS=https://saltacode.com.ar
-          SALTACODE_AGENT_INTERNAL_TOKEN_SOURCE_FILE=${token_file}
-          SALTACODE_AGENT_ROUTE_KEY=saltacode-landing
-          SALTACODE_AGENT_INTERNAL_TOKEN_GID=${token_gid}
-          SALTACODE_AGENT_ENVIRONMENT=production
-          SALTACODE_RATE_LIMIT_BACKEND=redis
-          SALTACODE_REDIS_URL=redis://redis:6379/0
-          SALTACODE_REDIS_IMAGE=redis:7.4-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          SALTACODE_REDIS_UID=999
-          SALTACODE_REDIS_GID=999
-          SALTACODE_RATE_LIMIT_REQUESTS=20
-          SALTACODE_RATE_LIMIT_WINDOW_SECONDS=60
-          EOF
-
-          docker compose --env-file "${env_file}" -f compose.yml config --quiet
-          docker compose --env-file "${env_file}" -f compose.yml -f compose.sandbox.yml config --quiet
-
-  agentic:
-    name: Agentic layer
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Validate agentic layer
-        run: bash scripts/agentic/validate-layer.sh
+      - name: Verify infrastructure models
+        run: bash scripts/quality/verify.sh infrastructure

@@ -55,27 +55,18 @@ Stop both stacks with:
 
 ## Validation
 
+Install each deployable's locked dependencies once, then run the complete repository gate from the root:
+
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
-pnpm check
-pnpm test
-
-(cd backend && uv sync --locked --all-groups && uv run ruff format --check . \
-  && uv run ruff check . && uv run pytest \
-  && uv run python scripts/export_contracts.py --check)
-
-(cd agent-platform/fastapi && uv sync --locked && uv run ruff format --check app tests \
-  && uv run ruff check app tests)
-
-(cd agent-platform/frontend && npm ci && npm run build \
-  && npm audit --audit-level=moderate)
-
-bash scripts/agentic/validate-layer.sh
-docker compose --env-file .env.sandbox.local \
-  -f compose.yml -f compose.sandbox.yml config --quiet
-(cd agent-platform && docker compose --env-file .env.platform.local config --quiet)
+(cd backend && uv sync --locked --all-groups)
+(cd agent-platform/fastapi && uv sync --locked --all-groups)
+(cd agent-platform/frontend && npm ci && npx playwright install chromium)
+pnpm verify
 ```
+
+`pnpm verify` checks the frontend, BFF, agent API, administration panel, Compose models, shell scripts, and agentic contracts. It provisions and removes an ephemeral pgvector/PostgreSQL container for the agent integration tests unless `AGENT_TEST_POSTGRES_DSN` points to a disposable test database. Focused gates remain available as `pnpm verify:frontend`, `pnpm verify:backend`, `pnpm verify:agent-api`, `pnpm verify:agent-panel`, `pnpm verify:infrastructure`, and `pnpm verify:agentic`.
 
 ## Repository map
 

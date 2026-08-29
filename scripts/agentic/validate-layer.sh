@@ -20,6 +20,8 @@ required_files=(
   docs/quality/seo-performance-contract.md
   docs/agentic/tooling.md
   .github/workflows/agentic-layer.yml
+  .github/workflows/platform-quality.yml
+  scripts/quality/verify.sh
 )
 
 agent_names=(
@@ -87,5 +89,13 @@ for name in "${skill_names[@]}"; do
     previous="$line"
   done
 done
+
+grep -Fq 'agent-platform/fastapi/uv.lock' .github/workflows/platform-quality.yml \
+  || fail 'platform quality must validate the repository-owned agent API'
+grep -Fq 'agent-platform/frontend/package-lock.json' .github/workflows/platform-quality.yml \
+  || fail 'platform quality must validate the repository-owned agent panel'
+if grep -Eq '(^|[/[:space:]])agent-ai([/:[:space:]]|$)' .github/workflows/platform-quality.yml; then
+  fail 'platform quality still references the retired agent-ai path'
+fi
 
 printf 'Agentic layer validation passed: %d agents, %d skills.\n' "${#agent_names[@]}" "${#skill_names[@]}"
