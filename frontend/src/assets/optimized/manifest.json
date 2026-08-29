@@ -585,5 +585,48 @@
         "height": 180
       }
     }
+  ],
+  "serviceSourceContract": {
+    "configuredOutputMaximumWidth": 960,
+    "cssSlotMaximumWidth": 540,
+    "maximumDimension": 1440,
+    "format": "webp",
+    "quality": 92,
+    "smartSubsample": true,
+    "effort": 6
+  },
+  "serviceSourceMasters": [
+    {
+      "id": "consulting",
+      "path": "src/assets/services/consulting.webp",
+      "bytes": 123496,
+      "sha256": "22acd430497eef81a503e0266fad0d4abb90169f2a9060935a7d1044873f93a3",
+      "width": 1440,
+      "height": 1440
+    },
+    {
+      "id": "outsourcing",
+      "path": "src/assets/services/outsourcing.webp",
+      "bytes": 51526,
+      "sha256": "feca633a7b367b598a4deec25f3a8799a364c610e55d849620b5f0a4c1e397a2",
+      "width": 1440,
+      "height": 1440
+    },
+    {
+      "id": "saas",
+      "path": "src/assets/services/saas.webp",
+      "bytes": 94694,
+      "sha256": "11670c1174382386022e91ef3b0fc54b1140806d093a34d772fff71126ecddae",
+      "width": 1440,
+      "height": 1439
+    },
+    {
+      "id": "software-factory",
+      "path": "src/assets/services/software-factory.webp",
+      "bytes": 68544,
+      "sha256": "7ffb5ceb388da4e891e49f650f676dab784acfaeda642c3a89cae4f5932b6054",
+      "width": 1440,
+      "height": 1440
+    }
   ]
 }

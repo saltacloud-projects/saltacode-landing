@@ -1,6 +1,6 @@
 # Image asset contract
 
-This contract covers Saltacode brand images and the client logos currently rendered by the landing page. About and service photography are intentionally outside this pass.
+This contract covers Saltacode brand images, client logos, public app icons, and the service-image source masters currently rendered by the site. About photography remains outside this pass.
 
 ## Surface variants
 
@@ -15,6 +15,13 @@ This contract covers Saltacode brand images and the client logos currently rende
 
 The source-to-output mapping, dimensions, byte sizes, and SHA-256 hashes live in `frontend/src/assets/optimized/manifest.json`.
 
+## Service source masters
+
+- Service photos render in slots no wider than 540 CSS pixels and Astro emits responsive candidates up to 960 physical pixels.
+- Their tracked WebP masters use a 1,440-pixel maximum dimension, retaining 50% headroom above the largest emitted candidate without carrying the former roughly 7,000 × 7,000 sources through every build and runtime image.
+- The deterministic transform preserves the original aspect ratio and framing with Sharp's Lanczos3 resize, WebP quality 92, smart chroma subsampling, and effort 6.
+- A compliant 1,440-pixel source is never re-encoded. Git history remains the rollback source for the original high-resolution files.
+
 ## Generation and validation
 
 Run:
@@ -24,7 +31,7 @@ pnpm --dir frontend assets:generate
 pnpm --dir frontend assets:check
 ```
 
-`assets:generate` uses pinned Sharp transforms and lossless WebP output. `assets:check` regenerates every variant in memory and fails on byte drift, missing files, manifest drift, or unexpected generated files.
+`assets:generate` uses pinned Sharp transforms and lossless WebP output for surface variants. It also normalizes oversized service masters once using the documented photographic settings. `assets:check` regenerates every surface variant in memory and fails on service-source dimensions, byte drift, missing files, manifest drift, or unexpected generated files.
 
 The build gate also requires:
 

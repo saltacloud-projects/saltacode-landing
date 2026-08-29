@@ -26,6 +26,19 @@ const appIcons = [
   },
 ];
 
+const serviceSourceContract = Object.freeze({
+  configuredOutputMaximumWidth: 960,
+  cssSlotMaximumWidth: 540,
+  maximumDimension: 1440,
+  format: "webp",
+  quality: 92,
+  smartSubsample: true,
+  effort: 6,
+});
+const serviceSourceMasters = ["consulting", "outsourcing", "saas", "software-factory"].map(
+  (id) => ({ id, path: `src/assets/services/${id}.webp` }),
+);
+
 const clientCanvas = Object.freeze({ width: 360, height: 160, maxWidth: 320, maxHeight: 120 });
 const clientPalette = Object.freeze({ onLight: "#74747D", onDark: "#D8D8E0" });
 
@@ -208,6 +221,50 @@ function placeOnCanvas(foreground, foregroundInfo, canvas, background) {
   }).composite([{ input: foreground, left, top }]);
 }
 
+async function normalizeServiceSource(master) {
+  const sourcePath = resolve(frontendRoot, master.path);
+  let sourceBuffer = await readFile(sourcePath);
+  let metadata = await sharp(sourceBuffer).metadata();
+  const sourceMaximumDimension = Math.max(metadata.width ?? 0, metadata.height ?? 0);
+
+  if (!checkOnly && sourceMaximumDimension > serviceSourceContract.maximumDimension) {
+    sourceBuffer = await sharp(sourceBuffer)
+      .resize({
+        width: serviceSourceContract.maximumDimension,
+        height: serviceSourceContract.maximumDimension,
+        fit: "inside",
+        kernel: sharp.kernel.lanczos3,
+        withoutEnlargement: true,
+      })
+      .webp({
+        quality: serviceSourceContract.quality,
+        smartSubsample: serviceSourceContract.smartSubsample,
+        effort: serviceSourceContract.effort,
+      })
+      .toBuffer();
+    await writeFile(sourcePath, sourceBuffer);
+    metadata = await sharp(sourceBuffer).metadata();
+  }
+
+  const maximumDimension = Math.max(metadata.width ?? 0, metadata.height ?? 0);
+  const hasContractDrift =
+    metadata.format !== serviceSourceContract.format ||
+    maximumDimension !== serviceSourceContract.maximumDimension;
+  if (hasContractDrift) {
+    if (checkOnly) drift.push(master.path);
+    else throw new Error(`Service source does not satisfy the source contract: ${master.path}`);
+  }
+
+  return {
+    id: master.id,
+    path: master.path,
+    bytes: sourceBuffer.byteLength,
+    sha256: sha256(sourceBuffer),
+    width: metadata.width,
+    height: metadata.height,
+  };
+}
+
 async function renderVariant(asset, variant) {
   const sourcePath = resolve(frontendRoot, variant.source);
   const sourceBuffer = await readFile(sourcePath);
@@ -275,6 +332,11 @@ const expectedOutputs = new Set();
 const manifestAssets = [];
 const manifestAppIcons = [];
 const drift = [];
+const manifestServiceSources = [];
+
+for (const master of serviceSourceMasters) {
+  manifestServiceSources.push(await normalizeServiceSource(master));
+}
 
 for (const asset of assets) {
   const manifestVariants = {};
@@ -349,6 +411,8 @@ const manifest = `${JSON.stringify(
     },
     assets: manifestAssets,
     appIcons: manifestAppIcons,
+    serviceSourceContract,
+    serviceSourceMasters: manifestServiceSources,
   },
   null,
   2,
@@ -371,9 +435,13 @@ if (checkOnly) {
     for (const path of [...new Set(drift)].sort()) console.error(`asset drift: ${path}`);
     process.exit(1);
   }
-  console.log(`Verified ${expectedOutputs.size} deterministic theme-ready image variants.`);
+  console.log(
+    `Verified ${expectedOutputs.size} deterministic theme-ready image variants and ${manifestServiceSources.length} service source masters.`,
+  );
 } else {
   await mkdir(dirname(manifestPath), { recursive: true });
   await writeFile(manifestPath, manifest);
-  console.log(`Generated ${expectedOutputs.size} theme-ready image variants and manifest.`);
+  console.log(
+    `Generated ${expectedOutputs.size} theme-ready image variants, normalized ${manifestServiceSources.length} service source masters, and wrote the manifest.`,
+  );
 }
