@@ -515,25 +515,3 @@ class AuditLogAdminOut(BaseModel):
             tool_calls=getattr(obj, "tool_calls", None) or [],
             created_at=obj.created_at,
         )
-
-
-# ---------------------------------------------------------------------------
-# Metrics / Dashboard
-# ---------------------------------------------------------------------------
-
-
-class ToolUsageStat(BaseModel):
-    tool_name: str
-    count: int
-
-
-class MetricsDashboard(BaseModel):
-    messages_today: int
-    messages_7d: int
-    messages_30d: int
-    active_users_7d: int
-    errors_24h: int
-    top_tools: list[ToolUsageStat]
-    delivery_stats: dict[
-        str, int
-    ]  # {accepted: N, sent: N, delivered: N, read: N, failed: N}

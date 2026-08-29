@@ -23,7 +23,6 @@ from app.routers.admin.config import router as admin_config_router
 from app.routers.admin.conversations import router as admin_conversations_router
 from app.routers.admin.documents import router as admin_documents_router
 from app.routers.admin.knowledge_blocks import router as admin_kb_router
-from app.routers.admin.metrics import router as admin_metrics_router
 from app.routers.admin.panel_users import router as admin_panel_users_router
 from app.routers.admin.profiles import router as admin_profiles_router
 from app.routers.admin.promptlab import router as admin_promptlab_router
@@ -207,7 +206,6 @@ app.include_router(admin_tools_router, prefix="/api/admin/tools")
 app.include_router(admin_users_router, prefix="/api/admin/users")
 app.include_router(admin_audit_router, prefix="/api/admin/audit")
 app.include_router(admin_conversations_router, prefix="/api/admin/conversations")
-app.include_router(admin_metrics_router, prefix="/api/admin/metrics")
 app.include_router(admin_config_router, prefix="/api/admin/config")
 app.include_router(admin_promptlab_router, prefix="/api/admin/promptlab")
 app.include_router(admin_documents_router, prefix="/api/admin/documents")

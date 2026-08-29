@@ -25,7 +25,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core import agent_defaults as defaults
+from app.bootstrap import DEFAULT_BLOCKS
 from app.core.temporal_context import build_temporal_context
 from app.services.knowledge import (
     KnowledgeService,
@@ -46,27 +46,19 @@ def _full_ctx() -> dict[str, str]:
     return build_temporal_context()
 
 
-class TestDirectivesTemplate:
-    def test_placeholders_del_template_son_subconjunto_del_builder(self):
-        """Todo {placeholder} del template debe poder resolverlo el builder."""
-        en_template = set(_PLACEHOLDER_RE.findall(defaults.AGENT_DIRECTIVES_TEMPLATE))
-        faltantes = en_template - _builder_keys()
-        assert not faltantes, f"Placeholders que el builder no provee: {faltantes}"
+class TestBootstrapKnowledge:
+    def test_bootstrap_placeholders_are_supported_by_the_runtime_builder(self):
+        for _key, _title, content, _sort_order in DEFAULT_BLOCKS:
+            missing = set(_PLACEHOLDER_RE.findall(content)) - _builder_keys()
+            assert not missing
+            assert (
+                _unresolved_placeholders(_resolve_placeholders(content, _full_ctx()))
+                == []
+            )
 
-    def test_resuelve_sin_placeholders_colgados(self):
-        out = _resolve_placeholders(defaults.AGENT_DIRECTIVES_TEMPLATE, _full_ctx())
-        assert _unresolved_placeholders(out) == []
-
-    def test_preserva_texto_clave_y_salto_de_linea(self):
-        ctx = _full_ctx()
-        out = _resolve_placeholders(defaults.AGENT_DIRECTIVES_TEMPLATE, ctx)
-        # Las directivas contienen solo reglas generales. El tiempo y las reglas
-        # de dominio tienen propietarios semánticos independientes.
-        assert "COMMUNICATION" in out
-        assert "TOOL USE" in out
-        assert "SAFETY" in out
-        assert "INTERPRETACIÓN DE FECHAS" not in out
-        assert "fecha_actual" not in out
+    def test_bootstrap_owns_the_current_neutral_knowledge_set(self):
+        keys = {key for key, _title, _content, _sort_order in DEFAULT_BLOCKS}
+        assert keys == {"company_profile", "services", "commercial_policy"}
 
 
 class TestResolver:
@@ -115,12 +107,3 @@ class TestResolver:
         assert service.compose_resolved_knowledge(resolved) == (
             f"Fecha: {_full_ctx()['fecha_actual']}\n\nFormato propio"
         )
-
-
-class TestDefaults:
-    def test_semantic_map_is_channel_neutral(self):
-        refs = defaults.KNOWLEDGE_BLOCK_REFERENCE
-        assert refs["agent_directives"]["required"] is True
-        assert refs["company_profile"]["required"] is True
-        assert refs["services"]["required"] is True
-        assert "commercial_policy" in refs
