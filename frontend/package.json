@@ -11,7 +11,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "check": "astro check",
-    "test": "pnpm run assets:check && pnpm run icons:check && pnpm run build && node scripts/verify-build.mjs && node scripts/verify-server.mjs",
+    "test:unit": "node --test --experimental-strip-types tests/*.test.ts",
+    "test": "pnpm run test:unit && pnpm run assets:check && pnpm run icons:check && pnpm run build && node scripts/verify-build.mjs && node scripts/verify-server.mjs",
     "preview": "astro preview"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "@types/node": "26.4.0",
     "sharp": "0.35.3",
     "simple-icons": "16.28.0",
     "typescript": "6.0.3"

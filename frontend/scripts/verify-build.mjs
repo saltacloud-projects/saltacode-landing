@@ -23,7 +23,12 @@ const indexBuffer = await readFile(resolve(dist, "index.html"));
 const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
-const chatSource = await readFile(resolve(import.meta.dirname, "../src/scripts/chat-preview.ts"), "utf8");
+const chatSourcePaths = ["chat-preview.ts", "chat-stream.ts", "chat-template.ts"];
+const chatSources = await Promise.all(
+  chatSourcePaths.map((path) => readFile(resolve(import.meta.dirname, `../src/scripts/${path}`), "utf8")),
+);
+const [chatSource] = chatSources;
+const combinedChatSource = chatSources.join("\n");
 const privacySource = await readFile(resolve(import.meta.dirname, "../src/scripts/privacy-preferences.ts"), "utf8");
 const pageMotionSource = await readFile(resolve(import.meta.dirname, "../src/scripts/page-motion.ts"), "utf8");
 const clientMessageIdSource = await readFile(resolve(import.meta.dirname, "../src/scripts/client-message-id.ts"), "utf8");
@@ -225,8 +230,8 @@ if (!/<form\b[^>]*data-chat-launcher/.test(index) || !/<div class="agent-preview
 const quickLinks = index.match(/<div class="quick-links"[^>]*>([\s\S]*?)<\/div>/)?.[1];
 if (!quickLinks || (quickLinks.match(/<button\b[^>]*type="submit"/g) ?? []).length !== 4 || /<a\b/.test(quickLinks) || !pageMotionSource.includes("event.submitter")) throw new Error("Service shortcuts must remain chat launchers.");
 if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-28"') || !chatSource.includes('const CONSENT_STORAGE_KEY = "saltacode-chat-consent"')) throw new Error("Chat consent version or local key is incorrect.");
-if (/transcript-consent|type="checkbox"/.test(chatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
-if (!chatSource.includes("Aceptar y enviar") || !chatSource.includes("event.isComposing") || !chatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");
+if (/transcript-consent|type="checkbox"/.test(combinedChatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
+if (!combinedChatSource.includes("Aceptar y enviar") || !combinedChatSource.includes("event.isComposing") || !combinedChatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");
 if ([chatSource, pageMotionSource].some((source) => source.includes("crypto.randomUUID"))) throw new Error("Public chat code must not require randomUUID on insecure LAN origins.");
 if (!clientMessageIdSource.includes("crypto.getRandomValues") || !clientMessageIdSource.includes("4000-8000")) throw new Error("The browser-compatible UUID v4 generator is missing.");
 if (!privacySource.includes('const STORAGE_VERSION = "saltacode-storage-2026-08-28"') || !privacySource.includes("globalPrivacyControl")) throw new Error("The privacy center version or GPC handling is missing.");
