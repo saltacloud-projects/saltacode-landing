@@ -55,6 +55,23 @@ Stop the stack with:
 ./scripts/platform/down.sh
 ```
 
+## Host release and rollback
+
+The agent platform has its own fail-closed host release boundary; it is never deployed or rolled back by the landing scripts.
+
+```bash
+AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
+  ./scripts/platform/preflight-release.sh
+
+# Explicit production authorization is required before this command.
+AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
+  ./scripts/platform/deploy-release.sh
+```
+
+The deploy uses an immutable `APP_VERSION`, controlled one-shot migrations, `docker compose --wait`, internal and loopback health probes, and secret-free receipts under `/var/lib/saltacode-agent-platform`. Rollback preserves PostgreSQL, documents, conversation history, and audit data; it refuses a target whose database revision or runtime contract is incompatible.
+
+See [`docs/operations/release-and-rollback.md`](docs/operations/release-and-rollback.md) for environment preparation, exact rollback commands, receipt fields, and the schema-change boundary.
+
 ## Configuration workflow
 
 1. Sign in and create reusable provider, channel, and API connections in the platform library.
@@ -97,5 +114,6 @@ The administration panel intentionally uses npm and its committed `package-lock.
 - `docs/architecture/platform.md`
 - `docs/architecture/administration-model.md`
 - `docs/operations/local-stack.md`
+- `docs/operations/release-and-rollback.md`
 - `docs/security/trust-boundaries.md`
 - `docs/tools/http-sources.md`

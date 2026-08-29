@@ -98,10 +98,23 @@ verify_agent_api() {
     export FASTAPI_API_KEY="quality-gate-internal-token"
     export JWT_SECRET_KEY="quality-gate-jwt-secret-at-least-32-characters"
     export POSTGRES_DSN="${AGENT_TEST_POSTGRES_DSN}"
+    export ADMIN_INITIAL_EMAIL="quality-gate-admin@example.invalid"
+    export ADMIN_INITIAL_PASSWORD="quality-gate-admin-password"
+    export DEFAULT_AGENT_SLUG="saltacode"
+    export AGENT_WEB_ROUTE_KEY="saltacode-landing"
+    export OPENAI_API_KEY="quality-gate-openai-key"
+    export WHATSAPP_TOKEN=""
+    export WHATSAPP_PHONE_NUMBER_ID=""
+    export WHATSAPP_VERIFY_TOKEN=""
+    export WHATSAPP_APP_SECRET=""
     uv run --locked alembic -c alembic-platform.ini upgrade head
+    uv run --locked alembic -c alembic-platform.ini check
     uv run --locked ruff format --check app tests
     uv run --locked ruff check app tests
+    uv run --locked pip-audit --strict
     uv run --locked pytest -o addopts='' -m 'not integration'
+    export OPENAI_API_KEY=""
+    uv run --locked python -m app.bootstrap
     uv run --locked pytest -o addopts='' -m integration
   )
 }
@@ -118,6 +131,7 @@ verify_agent_panel() {
         export PLAYWRIGHT_CHROME_PATH="${playwright_browser}"
       fi
     fi
+    npm run check
     npm run build
     npm run test:e2e
     npm audit --audit-level=moderate
@@ -132,11 +146,13 @@ write_compose_fixture() {
   local site_env="${temporary_directory}/site.env"
   local agent_env="${temporary_directory}/agent.env"
   local agent_compose_override="${temporary_directory}/agent-compose.override.yml"
+  local agent_state_dir="${temporary_directory}/agent-state"
 
   printf '%s\n' 'quality-gate-agent-token-at-least-32-characters' >"${token_file}"
   printf '%s\n' 'quality-gate-session-secret-at-least-32-characters' >"${session_file}"
   printf '%s\n' 'quality-gate-source-master-key-at-least-32-characters' >"${source_master_file}"
   chmod 0640 "${token_file}" "${session_file}" "${source_master_file}"
+  mkdir -m 0750 "${agent_state_dir}"
   local secret_gid
   secret_gid="$(stat -c '%g' "${token_file}")"
 
@@ -163,6 +179,11 @@ EOF
 
   cat >"${agent_env}" <<EOF
 APP_VERSION=quality-gate
+AGENT_PLATFORM_DEPLOY_ENV=sandbox
+AGENT_PLATFORM_STATE_DIR=${agent_state_dir}
+AGENT_PLATFORM_INTERNAL_TOKEN_SOURCE_FILE=${token_file}
+AGENT_PLATFORM_SOURCE_MASTER_KEY_FILE=${source_master_file}
+AGENT_PLATFORM_ENABLE_RAG_WORKER=0
 FASTAPI_ENV=testing
 POSTGRES_DB=agent_platform
 POSTGRES_USER=agent_platform
@@ -171,6 +192,7 @@ JWT_SECRET_KEY=quality-gate-jwt-secret-at-least-32-characters
 ADMIN_INITIAL_EMAIL=admin@example.invalid
 ADMIN_INITIAL_PASSWORD=quality-gate-admin-password
 EOF
+  chmod 0640 "${site_env}" "${agent_env}"
 
   cat >"${agent_compose_override}" <<EOF
 secrets:
@@ -204,6 +226,8 @@ verify_infrastructure() {
   docker compose --env-file "${agent_env_fixture}" \
     -f agent-platform/docker-compose.yml \
     -f "${agent_compose_override_fixture}" config --quiet
+  AGENT_PLATFORM_ENV_FILE="${agent_env_fixture}" \
+    agent-platform/scripts/platform/preflight-release.sh
 }
 
 verify_agentic() {

@@ -28,6 +28,8 @@ The BFF-to-agent bearer token and BFF session-signing secret are separate 32+ ch
 - `scripts/verify-local.sh`: origin, health, and local SEO checks.
 - `scripts/verify-public.sh`: read-only public routing and SEO checks.
 
+The independent agent unit is released with `agent-platform/scripts/platform/deploy-release.sh` and its own state directory, lock, migrations, health probes, receipts, and rollback script. See [`../agent-platform/docs/operations/release-and-rollback.md`](../agent-platform/docs/operations/release-and-rollback.md). Neither release script calls the other.
+
 ## Prepare
 
 Copy an environment template outside Git, replace placeholders, and create the two protected secret files. The named `saltacode_agent_bridge` must already be created by the independently deployed agent platform.

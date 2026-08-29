@@ -16,7 +16,14 @@ Redis is intentionally ephemeral, so rollback starts with empty public rate-limi
 
 ## Agent rollback
 
-Use `agent-platform/`'s own release receipt and operation contract. An agent rollback must preserve its database and history, restore the authenticated internal execution contract, and must not rebuild the landing or change Cloudflare.
+Use the independent agent receipt and operation contract:
+
+```bash
+AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
+  agent-platform/scripts/platform/rollback-release.sh
+```
+
+The script validates immutable image IDs, Compose/environment hashes, and the current database revision before stopping the agent application. It never downgrades or restores PostgreSQL, deletes document/history volumes, rebuilds the landing, or changes DNS and Cloudflare. A database revision mismatch blocks rollback because restoring an older database would discard newer conversations. See [`../agent-platform/docs/operations/release-and-rollback.md`](../agent-platform/docs/operations/release-and-rollback.md).
 
 ## Provider rollback
 
