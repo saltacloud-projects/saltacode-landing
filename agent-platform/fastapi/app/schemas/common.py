@@ -29,5 +29,4 @@ class StatusEnum(str, Enum):
     success = "success"
     error = "error"
     blocked = "blocked"
-    quota_exceeded = "quota_exceeded"
     unsupported = "unsupported"

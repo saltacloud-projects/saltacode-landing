@@ -44,4 +44,3 @@ from app.models.rag import (
     RagSettings,
 )
 from app.models.tool_config import ToolConfig
-from app.models.usage_record import UsageRecord
