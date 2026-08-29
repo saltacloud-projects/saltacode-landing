@@ -47,7 +47,7 @@ An external API source is configured in the global source library with its base 
 | Knowledge blocks | Shared | Yes | Edit once, assign explicitly to agents. |
 | Document areas and documents | Shared | Yes | Manage ingestion scope, assign areas explicitly to agents. |
 | Agent profile | Agent | Yes | Identity, prompts, public/active state, messages, and retention. |
-| Runtime | Agent | Yes | Provider binding, models, limits, history, summary, and RAG settings. |
+| Runtime | Agent | Yes | Provider binding, models, execution limits, recent-history window, Redis cache TTL, rolling-summary policy, and RAG settings. |
 | Resource and WhatsApp-user assignments | Agent | Yes | Explicit many-to-many access policy. |
 | Channel routes | Agent | Yes | Map one channel and `route_key` through one connection to one agent. |
 | Conversations, messages, executions | Agent | Yes | Durable history keyed by agent, channel, route, and principal. |
@@ -56,6 +56,8 @@ An external API source is configured in the global source library with its base 
 | Panel users and roles | Platform-wide | Yes | Administrative access, independent from end-user channel access. |
 
 Conversations are not inferred from the current panel selection. Every durable conversation stores `agent_id`, `channel`, `route_key`, principal, messages, and executions, so changing the selected agent in the panel cannot move or merge history.
+
+History and summary controls are runtime behavior, not decorative panel fields. A positive cache TTL enables fail-open Redis caching for the configured recent window. Summary controls determine when older messages are compacted through the selected provider; the resulting summary and watermark remain on the agent-scoped conversation.
 
 ## Secret boundary
 

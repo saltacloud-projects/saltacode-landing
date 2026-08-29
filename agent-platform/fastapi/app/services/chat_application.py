@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -28,6 +29,7 @@ from app.services.agent_runtime import (
     ResolvedAgentRuntime,
     agent_runtime_resolver,
 )
+from app.services.conversation_memory import conversation_memory_service
 from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
 
@@ -66,8 +68,10 @@ class ChatApplicationService:
         display_name: str | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
+        runtime: ResolvedAgentRuntime | None = None,
+        redis=None,
     ) -> None:
-        """Dual-write the existing WhatsApp flow into the neutral history."""
+        """Persist a WhatsApp exchange in the agent-scoped neutral history."""
         if await self._existing_outcome(db, request_id) is not None:
             return
         route_scope = route_key or profile.slug
@@ -116,6 +120,15 @@ class ChatApplicationService:
                 tools_used=list(tools_used),
             )
         )
+        await db.flush()
+        await conversation_memory_service.refresh_summary(
+            db, conversation=conversation, runtime=runtime
+        )
+        await self._invalidate_history(
+            redis,
+            conversation.id,
+            runtime.config.history_message_limit if runtime else 20,
+        )
 
     async def load_whatsapp_context(
         self,
@@ -126,6 +139,8 @@ class ChatApplicationService:
         limit: int,
         route_key: str,
         channel_route_id: uuid.UUID,
+        history_cache_ttl_seconds: int = 0,
+        redis=None,
     ) -> tuple[list[dict[str, str]], str | None]:
         """Load only the neutral conversation owned by this agent and route."""
         conversation = (
@@ -142,12 +157,22 @@ class ChatApplicationService:
             return [], None
         if conversation.channel_route_id not in (None, channel_route_id):
             raise AgentNotReady("WhatsApp identity belongs to another route")
-        return await self._history(db, conversation.id, limit), conversation.summary
+        return (
+            await self._history(
+                db,
+                conversation.id,
+                limit,
+                redis=redis,
+                cache_ttl_seconds=history_cache_ttl_seconds,
+            ),
+            conversation.summary,
+        )
 
     async def execute_web(
         self,
         db: AsyncSession,
         request: InternalExecutionRequest,
+        redis=None,
     ) -> ExecutionOutcome:
         if not request.consent.granted:
             raise TranscriptConsentRequired(
@@ -242,6 +267,10 @@ class ChatApplicationService:
                 db,
                 conversation.id,
                 runtime.config.history_message_limit if runtime else 20,
+                redis=redis,
+                cache_ttl_seconds=(
+                    runtime.config.history_cache_ttl_seconds if runtime else 0
+                ),
             )
             await db.commit()
         else:
@@ -265,6 +294,10 @@ class ChatApplicationService:
                 db,
                 conversation.id,
                 runtime.config.history_message_limit if runtime else 20,
+                redis=redis,
+                cache_ttl_seconds=(
+                    runtime.config.history_cache_ttl_seconds if runtime else 0
+                ),
             )
 
             inbound = ChatMessage(
@@ -363,6 +396,15 @@ class ChatApplicationService:
         execution.tools_used = list(result.tools_used)
         execution.duration_ms = int((time.monotonic() - started) * 1000)
         await db.commit()
+        await self._invalidate_history(
+            redis,
+            conversation.id,
+            runtime.config.history_message_limit if runtime else 20,
+        )
+        if await conversation_memory_service.refresh_summary(
+            db, conversation=conversation, runtime=runtime
+        ):
+            await db.commit()
         return ExecutionOutcome(
             output=result.response_text, tools_used=tuple(result.tools_used)
         )
@@ -468,8 +510,29 @@ class ChatApplicationService:
         return conversation
 
     async def _history(
-        self, db: AsyncSession, conversation_id: uuid.UUID, limit: int = 20
+        self,
+        db: AsyncSession,
+        conversation_id: uuid.UUID,
+        limit: int = 20,
+        *,
+        redis=None,
+        cache_ttl_seconds: int = 0,
     ) -> list[dict[str, str]]:
+        if limit <= 0:
+            return []
+        cache_key = self._history_cache_key(conversation_id, limit)
+        if redis is not None and cache_ttl_seconds > 0:
+            try:
+                cached = await redis.get(cache_key)
+                if cached:
+                    payload = json.loads(cached)
+                    if self._is_history_payload(payload):
+                        return payload
+            except Exception as exc:
+                logger.warning(
+                    "conversation_history_cache_read_failed",
+                    extra={"conversation_id": str(conversation_id), "error": str(exc)},
+                )
         rows = list(
             (
                 await db.execute(
@@ -486,7 +549,46 @@ class ChatApplicationService:
             .all()
         )
         rows.reverse()
-        return [{"role": row.role, "content": row.content} for row in rows]
+        history = [{"role": row.role, "content": row.content} for row in rows]
+        if redis is not None and cache_ttl_seconds > 0:
+            try:
+                await redis.setex(
+                    cache_key,
+                    cache_ttl_seconds,
+                    json.dumps(history, ensure_ascii=False),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "conversation_history_cache_write_failed",
+                    extra={"conversation_id": str(conversation_id), "error": str(exc)},
+                )
+        return history
+
+    @staticmethod
+    def _history_cache_key(conversation_id: uuid.UUID, limit: int) -> str:
+        return f"chat-history:{conversation_id}:{limit}"
+
+    @staticmethod
+    def _is_history_payload(payload) -> bool:
+        return isinstance(payload, list) and all(
+            isinstance(item, dict)
+            and item.get("role") in {"user", "assistant"}
+            and isinstance(item.get("content"), str)
+            for item in payload
+        )
+
+    async def _invalidate_history(
+        self, redis, conversation_id: uuid.UUID, limit: int
+    ) -> None:
+        if redis is None:
+            return
+        try:
+            await redis.delete(self._history_cache_key(conversation_id, limit))
+        except Exception as exc:
+            logger.warning(
+                "conversation_history_cache_invalidation_failed",
+                extra={"conversation_id": str(conversation_id), "error": str(exc)},
+            )
 
 
 chat_application_service = ChatApplicationService()

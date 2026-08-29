@@ -394,6 +394,8 @@ class PipelineService:
                             limit=resolved_runtime.config.history_message_limit,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            history_cache_ttl_seconds=resolved_runtime.config.history_cache_ttl_seconds,
+                            redis=redis,
                         )
                     else:
                         conv_window = await conversation_service.load_window(
@@ -787,6 +789,8 @@ class PipelineService:
                         display_name=access.user.get("name") if access.user else None,
                         route_key=route_key,
                         channel_route_id=channel_route_id,
+                        runtime=resolved_runtime,
+                        redis=redis,
                     )
 
                     # -----------------------------------------------------------
@@ -982,6 +986,8 @@ class PipelineService:
                             tools_used=[tool_used] if tool_used else [],
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            runtime=resolved_runtime,
+                            redis=redis,
                         )
                     else:
                         await conversation_service.save_messages(

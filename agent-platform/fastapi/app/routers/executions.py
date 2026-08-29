@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_internal_bearer
-from app.dependencies import get_db
+from app.dependencies import get_db, get_redis
 from app.schemas.executions import InternalExecutionRequest, InternalExecutionResponse
 from app.services.chat_application import (
     AgentNotReady,
@@ -24,9 +24,10 @@ router = APIRouter(
 async def execute(
     request: InternalExecutionRequest,
     db: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
 ):
     try:
-        outcome = await chat_application_service.execute_web(db, request)
+        outcome = await chat_application_service.execute_web(db, request, redis=redis)
     except TranscriptConsentRequired as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
