@@ -1,23 +1,43 @@
 # Agentic tooling
 
-Use local tools to collect evidence and validate bounded work. Tool availability or authentication on this workstation does not authorize GitHub, Cloudflare, deployment, or production mutations.
+## Decisions
+
+1. Use **CodeGraph first** for repository structure, call paths, references, and blast radius.
+2. Use **Engram second** to recover prior decisions and record durable findings; verify current facts against the repository or provider.
+3. Use **`gh` for GitHub** and **Cloudflare tools for Cloudflare** when current provider evidence is required.
+4. Treat every external or machine-global mutation as **denied by default**. Authentication or tool availability is never authorization.
+5. Keep portable decisions in Git-tracked documentation and ADRs. Engram improves continuity, but it is not the only copy of a decision.
+
+The operating rules and mutation matrix are in [Agentic governance](governance.md). Durable architectural choices are indexed in [Architecture decisions](../decisions/README.md).
+
+## Tool priority
+
+| Order | Tool | Use it for | Boundary |
+|---|---|---|---|
+| 1 | CodeGraph | Architecture, dependencies, symbol references, callers, and impact. | Check the repository index before broad filesystem searches. Never reuse an index across worktrees. |
+| 2 | Engram | Recent context, prior decisions, discoveries, and session summaries. | Memory can be stale or local-only. Confirm drift-prone facts with current evidence. |
+| 3 | `gh` | GitHub repositories, issues, pull requests, Actions, releases, and settings. | Prefer read-only queries. Any remote mutation needs explicit approval and a bounded target. |
+| 4 | `cloudflared` and approved Cloudflare CLI/API tools | Tunnel configuration, routes, DNS, account state, and provider verification. | Validate locally first. Provider mutations and credential operations need explicit approval. |
+| 5 | Narrow shell and repository tools | Known files, focused tests, builds, and local validation. | Use after CodeGraph for structural questions; stay inside the assigned file ownership. |
+
+If a preferred tool is unavailable, use the narrowest read-only fallback and record the limitation. Do not install or globally configure a replacement without approval.
 
 ## Verified local status
 
-Checked on 2026-08-24:
+Checked on 2026-08-30:
 
 | Tool | Status | Safe default |
 |---|---|---|
-| CodeGraph | `1.5.0`; repository index present and up to date at the check. | Explore structure and impact before broad filesystem searches. Never share an index across worktrees. |
-| Engram | Available for project context, discoveries, decisions, and summaries. | Search before repeated work; save durable findings, but verify drift-prone facts against current evidence. |
-| `gh` | `2.96.0`; an active local account is configured. | Use local Git by default; any GitHub API operation requires explicit task scope. |
-| `cloudflared` | `2026.7.3`; binary available. | Validate sanitized config locally. Tunnel, route, DNS, service, and credential operations require explicit approval. |
+| CodeGraph | `1.5.0`; repository index present and up to date at the check. | Explore structure and impact before broad filesystem searches. Let the watcher sync normally. |
+| Engram | Local project context and SQLite/WAL checks are healthy. Cloud replication is currently blocked by invalid pending prompt mutations. | Use local memory, but do not assume cloud replication or attempt repair without a separately approved operation. |
+| `gh` | `2.96.0`; a local authenticated context may exist. | Query only when GitHub evidence is in scope. Do not push or mutate repository settings implicitly. |
+| `cloudflared` | `2026.7.3`; binary available. | Validate sanitized configuration locally. Do not create, route, delete, or change a Tunnel or DNS record implicitly. |
 | Node / pnpm | Node `24.17.0`; pnpm `11.11.0`. | Use the committed pnpm version and frozen lockfile. |
 | Python / uv | Python 3.12 project target; uv `0.11.23`. | Use each Python workspace's committed lockfile. |
 | Docker / Compose | Docker `29.6.2`; Compose `5.3.1`. | Validate models before starting services; use operator-owned environment and secret files. |
-| Wrangler | Not installed. | It is not required by the self-hosted Tunnel topology. Add it only for an explicitly approved Workers/Pages requirement. |
+| Wrangler | Not installed. | It is not required by the self-hosted Tunnel topology. Add it only for an approved Workers or Pages requirement. |
 
-Versions and authentication can drift. CI and production availability remain separate facts.
+Versions, authentication, local health, CI availability, and production availability are separate facts and can drift independently.
 
 ## Quick validation path
 
@@ -34,34 +54,24 @@ pnpm test
 bash scripts/agentic/validate-layer.sh
 ```
 
-Compose, Tunnel-template, systemd, local probe, and public probe commands live in [`../../infrastructure/README.md`](../../infrastructure/README.md). They depend on protected operator configuration outside Git; do not substitute real secrets into documentation, logs, or committed files.
+Compose, Tunnel-template, systemd, local probe, and public probe commands live in [`../../infrastructure/README.md`](../../infrastructure/README.md). They depend on protected operator configuration outside Git; never substitute real secrets into documentation, logs, or committed files.
 
 ## Orchestration
 
-1. The parent agent defines the outcome, scope, write owner, rollback boundary, and validation.
-2. Read-only agents gather independent repository, SEO, performance, chat-boundary, or release evidence.
-3. One implementation agent owns each overlapping file slice.
-4. A fresh read-only verifier checks high-risk release evidence when warranted.
-5. Engram records durable decisions and discoveries; Git history remains the code-change source of truth.
-
-Parallelize only independent work and never assign overlapping files to multiple writers.
-
-## Tool boundaries
-
-- **CodeGraph:** structure, call paths, references, and blast radius. Let the watcher sync; run `codegraph sync` only if it reports stale files or the watcher is disabled.
-- **Engram:** durable project memory, not a substitute for current repository or provider evidence.
-- **Git/GitHub:** inspect locally first. PRs, issues, releases, settings, and branch protection changes require explicit scope even when `gh` is authenticated.
-- **Cloudflare:** local template validation is not provider verification. Account, Tunnel, DNS, redirects, and production changes require explicit authorization.
-- **Browser/Lighthouse:** measure a reproducible preview or deployed URL. A screenshot is visual evidence, not performance evidence.
-- **Search Console:** use property-level evidence, protect identity-linked query data, and do not infer indexing from local metadata.
+1. Define the outcome, scope, write owner, mutation boundary, rollback boundary, and validation.
+2. Recover structure with CodeGraph and relevant history with Engram before repeating discovery.
+3. Assign one writer to each overlapping file slice; parallelize only independent work.
+4. Implement the smallest reversible work unit and validate it locally.
+5. Use provider-specific tools only when provider evidence is required and the mutation boundary is authorized.
+6. Record durable decisions in ADRs, save non-obvious findings to Engram, and report remaining unknowns.
 
 ## Delivery maintenance loop
 
 After each bounded work unit:
 
-1. Inspect and stage only the owned diff; exclude unrelated working-tree changes.
+1. Inspect only the owned diff and exclude unrelated working-tree changes.
 2. Run focused checks plus a runtime harness, or record runtime as `N/A` with a concrete reason.
 3. Record the rollback boundary and save durable facts to Engram.
-4. Update agentic artifacts only when the operating contract drifted. After skill changes, refresh the skill registry and validate the layer.
-5. Inspect the staged diff and create one local Conventional Commit without AI attribution.
+4. Update agentic artifacts only when the operating contract changed.
+5. Commit only when the task or repository workflow authorizes it; use one local Conventional Commit without AI attribution.
 6. Never push, deploy, install services, or mutate providers without explicit authorization.
