@@ -56,12 +56,15 @@ Agent definitions live in `.codex/agents/`. Do not pin agent models; inherit the
 | `.agents/skills/delivery-checkpoint/SKILL.md` | Work-unit validation, commit, rollback, or agentic maintenance. |
 | `.agents/skills/clean-code/SKILL.md` | Maintainability audit, code smells, duplication, or behavior-preserving refactoring. |
 | `.agents/skills/clean-architecture/SKILL.md` | Dependency direction, boundaries, layering, ports, adapters, or architecture debt. |
+| `.agents/skills/pragmatic-clean-architecture/SKILL.md` | Joint Clean Code and incremental architecture decisions without ceremonial layers. |
 
 ## Quality contract
 
 Follow `docs/quality/seo-performance-contract.md`. Its Lighthouse targets are lab gates, not ranking guarantees. Establish a measured baseline before enforcing budgets that the current site cannot yet satisfy.
 
 ## Architecture direction
+
+Clean Architecture is the decision compass, not a target folder count. Improve cohesion and explicit dependencies first, then introduce only the boundary justified by current policy complexity, volatility, ownership, or a valuable test seam. Every deferred layer must have an observable activation trigger. Use `.agents/skills/pragmatic-clean-architecture/SKILL.md` for changes that combine code cleanup with an architecture decision.
 
 The repository now implements the approved platform foundation:
 
