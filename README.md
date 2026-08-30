@@ -68,6 +68,15 @@ pnpm verify
 
 `pnpm verify` checks the frontend, BFF, agent API, administration panel, Compose models, shell scripts, and agentic contracts. It provisions and removes an ephemeral pgvector/PostgreSQL container for the agent integration tests unless `AGENT_TEST_POSTGRES_DSN` points to a disposable test database. Focused gates remain available as `pnpm verify:frontend`, `pnpm verify:backend`, `pnpm verify:agent-api`, `pnpm verify:agent-panel`, `pnpm verify:infrastructure`, and `pnpm verify:agentic`.
 
+For repository-local agentic maintenance, run the read-only workstation preflight and structural contract gate separately:
+
+```bash
+bash scripts/agentic/doctor.sh
+bash scripts/agentic/validate-layer.sh
+```
+
+The doctor fails only for required local capabilities. Recommended tools and external integrations are reported without treating absence, authentication, or provider health as repository failure.
+
 ## Repository map
 
 | Path | Purpose |

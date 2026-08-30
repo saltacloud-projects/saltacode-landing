@@ -232,7 +232,10 @@ verify_infrastructure() {
 
 verify_agentic() {
   section "Agentic contracts"
+  require_command python3
+  python3 -m unittest discover -s scripts/agentic/tests -v
   bash scripts/agentic/validate-layer.sh
+  bash scripts/agentic/validate-commits.sh --commits HEAD
 }
 
 case "${scope}" in

@@ -4,8 +4,8 @@ set -Eeuo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if ! command -v python3 >/dev/null 2>&1; then
-  printf 'ERROR: python3 is required to validate the agentic layer\n' >&2
+  printf '[FAIL][required] python3: command not found\n' >&2
   exit 1
 fi
 
-exec python3 "${repo_root}/scripts/agentic/validate-layer.py" "${repo_root}"
+exec python3 "${repo_root}/scripts/agentic/doctor.py" "${repo_root}"

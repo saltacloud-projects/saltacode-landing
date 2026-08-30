@@ -1,0 +1,126 @@
+schema_version = 1
+
+[agentic]
+required_artifacts = [
+  "AGENTS.md",
+  ".codex/config.toml",
+  ".github/workflows/agentic-layer.yml",
+  "scripts/quality/verify.sh",
+]
+required_entrypoints = [
+  "scripts/agentic/validate-layer.sh",
+  "scripts/agentic/doctor.sh",
+  "scripts/agentic/validate-commits.sh",
+]
+
+[tools.python]
+classification = "required"
+command = "python3"
+minimum_version = "3.12.0"
+version_args = ["--version"]
+version_pattern = 'Python (?P<version>\d+\.\d+\.\d+)'
+
+[tools.git]
+classification = "required"
+command = "git"
+minimum_version = "2.40.0"
+version_args = ["--version"]
+version_pattern = 'git version (?P<version>\d+\.\d+\.\d+)'
+
+[tools.node]
+classification = "required"
+command = "node"
+minimum_version = "24.0.0"
+version_args = ["--version"]
+version_pattern = 'v(?P<version>\d+\.\d+\.\d+)'
+
+[tools.pnpm]
+classification = "required"
+command = "pnpm"
+minimum_version = "11.0.0"
+version_args = ["--version"]
+version_pattern = '(?P<version>\d+\.\d+\.\d+)'
+
+[tools.npm]
+classification = "required"
+command = "npm"
+minimum_version = "11.0.0"
+version_args = ["--version"]
+version_pattern = '(?P<version>\d+\.\d+\.\d+)'
+
+[tools.uv]
+classification = "required"
+command = "uv"
+minimum_version = "0.11.0"
+version_args = ["--version"]
+version_pattern = 'uv (?P<version>\d+\.\d+\.\d+)'
+
+[tools.docker]
+classification = "required"
+command = "docker"
+minimum_version = "24.0.0"
+version_args = ["--version"]
+version_pattern = 'Docker version (?P<version>\d+\.\d+\.\d+)'
+
+[tools.docker_compose]
+classification = "required"
+command = "docker"
+minimum_version = "2.20.0"
+version_args = ["compose", "version", "--short"]
+version_pattern = 'v?(?P<version>\d+\.\d+\.\d+)'
+
+[tools.codegraph]
+classification = "recommended"
+command = "codegraph"
+minimum_version = "1.5.0"
+version_args = ["--version"]
+version_pattern = '(?P<version>\d+\.\d+\.\d+)'
+
+[tools.codex]
+classification = "recommended"
+command = "codex"
+minimum_version = "0.150.0"
+version_args = ["--version"]
+version_pattern = 'codex-cli (?P<version>\d+\.\d+\.\d+)'
+
+[tools.shellcheck]
+classification = "recommended"
+command = "shellcheck"
+minimum_version = "0.10.0"
+version_args = ["--version"]
+version_pattern = 'version: (?P<version>\d+\.\d+\.\d+)'
+
+[tools.actionlint]
+classification = "recommended"
+command = "actionlint"
+minimum_version = "1.7.7"
+version_args = ["--version"]
+version_pattern = '(?P<version>\d+\.\d+\.\d+)'
+
+[tools.gentle_ai]
+classification = "recommended"
+command = "gentle-ai"
+minimum_version = "2.2.4"
+version_args = ["--version"]
+version_pattern = 'gentle-ai (?P<version>\d+\.\d+\.\d+)'
+
+[tools.github_cli]
+classification = "external"
+command = "gh"
+minimum_version = "2.0.0"
+version_args = ["--version"]
+version_pattern = 'gh version (?P<version>\d+\.\d+\.\d+)'
+
+[tools.cloudflared]
+classification = "external"
+command = "cloudflared"
+minimum_version = "2025.1.0"
+version_args = ["--version"]
+version_pattern = 'cloudflared version (?P<version>\d+\.\d+\.\d+)'
+
+[tools.engram]
+classification = "external"
+command = "engram"
+minimum_version = "1.20.0"
+version_args = ["version"]
+version_pattern = 'engram (?P<version>\d+\.\d+\.\d+)'

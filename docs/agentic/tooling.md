@@ -51,8 +51,11 @@ pnpm test
   && uv run ruff check . && uv run pytest \
   && uv run python scripts/export_contracts.py --check)
 
+bash scripts/agentic/doctor.sh
 bash scripts/agentic/validate-layer.sh
 ```
+
+`doctor.sh` is a read-only local preflight driven by `scripts/agentic/tool-requirements.toml`. It fails on missing required development capabilities, warns on recommended tooling, and reports external integration health without making it a repository pass/fail gate.
 
 Compose, Tunnel-template, systemd, local probe, and public probe commands live in [`../../infrastructure/README.md`](../../infrastructure/README.md). They depend on protected operator configuration outside Git; never substitute real secrets into documentation, logs, or committed files.
 
