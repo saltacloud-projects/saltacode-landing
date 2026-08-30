@@ -16,32 +16,56 @@ updates:
       prefix: "ci(deps)"
 
   - package-ecosystem: npm
-    directories:
-      - "/"
-      - "/agent-platform/frontend"
+    directory: "/"
     schedule:
       interval: weekly
       day: monday
       time: "07:10"
       timezone: America/Argentina/Salta
     groups:
-      javascript:
+      frontend-javascript:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: npm
+    directory: "/agent-platform/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:15"
+      timezone: America/Argentina/Salta
+    groups:
+      agent-panel-javascript:
         patterns:
           - "*"
     commit-message:
       prefix: "chore(deps)"
 
   - package-ecosystem: uv
-    directories:
-      - "/backend"
-      - "/agent-platform/fastapi"
+    directory: "/backend"
     schedule:
       interval: weekly
       day: monday
       time: "07:20"
       timezone: America/Argentina/Salta
     groups:
-      python:
+      backend-python:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: uv
+    directory: "/agent-platform/fastapi"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:25"
+      timezone: America/Argentina/Salta
+    groups:
+      agent-api-python:
         patterns:
           - "*"
     commit-message:
