@@ -34,7 +34,7 @@ description: "Trigger: words users or agents will say. State the runtime outcome
 license: Apache-2.0
 metadata:
   author: "Oscar Vargas"
-  version: "1.0"
+  version: "1.0.0"
 ---
 ```
 
@@ -62,6 +62,10 @@ URLs as primary references, and critical constraints hidden below supporting det
 - Put conceptual detail and edge cases in `references/`, pointing back to stable repository docs.
 - Keep `SKILL.md` as the complete runtime entrypoint; supporting files must not hide mandatory rules.
 
+## Versioning
+
+Use strict Semantic Versioning (`MAJOR.MINOR.PATCH`). Increment patch for a behavioral correction or clarified safety rule, minor for a backward-compatible capability or decision gate, and major when activation or required output becomes incompatible. Do not bump versions for path-only moves, formatting, or generated-registry refreshes.
+
 ## Validation checklist
 
 - [ ] Frontmatter is complete, trigger-first, quoted, and single-line.
@@ -76,5 +80,4 @@ URLs as primary references, and critical constraints hidden below supporting det
 ## Review rule
 
 Prefer a small skill that governs one repeatable decision over a broad skill that repeats the whole
-agent contract. Update version metadata only when repository versioning policy explicitly requires
-it; use Git history for ordinary editorial changes.
+agent contract. Use Git history for ordinary editorial changes that do not alter runtime behavior.

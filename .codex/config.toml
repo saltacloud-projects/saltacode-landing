@@ -18,9 +18,25 @@ config_file = "./agents/performance_auditor.toml"
 description = "Scoped frontend writer for explicitly approved implementation slices and validation."
 config_file = "./agents/frontend_implementer.toml"
 
+[agents.backend_implementer]
+description = "Scoped backend writer for the public BFF, APIs, and versioned contracts."
+config_file = "./agents/backend_implementer.toml"
+
+[agents.agent_platform_implementer]
+description = "Scoped agent-platform writer for runtime, persistence, migrations, and the administration panel."
+config_file = "./agents/agent_platform_implementer.toml"
+
 [agents.chat_integration_architect]
 description = "Read-only architect for the browser, edge, and external AI-agent boundary."
 config_file = "./agents/chat_integration_architect.toml"
+
+[agents.infrastructure_release_auditor]
+description = "Read-only infrastructure, migration, release, and rollback verifier."
+config_file = "./agents/infrastructure_release_auditor.toml"
+
+[agents.security_privacy_auditor]
+description = "Read-only security and privacy auditor across browser, BFF, agent platform, and operations."
+config_file = "./agents/security_privacy_auditor.toml"
 
 [agents.release_verifier]
 description = "Read-only verifier for release candidates, deployed responses, and rollback evidence."

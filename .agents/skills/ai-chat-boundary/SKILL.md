@@ -4,7 +4,7 @@ description: "Trigger: AI chat, quote bot, external agent, streaming, prompt inj
 license: Apache-2.0
 metadata:
   author: "Oscar Vargas"
-  version: "1.0"
+  version: "1.0.0"
 ---
 
 ## Activation Contract

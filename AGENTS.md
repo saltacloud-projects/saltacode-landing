@@ -37,7 +37,11 @@ This repository hosts Saltacode's production landing page. Protect discoverabili
 | `seo_auditor` | Read-only | Audit crawlability, metadata, semantics, and structured data. |
 | `performance_auditor` | Read-only | Audit payloads, rendering, and Core Web Vitals risks. |
 | `frontend_implementer` | Workspace write | Implement an explicitly approved frontend slice and its validation. |
+| `backend_implementer` | Workspace write | Implement an approved BFF, API, or versioned-contract slice. |
+| `agent_platform_implementer` | Workspace write | Implement an approved agent runtime, persistence, migration, or panel slice. |
 | `chat_integration_architect` | Read-only | Design the browser-edge-external-agent boundary. |
+| `infrastructure_release_auditor` | Read-only | Audit infrastructure, migrations, releases, receipts, and rollback safety. |
+| `security_privacy_auditor` | Read-only | Audit trust boundaries, security controls, privacy, and data lifecycle. |
 | `release_verifier` | Read-only | Verify a release candidate and live evidence without deploying. |
 
 Agent definitions live in `.codex/agents/`. Do not pin agent models; inherit the parent model and reasoning effort.
@@ -57,6 +61,11 @@ Agent definitions live in `.codex/agents/`. Do not pin agent models; inherit the
 | `.agents/skills/clean-code/SKILL.md` | Maintainability audit, code smells, duplication, or behavior-preserving refactoring. |
 | `.agents/skills/clean-architecture/SKILL.md` | Dependency direction, boundaries, layering, ports, adapters, or architecture debt. |
 | `.agents/skills/pragmatic-clean-architecture/SKILL.md` | Joint Clean Code and incremental architecture decisions without ceremonial layers. |
+| `.agents/skills/backend-api-quality/SKILL.md` | BFF, FastAPI, HTTP/SSE contract, compatibility, timeout, and idempotency work. |
+| `.agents/skills/agent-platform-quality/SKILL.md` | Multi-agent runtime, persistence, migrations, RBAC, audit, and panel changes. |
+| `.agents/skills/migration-release-safety/SKILL.md` | Persistent-schema, release, receipt, verification, and rollback safety. |
+| `.agents/skills/security-privacy/SKILL.md` | Trust boundaries, access control, secrets, consent, retention, and privacy review. |
+| `.agents/skills/agentic-governance/SKILL.md` | Agent, skill, tool, MCP, memory, validation, and freshness maintenance. |
 
 ## Quality contract
 
