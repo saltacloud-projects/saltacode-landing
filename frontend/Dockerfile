@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.17.0-alpine AS dependencies
+FROM node:26.8.1-alpine AS dependencies
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -13,7 +13,7 @@ COPY frontend/src frontend/src
 COPY frontend/public frontend/public
 RUN pnpm --filter @saltacode/frontend build
 
-FROM node:24.17.0-alpine AS runtime
+FROM node:26.8.1-alpine AS runtime
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8080

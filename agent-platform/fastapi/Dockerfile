@@ -5,7 +5,7 @@
 # =============================================================================
 
 # ---- Stage 1: Builder -------------------------------------------------------
-FROM python:3.12.8-slim AS builder
+FROM python:3.14.7-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /uvx /bin/
 
@@ -24,7 +24,7 @@ RUN uv venv --relocatable .venv \
 
 # ---- Test ------------------------------------------------------------------
 # Tests run in an explicit build target and never ship in the runtime image.
-FROM python:3.12.8-slim AS test
+FROM python:3.14.7-slim AS test
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /uvx /bin/
 
@@ -48,7 +48,7 @@ COPY tests/ ./tests/
 CMD ["pytest", "-q"]
 
 # ---- Stage 2: Runtime -------------------------------------------------------
-FROM python:3.12.8-slim AS runtime
+FROM python:3.14.7-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
