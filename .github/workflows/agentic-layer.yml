@@ -10,6 +10,9 @@ on:
       - ".codex/**"
       - "docs/**"
       - "scripts/agentic/**"
+      - "**/*.sh"
+      - ".github/dependabot.yml"
+      - ".github/pull_request_template.md"
       - ".github/workflows/agentic-layer.yml"
       - ".github/workflows/platform-quality.yml"
   push:
@@ -23,6 +26,9 @@ on:
       - ".codex/**"
       - "docs/**"
       - "scripts/agentic/**"
+      - "**/*.sh"
+      - ".github/dependabot.yml"
+      - ".github/pull_request_template.md"
       - ".github/workflows/agentic-layer.yml"
       - ".github/workflows/platform-quality.yml"
 
@@ -36,6 +42,48 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Test agentic tools
+        run: python3 -m unittest discover -s scripts/agentic/tests -v
+
       - name: Validate layer
         run: bash scripts/agentic/validate-layer.sh
+
+  repository-lint:
+    name: Lint workflows and shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned linters
+        run: |
+          tools_dir="${RUNNER_TEMP}/agentic-linters"
+          mkdir -p "${tools_dir}"
+
+          curl --fail --silent --show-error --location \
+            --output "${tools_dir}/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  ${tools_dir}/actionlint.tar.gz" | sha256sum --check --strict
+          tar --extract --gzip --file "${tools_dir}/actionlint.tar.gz" --directory "${tools_dir}" actionlint
+
+          curl --fail --silent --show-error --location \
+            --output "${tools_dir}/shellcheck.tar.xz" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  ${tools_dir}/shellcheck.tar.xz" | sha256sum --check --strict
+          tar --extract --xz --file "${tools_dir}/shellcheck.tar.xz" --directory "${tools_dir}"
+          install --mode 0755 "${tools_dir}/shellcheck-v0.11.0/shellcheck" "${tools_dir}/shellcheck"
+          echo "${tools_dir}" >> "${GITHUB_PATH}"
+
+      - name: Lint shell scripts
+        run: find . \( -name .git -o -name node_modules -o -name .venv \) -type d -prune -o -type f -name '*.sh' -print0 | xargs -0 -r shellcheck --exclude=SC1091
+
+      - name: Lint workflows
+        run: actionlint

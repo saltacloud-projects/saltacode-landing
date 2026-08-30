@@ -70,8 +70,7 @@ start_test_postgres() {
     exit 1
   }
 
-  local attempt
-  for attempt in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if docker exec "${test_postgres_container}" pg_isready -U test -d test >/dev/null 2>&1; then
       export AGENT_TEST_POSTGRES_DSN="postgresql+asyncpg://test:test@127.0.0.1:${postgres_port}/test"
       return

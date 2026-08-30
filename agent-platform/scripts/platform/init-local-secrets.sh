@@ -24,7 +24,8 @@ write_secret() {
 assert_secret_matches_env() {
   local env_key="$1"
   local file="$2"
-  local value="$(read_env_value "$env_key")"
+  local value
+  value="$(read_env_value "$env_key")"
   if [[ -n "$value" && "$value" != "$(cat "$file")" ]]; then
     echo "${env_key} does not match ${file}; refusing to start with split credentials." >&2
     exit 1
