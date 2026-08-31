@@ -40,6 +40,14 @@ from app.services.whatsapp import WhatsAppConnectionContext, whatsapp_service
 logger = logging.getLogger(__name__)
 
 
+class WhatsAppDeliveryFailed(RuntimeError):
+    """Meta did not accept a required outbound WhatsApp message."""
+
+
+class PipelineFinalizationFailed(RuntimeError):
+    """Conversation or audit state could not be committed durably."""
+
+
 class PipelineService:
     async def process_whatsapp_message(
         self,
@@ -55,6 +63,9 @@ class PipelineService:
         whatsapp_connection: WhatsAppConnectionContext | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
+        request_id: str | None = None,
+        propagate_errors: bool = False,
+        notify_on_error: bool = True,
     ) -> None:
         """
         Pipeline completo de procesamiento de un mensaje entrante.
@@ -66,7 +77,7 @@ class PipelineService:
         Para selecciones de menú interactivo (`interactive_id` presente):
         enruta determinísticamente según el id antes de involucrar al LLM.
         """
-        request_id = str(uuid.uuid4())
+        request_id = request_id or str(uuid.uuid4())
         start = time.monotonic()
         if resolved_runtime is not None and (
             whatsapp_connection is None or route_key is None or channel_route_id is None
@@ -112,6 +123,8 @@ class PipelineService:
                 whatsapp_connection=whatsapp_connection,
                 route_key=route_key,
                 channel_route_id=channel_route_id,
+                propagate_errors=propagate_errors,
+                notify_on_error=notify_on_error,
             )
 
     async def _process_with_user_lock(
@@ -131,6 +144,8 @@ class PipelineService:
         whatsapp_connection: WhatsAppConnectionContext | None,
         route_key: str | None,
         channel_route_id: uuid.UUID | None,
+        propagate_errors: bool,
+        notify_on_error: bool,
     ) -> None:
         """Wrap _process_locked() with the per-user Redis lock."""
         lock_subject = f"{channel_route_id or 'legacy'}:{phone}"
@@ -155,7 +170,28 @@ class PipelineService:
                 whatsapp_connection=whatsapp_connection,
                 route_key=route_key,
                 channel_route_id=channel_route_id,
+                propagate_errors=propagate_errors,
+                notify_on_error=notify_on_error,
             )
+
+    async def _send_required_text(
+        self,
+        *,
+        phone: str,
+        text: str,
+        request_id: str,
+        connection: WhatsAppConnectionContext | None,
+        require_accepted: bool,
+    ) -> str | None:
+        message_id = await whatsapp_service.send_text_message(
+            phone=phone,
+            text=text,
+            request_id=request_id,
+            connection=connection,
+        )
+        if require_accepted and not message_id:
+            raise WhatsAppDeliveryFailed("Meta did not accept the WhatsApp message")
+        return message_id
 
     async def _process_locked(
         self,
@@ -174,6 +210,8 @@ class PipelineService:
         whatsapp_connection: WhatsAppConnectionContext | None,
         route_key: str | None,
         channel_route_id: uuid.UUID | None,
+        propagate_errors: bool,
+        notify_on_error: bool,
     ) -> None:
         """
         Cuerpo principal del pipeline (ya con lock por usuario adquirido).
@@ -231,11 +269,12 @@ class PipelineService:
                                 "reason": access.reason,
                             },
                         )
-                        await whatsapp_service.send_text_message(
+                        await self._send_required_text(
                             phone=phone,
                             text=rejection_msg,
                             request_id=request_id,
                             connection=whatsapp_connection,
+                            require_accepted=propagate_errors,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -256,6 +295,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            raise_on_error=propagate_errors,
                         )
                         return
 
@@ -278,11 +318,12 @@ class PipelineService:
                                 "No pudimos verificar tu acceso en este momento. Intentá de nuevo en unos minutos."
                             )
                         )
-                        await whatsapp_service.send_text_message(
+                        await self._send_required_text(
                             phone=phone,
                             text=msg_err,
                             request_id=request_id,
                             connection=whatsapp_connection,
+                            require_accepted=propagate_errors,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -303,6 +344,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            raise_on_error=propagate_errors,
                         )
                         return
 
@@ -339,11 +381,12 @@ class PipelineService:
                             "⚠️ El asistente no está completamente configurado. "
                             "Un administrador debe completar la configuración desde el panel."
                         )
-                        await whatsapp_service.send_text_message(
+                        await self._send_required_text(
                             phone=phone,
                             text=config_msg,
                             request_id=request_id,
                             connection=whatsapp_connection,
+                            require_accepted=propagate_errors,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -364,6 +407,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            raise_on_error=propagate_errors,
                         )
                         return
 
@@ -429,11 +473,12 @@ class PipelineService:
                                 "No pude acceder al audio que enviaste. "
                                 "¿Podés escribir tu consulta?"
                             )
-                            await whatsapp_service.send_text_message(
+                            await self._send_required_text(
                                 phone=phone,
                                 text=fallback,
                                 request_id=request_id,
                                 connection=whatsapp_connection,
+                                require_accepted=propagate_errors,
                             )
                             await self._finalize_pipeline(
                                 db=db,
@@ -453,6 +498,7 @@ class PipelineService:
                                 resolved_runtime=resolved_runtime,
                                 route_key=route_key,
                                 channel_route_id=channel_route_id,
+                                raise_on_error=propagate_errors,
                             )
                             return
 
@@ -478,11 +524,12 @@ class PipelineService:
                                 "No pude entender el audio que enviaste. "
                                 "¿Podés repetirlo o escribir tu consulta?"
                             )
-                            await whatsapp_service.send_text_message(
+                            await self._send_required_text(
                                 phone=phone,
                                 text=fallback,
                                 request_id=request_id,
                                 connection=whatsapp_connection,
+                                require_accepted=propagate_errors,
                             )
                             await self._finalize_pipeline(
                                 db=db,
@@ -502,6 +549,7 @@ class PipelineService:
                                 resolved_runtime=resolved_runtime,
                                 route_key=route_key,
                                 channel_route_id=channel_route_id,
+                                raise_on_error=propagate_errors,
                             )
                             return
 
@@ -535,11 +583,12 @@ class PipelineService:
                                 "input_type": input_type,
                             },
                         )
-                        await whatsapp_service.send_text_message(
+                        await self._send_required_text(
                             phone=phone,
                             text=unsupported_msg,
                             request_id=request_id,
                             connection=whatsapp_connection,
+                            require_accepted=propagate_errors,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -558,6 +607,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            raise_on_error=propagate_errors,
                         )
                         return
 
@@ -701,22 +751,32 @@ class PipelineService:
                                 )
                             else:
                                 media_id = None
+                            delivered = False
                             if media_id:
                                 if agent_file.mime.startswith("image/"):
-                                    await whatsapp_service.send_image_message(
-                                        phone=phone,
-                                        media_id=media_id,
-                                        request_id=request_id,
-                                        connection=whatsapp_connection,
+                                    delivered = (
+                                        await whatsapp_service.send_image_message(
+                                            phone=phone,
+                                            media_id=media_id,
+                                            request_id=request_id,
+                                            connection=whatsapp_connection,
+                                        )
                                     )
                                 else:
-                                    await whatsapp_service.send_document_message(
-                                        phone=phone,
-                                        media_id=media_id,
-                                        filename=agent_file.name,
-                                        request_id=request_id,
-                                        connection=whatsapp_connection,
+                                    delivered = (
+                                        await whatsapp_service.send_document_message(
+                                            phone=phone,
+                                            media_id=media_id,
+                                            filename=agent_file.name,
+                                            request_id=request_id,
+                                            connection=whatsapp_connection,
+                                        )
                                     )
+                            if not delivered and propagate_errors:
+                                raise WhatsAppDeliveryFailed(
+                                    "Meta did not accept the WhatsApp attachment"
+                                )
+                            if delivered:
                                 logger.info(
                                     "pipeline_file_sent",
                                     extra={
@@ -733,15 +793,18 @@ class PipelineService:
                                     "error": str(file_exc),
                                 },
                             )
+                            if propagate_errors:
+                                raise
 
                     # -----------------------------------------------------------
                     # 6. Enviar la respuesta del agente (sin botones de menú)
                     # -----------------------------------------------------------
-                    sent_wamid = await whatsapp_service.send_text_message(
+                    sent_wamid = await self._send_required_text(
                         phone=phone,
                         text=response_text,
                         request_id=request_id,
                         connection=whatsapp_connection,
+                        require_accepted=propagate_errors,
                     )
                     # Guardar el texto enviado por wamid para poder resolver
                     # futuras respuestas citadas del usuario (ver quoted_id).
@@ -814,6 +877,7 @@ class PipelineService:
                         user_message=content,
                         tool_calls=agent_result.tool_invocations,
                         extra_metadata={"rag_hits": agent_result.rag_hits},
+                        raise_on_error=propagate_errors,
                     )
 
                     await db.commit()
@@ -854,30 +918,33 @@ class PipelineService:
                 },
                 exc_info=True,
             )
-            try:
-                if profile is None:
-                    async with AsyncSessionLocal() as db_err:
-                        profile = await agent_profile_service.get_active_profile(
-                            db_err, redis
+            if notify_on_error:
+                try:
+                    if profile is None:
+                        async with AsyncSessionLocal() as db_err:
+                            profile = await agent_profile_service.get_active_profile(
+                                db_err, redis
+                            )
+                    error_msg = (
+                        profile.error_message
+                        if profile
+                        else (
+                            "⚠️ Ocurrió un error procesando tu mensaje. Por favor intentá de nuevo más tarde."
                         )
-                error_msg = (
-                    profile.error_message
-                    if profile
-                    else (
-                        "⚠️ Ocurrió un error procesando tu mensaje. Por favor intentá de nuevo más tarde."
                     )
-                )
-                await whatsapp_service.send_text_message(
-                    phone=phone,
-                    text=error_msg,
-                    request_id=request_id,
-                    connection=whatsapp_connection,
-                )
-            except Exception:
-                logger.error(
-                    "pipeline_error_notification_failed",
-                    extra={"request_id": request_id},
-                )
+                    await whatsapp_service.send_text_message(
+                        phone=phone,
+                        text=error_msg,
+                        request_id=request_id,
+                        connection=whatsapp_connection,
+                    )
+                except Exception:
+                    logger.error(
+                        "pipeline_error_notification_failed",
+                        extra={"request_id": request_id},
+                    )
+            if propagate_errors:
+                raise
 
     async def _log_audit(
         self,
@@ -899,6 +966,7 @@ class PipelineService:
         user_message: str | None = None,
         tool_calls: list | None = None,
         extra_metadata: dict | None = None,
+        raise_on_error: bool = False,
     ) -> None:
         """Registra la auditoría de la interacción."""
         try:
@@ -940,6 +1008,8 @@ class PipelineService:
                 "pipeline_audit_error",
                 extra={"request_id": request_id, "error": str(e)},
             )
+            if raise_on_error:
+                raise
 
     async def _finalize_pipeline(
         self,
@@ -962,6 +1032,7 @@ class PipelineService:
         resolved_runtime: ResolvedAgentRuntime | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
+        raise_on_error: bool = False,
     ) -> None:
         """
         Cierre uniforme de exit paths del pipeline.
@@ -1016,6 +1087,8 @@ class PipelineService:
                             "error": str(e),
                         },
                     )
+                    if raise_on_error:
+                        raise
             await self._log_audit(
                 db,
                 agent_id=resolved_runtime.profile.id
@@ -1036,6 +1109,7 @@ class PipelineService:
                 error_code=error_code,
                 error_message=error_message,
                 user_message=content,
+                raise_on_error=raise_on_error,
             )
             await db.commit()
         except Exception as e:
@@ -1048,6 +1122,10 @@ class PipelineService:
                 await db.rollback()
             except Exception:
                 pass
+            if raise_on_error:
+                raise PipelineFinalizationFailed(
+                    "WhatsApp pipeline state could not be finalized"
+                ) from e
 
 
 pipeline_service = PipelineService()

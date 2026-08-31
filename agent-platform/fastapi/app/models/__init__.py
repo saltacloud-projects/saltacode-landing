@@ -44,3 +44,4 @@ from app.models.rag import (
     RagSettings,
 )
 from app.models.tool_config import ToolConfig
+from app.models.whatsapp_inbox import WhatsAppInboundJob

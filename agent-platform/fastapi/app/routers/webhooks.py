@@ -13,7 +13,6 @@ from app.core.webhook_security import InvalidWebhookSignature, verify_meta_signa
 from app.dependencies import get_db
 from app.services.agent_runtime import (
     AgentRuntimeUnavailable,
-    ResolvedAgentRoute,
     ResolvedChannelRoute,
     agent_runtime_resolver,
 )
@@ -22,6 +21,10 @@ from app.services.whatsapp import (
     WhatsAppConnectionContext,
     WhatsAppConnectionUnavailable,
     whatsapp_service,
+)
+from app.services.whatsapp_inbox import (
+    WhatsAppInboxUnavailable,
+    whatsapp_inbox_service,
 )
 
 router = APIRouter(tags=["webhooks"])
@@ -48,24 +51,6 @@ async def _resolve_whatsapp_channel_route(
             status_code=503, detail="WhatsApp route is unavailable"
         ) from exc
     return resolved, connection
-
-
-async def _resolve_runtime(
-    db: AsyncSession, channel_route: ResolvedChannelRoute, *, route_key: str
-) -> ResolvedAgentRoute:
-    try:
-        runtime = await agent_runtime_resolver.resolve_agent(
-            db, channel_route.route.agent_id, require_public=False
-        )
-    except AgentRuntimeUnavailable as exc:
-        logger.warning(
-            "whatsapp_runtime_unavailable",
-            extra={"route_key": route_key, "reason": str(exc)},
-        )
-        raise HTTPException(
-            status_code=503, detail="WhatsApp route is unavailable"
-        ) from exc
-    return ResolvedAgentRoute(channel_route.route, channel_route.connection, runtime)
 
 
 def _payload_phone_number_ids(payload: dict) -> set[str]:
@@ -120,13 +105,9 @@ async def _process_payload(
         )
         return {"status": "ignored"}
 
-    resolved_route = None
     if channel_route is not None:
         if db is None or connection is None or connection.route_key is None:
             raise HTTPException(status_code=503, detail="WhatsApp route is unavailable")
-        resolved_route = await _resolve_runtime(
-            db, channel_route, route_key=connection.route_key
-        )
 
     logger.info(
         "whatsapp_inbound_received",
@@ -138,10 +119,48 @@ async def _process_payload(
             "route_key": connection.route_key if connection else None,
         },
     )
+    if channel_route is not None:
+        if connection.connection_id is None:
+            raise HTTPException(status_code=503, detail="WhatsApp route is unavailable")
+        try:
+            accepted = await whatsapp_inbox_service.enqueue(
+                db,
+                channel_route_id=channel_route.route.id,
+                channel_connection_id=connection.connection_id,
+                provider_message_id=msg["message_id"],
+                message=msg,
+            )
+        except WhatsAppInboxUnavailable as exc:
+            logger.error(
+                "whatsapp_inbox_enqueue_failed",
+                extra={"route_key": connection.route_key},
+            )
+            raise HTTPException(
+                status_code=503, detail="WhatsApp message was not accepted"
+            ) from exc
+        if accepted.duplicate:
+            logger.info(
+                "whatsapp_inbound_duplicate_ignored",
+                extra={
+                    "message_id": msg.get("message_id"),
+                    "route_key": connection.route_key,
+                },
+            )
+            return {"status": "duplicate"}
+        logger.info(
+            "whatsapp_inbound_enqueued",
+            extra={
+                "job_id": str(accepted.job_id),
+                "message_id": msg.get("message_id"),
+                "route_key": connection.route_key,
+            },
+        )
+        return {"status": "received"}
+
+    # Temporary compatibility path for the former environment-backed webhook.
+    # Persisted keyed routes above are always acknowledged from PostgreSQL.
     redis = getattr(request.app.state, "redis", None)
     dedup_id = msg.get("message_id")
-    if resolved_route is not None and dedup_id:
-        dedup_id = f"{resolved_route.route.id}:{dedup_id}"
     if not await claim_message_id(redis, dedup_id):
         logger.info(
             "whatsapp_inbound_duplicate_ignored",
@@ -162,10 +181,6 @@ async def _process_payload(
             interactive_id=msg.get("interactive_id"),
             quoted_id=msg.get("quoted_id"),
             redis=redis,
-            resolved_runtime=resolved_route.runtime if resolved_route else None,
-            whatsapp_connection=connection,
-            route_key=connection.route_key if connection else None,
-            channel_route_id=(resolved_route.route.id if resolved_route else None),
         )
     )
     return {"status": "received"}

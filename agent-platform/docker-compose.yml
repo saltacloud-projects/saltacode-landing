@@ -23,6 +23,10 @@ x-agent-environment: &agent-environment
   WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
   WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
   WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+  WHATSAPP_INBOX_WORKER_ID: ${WHATSAPP_INBOX_WORKER_ID:-whatsapp-inbox-worker-1}
+  WHATSAPP_INBOX_POLL_SECONDS: ${WHATSAPP_INBOX_POLL_SECONDS:-1}
+  WHATSAPP_INBOX_STALE_SECONDS: ${WHATSAPP_INBOX_STALE_SECONDS:-1200}
+  WHATSAPP_INBOX_MAX_ATTEMPTS: ${WHATSAPP_INBOX_MAX_ATTEMPTS:-5}
   DOCUMENT_STORAGE_ROOT: /data/documents
 
 x-api-base: &api-base
@@ -146,6 +150,29 @@ services:
         limits:
           cpus: "1.50"
           memory: 2G
+
+  whatsapp-worker:
+    <<: *api-base
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.whatsapp_inbox"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.workers.whatsapp_inbox", "--healthcheck"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    deploy:
+      # Strict conversation ordering is guaranteed only with one worker replica.
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
 
   integration-tests:
     image: localhost/saltacode/agent-platform-api-tests:${APP_VERSION:-dev}

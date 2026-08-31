@@ -62,6 +62,7 @@ from app.models.rag import (  # noqa: F401
     RagSettings,
 )
 from app.models.tool_config import ToolConfig  # noqa: F401
+from app.models.whatsapp_inbox import WhatsAppInboundJob  # noqa: F401
 
 config = context.config
 
