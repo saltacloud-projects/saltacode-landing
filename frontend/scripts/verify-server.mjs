@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 
@@ -32,6 +33,32 @@ child.stdout.on("data", (chunk) => { output += chunk; });
 child.stderr.on("data", (chunk) => { output += chunk; });
 
 const baseUrl = `http://127.0.0.1:${port}`;
+
+async function requestServer(path, { method = "GET", headers = {} } = {}) {
+  return new Promise((resolveRequest, rejectRequest) => {
+    const request = httpRequest(
+      { hostname: "127.0.0.1", port, path, method, headers },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const responseHeaders = new Headers(
+            Object.entries(response.headers)
+              .filter((entry) => entry[1] !== undefined)
+              .map(([name, value]) => [name, Array.isArray(value) ? value.join(", ") : value]),
+          );
+          resolveRequest({
+            status: response.statusCode ?? 0,
+            headers: responseHeaders,
+            text: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+    request.once("error", rejectRequest);
+    request.end();
+  });
+}
 
 async function waitForServer() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -67,6 +94,9 @@ try {
     throw new Error("Direct HTTP previews must not upgrade same-origin static assets to HTTPS.");
   }
   const homeMarkup = await home.text();
+  if (!homeMarkup.includes('id="useful-links"') || !homeMarkup.includes('id="social-links"')) {
+    throw new Error("The footer must preserve the historical useful-links and social-links fragments.");
+  }
   const executableScripts = [
     ...homeMarkup.matchAll(/<script\b(?![^>]*type="application\/ld\+json")([^>]*)>([\s\S]*?)<\/script>/g),
   ];
@@ -92,16 +122,79 @@ try {
     throw new Error("Security headers are missing from the home page.");
   }
 
-  const forwardedHttps = await fetch(`${baseUrl}/`, {
+  const localForwardedHttps = await fetch(`${baseUrl}/`, {
     method: "HEAD",
     headers: { "X-Forwarded-Proto": "https" },
   });
   if (
-    !forwardedHttps.headers
+    localForwardedHttps.status !== 200 ||
+    localForwardedHttps.headers.has("strict-transport-security") ||
+    localForwardedHttps.headers
       .get("content-security-policy")
       ?.includes("upgrade-insecure-requests")
   ) {
-    throw new Error("HTTPS-forwarded responses must retain the CSP upgrade directive.");
+    throw new Error("Forwarded headers must not turn localhost previews into production HTTPS responses.");
+  }
+
+  const canonicalQuery = "utm_source=cutover&encoded=%2B%2F%3F&repeat=one&repeat=two";
+  for (const [host, protocol, expectedStatus] of [
+    ["saltacode.com.ar", "http", 308],
+    ["www.saltacode.com.ar", "http", 308],
+    ["www.saltacode.com.ar", "https", 308],
+    ["saltacode.com.ar", "https", 200],
+  ]) {
+    const productionResponse = await requestServer(`/servicios/?${canonicalQuery}`, {
+      method: "HEAD",
+      headers: { Host: host, "X-Forwarded-Proto": protocol },
+    });
+    if (productionResponse.status !== expectedStatus) {
+      throw new Error(`${protocol}://${host} returned ${productionResponse.status}; expected ${expectedStatus}.`);
+    }
+    if (expectedStatus === 308) {
+      const expectedLocation = `https://saltacode.com.ar/servicios/?${canonicalQuery}`;
+      if (productionResponse.headers.get("location") !== expectedLocation) {
+        throw new Error(`${protocol}://${host} did not preserve path and query in its canonical redirect.`);
+      }
+      if (protocol === "http" && productionResponse.headers.has("strict-transport-security")) {
+        throw new Error("HTTP-origin redirects must not emit HSTS.");
+      }
+    } else if (
+      productionResponse.headers.get("strict-transport-security") !==
+        "max-age=31536000" ||
+      !productionResponse.headers
+        .get("content-security-policy")
+        ?.includes("upgrade-insecure-requests")
+    ) {
+      throw new Error("Verified production HTTPS responses must emit HSTS and the CSP upgrade directive.");
+    }
+  }
+
+  for (const host of ["127.0.0.1", "preview.saltacode.com.ar"]) {
+    const preview = await requestServer(`/servicios/?${canonicalQuery}`, {
+      method: "HEAD",
+      headers: { Host: host, "X-Forwarded-Proto": "http" },
+    });
+    if (preview.status !== 200 || preview.headers.has("strict-transport-security")) {
+      throw new Error(`${host} previews must not be redirected or receive HSTS.`);
+    }
+  }
+
+  for (const protocol of ["http", "https"]) {
+    const health = await requestServer("/healthz", {
+      method: "HEAD",
+      headers: { Host: "www.saltacode.com.ar", "X-Forwarded-Proto": protocol },
+    });
+    if (health.status !== 200 || health.headers.has("location")) {
+      throw new Error("Health checks must stay local and must not follow canonical-host redirects.");
+    }
+  }
+
+  const ambiguousForwarding = await requestServer("/", {
+    method: "HEAD",
+    headers: { Host: "saltacode.com.ar", "X-Forwarded-Proto": "https, http" },
+  });
+  if (ambiguousForwarding.status !== 200 || ambiguousForwarding.headers.has("strict-transport-security")) {
+    throw new Error("Ambiguous proxy protocol chains must not be trusted for HSTS or redirects.");
   }
 
   for (const externalModuleSource of externalModuleSources) {

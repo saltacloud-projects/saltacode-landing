@@ -14,7 +14,7 @@ const year = new Date().getFullYear();
     <a class="button" href="/contacto/">Contactar a SaltaCode</a>
   </div>
 
-  <div class="container footer-main">
+  <div class="container footer-main" id="useful-links">
     <div class="footer-intro">
       <a class="brand footer-brand" href="/" aria-label="SaltaCode, volver al inicio">
         <ThemeImage variants={brandImages.lockup} width={320} alt="" loading="lazy" decoding="async" />
@@ -54,7 +54,7 @@ const year = new Date().getFullYear();
       <small>© {year} SaltaCode.</small>
       <a href={`mailto:${site.email}`}>{site.email}</a>
     </div>
-    <ul class="footer-social" aria-label="Redes sociales">
+    <ul class="footer-social" id="social-links" aria-label="Redes sociales">
       {site.social.map((social) => (
         <li><a href={social.href} target="_blank" rel="noopener noreferrer"><SiteIcon name={social.icon} /> {social.name}</a></li>
       ))}

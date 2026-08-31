@@ -13,6 +13,8 @@ const host = process.env.HOST ?? "0.0.0.0";
 const moduleDirectory = fileURLToPath(new URL(".", import.meta.url));
 const staticRoot = resolve(process.env.STATIC_ROOT ?? resolve(moduleDirectory, "dist"));
 const backendUrl = process.env.BACKEND_URL ? new URL(process.env.BACKEND_URL) : null;
+const canonicalProductionOrigin = new URL("https://saltacode.com.ar");
+const productionHosts = new Set([canonicalProductionOrigin.hostname, `www.${canonicalProductionOrigin.hostname}`]);
 if (backendUrl && (!['http:', 'https:'].includes(backendUrl.protocol) || backendUrl.username || backendUrl.password)) {
   throw new Error("BACKEND_URL must be an HTTP(S) origin without credentials.");
 }
@@ -91,20 +93,55 @@ const securityHeaders = {
   "X-Frame-Options": "DENY",
 };
 
-function requestUsesForwardedHttps(request) {
+function forwardedProtocol(request) {
   const forwardedProto = request.headers["x-forwarded-proto"];
-  const value = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
-  return value?.split(",", 1)[0].trim().toLowerCase() === "https";
+  if (typeof forwardedProto !== "string" || forwardedProto.includes(",")) return null;
+
+  const value = forwardedProto.trim().toLowerCase();
+  return value === "http" || value === "https" ? value : null;
+}
+
+function requestHostname(request) {
+  const hostHeader = request.headers.host;
+  if (typeof hostHeader !== "string" || /[\s/@\\]/.test(hostHeader)) return null;
+
+  try {
+    return new URL(`http://${hostHeader}`).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function verifiedProductionRequest(request) {
+  const hostname = requestHostname(request);
+  if (!hostname || !productionHosts.has(hostname)) return null;
+
+  return { hostname, protocol: forwardedProtocol(request) };
 }
 
 function setSecurityHeaders(request, response) {
-  const policy = requestUsesForwardedHttps(request)
+  const productionRequest = verifiedProductionRequest(request);
+  const usesVerifiedHttps = productionRequest?.protocol === "https";
+  const policy = usesVerifiedHttps
     ? [...contentSecurityPolicy, "upgrade-insecure-requests"]
     : contentSecurityPolicy;
   response.setHeader("Content-Security-Policy", policy.join("; "));
   for (const [name, value] of Object.entries(securityHeaders)) {
     response.setHeader(name, value);
   }
+  if (usesVerifiedHttps) {
+    response.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
+}
+
+function productionRedirectLocation(request, requestUrl) {
+  const productionRequest = verifiedProductionRequest(request);
+  if (!productionRequest) return null;
+
+  const usesCanonicalHost = productionRequest.hostname === canonicalProductionOrigin.hostname;
+  if (usesCanonicalHost && productionRequest.protocol !== "http") return null;
+
+  return `${canonicalProductionOrigin.origin}${requestUrl.pathname}${requestUrl.search}`;
 }
 
 function cacheControl(pathname, extension) {
@@ -277,6 +314,30 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (pathname === "/healthz") {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.statusCode = 405;
+      response.setHeader("Allow", "GET, HEAD");
+      response.setHeader("Content-Type", "text/plain; charset=utf-8");
+      sendBody(request, response, "Method Not Allowed\n");
+      return;
+    }
+    response.statusCode = 200;
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    sendBody(request, response, '{"status":"ok"}\n');
+    return;
+  }
+
+  const productionLocation = productionRedirectLocation(request, requestUrl);
+  if (productionLocation) {
+    response.statusCode = 308;
+    response.setHeader("Cache-Control", "public, max-age=3600");
+    response.setHeader("Location", productionLocation);
+    response.end();
+    return;
+  }
+
   if (pathname.startsWith("/api/")) {
     await proxyBackendRequest(request, response, requestUrl);
     return;
@@ -296,14 +357,6 @@ async function handleRequest(request, response) {
     response.setHeader("Cache-Control", "public, max-age=3600");
     response.setHeader("Location", `${canonicalPath}${requestUrl.search}`);
     response.end();
-    return;
-  }
-
-  if (pathname === "/healthz") {
-    response.statusCode = 200;
-    response.setHeader("Cache-Control", "no-store");
-    response.setHeader("Content-Type", "application/json; charset=utf-8");
-    sendBody(request, response, '{"status":"ok"}\n');
     return;
   }
 
