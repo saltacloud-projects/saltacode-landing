@@ -13,8 +13,7 @@ on:
       - "**/*.sh"
       - ".github/dependabot.yml"
       - ".github/pull_request_template.md"
-      - ".github/workflows/agentic-layer.yml"
-      - ".github/workflows/platform-quality.yml"
+      - ".github/workflows/**"
   push:
     branches:
       - main
@@ -29,8 +28,7 @@ on:
       - "**/*.sh"
       - ".github/dependabot.yml"
       - ".github/pull_request_template.md"
-      - ".github/workflows/agentic-layer.yml"
-      - ".github/workflows/platform-quality.yml"
+      - ".github/workflows/**"
 
 permissions:
   contents: read

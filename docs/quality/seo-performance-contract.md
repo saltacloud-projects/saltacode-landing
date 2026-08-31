@@ -97,3 +97,5 @@ Budget changes require measured evidence and review. Never raise a limit only to
 ## Release evidence
 
 For each release candidate, record changed URLs, redirects, metadata/schema diff, robots/sitemap result, link validation, Lighthouse runs, accessibility checks, asset-budget result, console/network errors, and rollback point. Verify the deployed response, not only the build output.
+
+The scheduled public observability workflow reuses `infrastructure/scripts/verify-public.sh` as a daily, external, state-neutral regression signal for the deployed HTTP contract. Its result is operational evidence for the checks implemented by that script only. It is not ranking evidence, does not query Search Console, and does not collect mobile or desktop Core Web Vitals at the 75th percentile. Those provider and field-data checks remain manual evidence gates until a separately reviewed, privacy-safe data source is configured.

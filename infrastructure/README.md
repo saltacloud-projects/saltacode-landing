@@ -82,4 +82,12 @@ Local and public verifiers cover every indexable, contact, and legal route; cano
 
 These curl gates do **not** prove keyboard/screen-reader accessibility, Search Console state, rankings, or Core Web Vitals. Run the dedicated accessibility and performance gates separately and keep their evidence with the cutover record.
 
+### Recurring public observability
+
+`.github/workflows/production-observability.yml` runs the public gate once per day and supports an operator-triggered `workflow_dispatch`. It executes from a GitHub-hosted runner against the canonical apex, so it checks the public edge rather than the host-local origin. The workflow has read-only repository permissions, a five-minute timeout, serialized runs, and no repository secrets or Cloudflare credentials.
+
+Each run records its outcome and evidence boundary in the GitHub Actions job summary. The gate performs no provider mutations or persistent chat operation: its contract canary is rejected on the unsupported privacy version before rate limiting, session creation, persistence, or agent invocation. A passing run proves only the explicit HTTP, SEO-safety, contact, header, redirect, and state-neutral chat-contract checks in `scripts/verify-public.sh`. It does **not** measure or infer rankings, Search Console indexing/coverage, accessibility, Lighthouse, or mobile/desktop Core Web Vitals at the 75th percentile.
+
+Search Console and field Core Web Vitals remain separate evidence streams. Review them after sufficient production traffic and retain the measured date range, device class, percentile, and provider source; do not substitute scheduled curl success for that evidence.
+
 Do not cut over production until the exact immutable candidate passes loopback checks, canonical redirects, robots, sitemap, real 404 behavior, contact paths, performance gates, agent availability, and receipt-backed local rollback verification.

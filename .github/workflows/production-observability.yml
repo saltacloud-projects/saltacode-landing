@@ -1,0 +1,44 @@
+name: Production observability
+
+on:
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-observability
+  cancel-in-progress: false
+
+jobs:
+  public-contract:
+    name: Verify public production contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run read-only public gate
+        id: public_gate
+        env:
+          SALTACODE_PUBLIC_BASE_URL: https://saltacode.com.ar
+        run: bash infrastructure/scripts/verify-public.sh
+
+      - name: Record evidence boundary
+        if: ${{ always() }}
+        env:
+          GATE_OUTCOME: ${{ steps.public_gate.outcome }}
+        run: |
+          {
+            echo "## Production public observability"
+            echo
+            echo "- Gate outcome: \`${GATE_OUTCOME}\`"
+            echo "- Target: \`https://saltacode.com.ar\`"
+            echo "- Scope: reachability, canonical routes, crawl controls, redirects, contact paths, security headers, and the state-neutral chat contract canary."
+            echo "- Not measured: rankings, Search Console state, accessibility, Lighthouse, or 75th-percentile field Core Web Vitals."
+          } >> "${GITHUB_STEP_SUMMARY}"
