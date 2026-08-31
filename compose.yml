@@ -100,17 +100,17 @@ networks:
   ingress:
     ipam:
       config:
-        - subnet: 10.248.242.64/28
+        - subnet: ${SALTACODE_INGRESS_SUBNET:-10.248.244.64/28}
   frontend_backend:
     internal: true
     ipam:
       config:
-        - subnet: 10.248.242.32/28
+        - subnet: ${SALTACODE_FRONTEND_BACKEND_SUBNET:-10.248.244.32/28}
   rate_limit:
     internal: true
     ipam:
       config:
-        - subnet: 10.248.242.48/28
+        - subnet: ${SALTACODE_RATE_LIMIT_SUBNET:-10.248.244.48/28}
   agent_bridge:
     external: true
     name: saltacode_agent_bridge

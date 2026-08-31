@@ -12,3 +12,17 @@ services:
   redis:
     restart: "no"
     labels: {com.saltacode.environment: sandbox}
+
+networks:
+  ingress:
+    ipam:
+      config:
+        - subnet: ${SALTACODE_INGRESS_SUBNET:-10.248.242.64/28}
+  frontend_backend:
+    ipam:
+      config:
+        - subnet: ${SALTACODE_FRONTEND_BACKEND_SUBNET:-10.248.242.32/28}
+  rate_limit:
+    ipam:
+      config:
+        - subnet: ${SALTACODE_RATE_LIMIT_SUBNET:-10.248.242.48/28}

@@ -8,8 +8,7 @@ originRequest:
 
 ingress:
   - hostname: saltacode.com.ar
-    path: ^/api(?:/.*)?$
-    service: http://127.0.0.1:18081
-  - hostname: saltacode.com.ar
+    service: http://127.0.0.1:18080
+  - hostname: www.saltacode.com.ar
     service: http://127.0.0.1:18080
   - service: http_status:404

@@ -2,12 +2,11 @@
 
 set -Eeuo pipefail
 
-die() {
-  printf 'error: %s\n' "$*" >&2
-  exit 1
-}
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 
-command -v curl >/dev/null 2>&1 || die "required command not found: curl"
+require_command curl
 
 base="${SALTACODE_PUBLIC_BASE_URL:-https://saltacode.com.ar}"
 [[ "${base}" == "https://saltacode.com.ar" ]] ||
@@ -15,32 +14,79 @@ base="${SALTACODE_PUBLIC_BASE_URL:-https://saltacode.com.ar}"
 
 temporary="$(mktemp -d)"
 trap 'rm -rf "${temporary}"' EXIT
+user_agent="Saltacode-Release-Verification/1.0 (+https://saltacode.com.ar/)"
+public_routes=(
+  /
+  /servicios/
+  /servicios/software-a-medida/
+  /servicios/consultoria-it/
+  /servicios/equipos-it/
+  /servicios/productos-saas/
+  /nosotros/
+  /contacto/
+  /legal/privacidad/
+  /legal/cookies/
+  /legal/terminos/
+)
 
-curl --fail --silent --show-error --max-time 20 -D "${temporary}/headers" \
-  "${base}/" >"${temporary}/index.html"
-curl --fail --silent --show-error --max-time 20 "${base}/robots.txt" >"${temporary}/robots.txt"
-curl --fail --silent --show-error --max-time 20 "${base}/sitemap.xml" >"${temporary}/sitemap.xml"
+for index in "${!public_routes[@]}"; do
+  route="${public_routes[${index}]}"
+  body="${temporary}/route-${index}.html"
+  headers="${temporary}/route-${index}.headers"
+  curl --fail --silent --show-error --max-time 20 \
+    --user-agent "${user_agent}" \
+    --dump-header "${headers}" "${base}${route}" >"${body}"
+  [[ "$(header_value "${headers}" Content-Type)" == text/html* ]] ||
+    die "public ${route} was not served as HTML"
+  grep -Fqi "<link rel=\"canonical\" href=\"${base}${route}\"" "${body}" ||
+    die "public ${route} has an incorrect canonical URL"
+  [[ "$(grep -Eio '<h1([[:space:]][^>]*)?>' "${body}" | wc -l)" == "1" ]] ||
+    die "public ${route} must contain exactly one h1"
+  ! grep -Eqi "<meta[^>]+name=[\"']robots[\"'][^>]+noindex" "${body}" ||
+    die "public ${route} unexpectedly declares noindex"
+  verify_security_headers "${headers}" "$([[ "${route}" == "/" ]] && printf yes || printf no)"
+done
 
-grep -Eqi '<link[^>]+rel="canonical"[^>]+href="https://saltacode\.com\.ar/?"' \
-  "${temporary}/index.html" || die "public canonical is missing or incorrect"
+[[ -z "$(header_value "${temporary}/route-0.headers" X-Nf-Request-Id)" ]] ||
+  die "public homepage still exposes Netlify x-nf-request-id origin evidence"
+
+curl --fail --silent --show-error --max-time 20 --user-agent "${user_agent}" \
+  "${base}/robots.txt" >"${temporary}/robots.txt"
+curl --fail --silent --show-error --max-time 20 --user-agent "${user_agent}" \
+  "${base}/sitemap.xml" >"${temporary}/sitemap.xml"
 grep -Fq 'Sitemap: https://saltacode.com.ar/sitemap.xml' "${temporary}/robots.txt" ||
   die "public robots.txt does not advertise the canonical sitemap"
-grep -Fq '<loc>https://saltacode.com.ar/' "${temporary}/sitemap.xml" ||
-  die "public sitemap does not contain the canonical homepage"
+for route in "${public_routes[@]}"; do
+  grep -Fq "<loc>${base}${route}</loc>" "${temporary}/sitemap.xml" ||
+    die "public sitemap is missing ${route}"
+done
+grep -Eqi 'mailto:' "${temporary}/route-7.html" || die "public contact page lost its email path"
+grep -Eqi 'https://wa\.me/' "${temporary}/route-7.html" ||
+  die "public contact page lost its WhatsApp path"
 
 missing_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 20 \
+  --user-agent "${user_agent}" \
   "${base}/__saltacode_missing_${RANDOM}")"
 [[ "${missing_status}" == "404" ]] || die "public origin must return a real 404, got ${missing_status}"
 
+redirect_path='/contacto/?release_probe=path%2Bquery&empty='
 www_result="$(curl --silent --show-error --output /dev/null --max-redirs 0 --max-time 20 \
-  --write-out '%{http_code} %{redirect_url}' https://www.saltacode.com.ar/ || true)"
+  --user-agent "${user_agent}" \
+  --write-out '%{http_code} %{redirect_url}' "https://www.saltacode.com.ar${redirect_path}" || true)"
 www_status="${www_result%% *}"
 www_location="${www_result#* }"
-[[ "${www_status}" =~ ^30[1278]$ && "${www_location}" == "https://saltacode.com.ar/" ]] ||
-  die "www must redirect directly to https://saltacode.com.ar/; got ${www_result}"
+[[ "${www_status}" =~ ^30[1278]$ && "${www_location}" == "${base}${redirect_path}" ]] ||
+  die "www must redirect directly to the canonical host while preserving path and query; got ${www_result}"
 
-grep -Eqi '^x-content-type-options:[[:space:]]*nosniff' "${temporary}/headers" ||
-  die "public response is missing X-Content-Type-Options: nosniff"
+http_result="$(curl --silent --show-error --output /dev/null --max-redirs 0 --max-time 20 \
+  --user-agent "${user_agent}" \
+  --write-out '%{http_code} %{redirect_url}' "http://saltacode.com.ar${redirect_path}" || true)"
+http_status="${http_result%% *}"
+http_location="${http_result#* }"
+[[ "${http_status}" =~ ^30[1278]$ && "${http_location}" == "${base}${redirect_path}" ]] ||
+  die "HTTP must redirect directly to HTTPS while preserving path and query; got ${http_result}"
 
-printf 'public read-only verification passed for %s; this does not prove Search Console or field CWV state\n' \
-  "${base}"
+verify_chat_contract_canary "${base}" "${base}" "${temporary}/chat-canary" "${user_agent}"
+
+printf 'public read-only verification passed: routes=%s chat_canary=contract-only base=%s; this does not prove accessibility, Search Console, rankings, or field CWV\n' \
+  "${#public_routes[@]}" "${base}"

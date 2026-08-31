@@ -8,8 +8,5 @@ originRequest:
 
 ingress:
   - hostname: REPLACE_WITH_SANDBOX_HOSTNAME
-    path: ^/api(?:/.*)?$
-    service: http://127.0.0.1:28081
-  - hostname: REPLACE_WITH_SANDBOX_HOSTNAME
     service: http://127.0.0.1:28080
   - service: http_status:404

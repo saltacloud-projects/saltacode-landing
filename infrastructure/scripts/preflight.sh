@@ -11,13 +11,21 @@ component="${2:-all}"
 [[ "${component}" == "site" || "${component}" == "all" ]] ||
   die "preflight component must be site or all"
 
-for command in awk cat curl docker flock stat; do
+for command in awk basename cat curl dirname docker find flock git python3 sha256sum stat; do
   require_command "${command}"
 done
 
 docker compose version >/dev/null
 docker info >/dev/null
 docker compose up --help | grep -q -- '--wait' || die "Docker Compose must support up --wait"
+assert_release_identity
+if [[ "${DEPLOY_ENV}" == "production" ]]; then
+  [[ "${FRONTEND_BIND_ADDRESS}" == "127.0.0.1" &&
+     "${BACKEND_BIND_ADDRESS}" == "127.0.0.1" ]] ||
+    die "production frontend and backend origins must bind only to 127.0.0.1"
+fi
+[[ "${FRONTEND_PORT}" != "${BACKEND_PORT}" ]] ||
+  die "frontend and backend origin ports must be distinct"
 
 required_paths=()
 required_paths+=("${PROJECT_ROOT}/frontend/Dockerfile" "${PROJECT_ROOT}/backend/Dockerfile")
@@ -79,4 +87,6 @@ if [[ ( "${component}" == "site" || "${component}" == "all" ) &&
 fi
 
 compose config --quiet
-printf 'preflight passed: environment=%s release=%s\n' "${DEPLOY_ENV}" "${RELEASE}"
+validate_network_contract
+printf 'preflight passed: environment=%s release=%s git_sha=%s\n' \
+  "${DEPLOY_ENV}" "${RELEASE}" "${RELEASE_GIT_SHA}"
