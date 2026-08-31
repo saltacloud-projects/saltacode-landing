@@ -26,6 +26,13 @@ updates:
       frontend-javascript:
         patterns:
           - "*"
+    # Keep production cutover updates reviewable. Security updates are not
+    # affected by version-update ignore rules.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
 
@@ -40,6 +47,11 @@ updates:
       agent-panel-javascript:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
 
@@ -54,6 +66,11 @@ updates:
       backend-python:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
 
@@ -68,6 +85,11 @@ updates:
       agent-api-python:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
 
@@ -86,6 +108,11 @@ updates:
       container-builds:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
 
@@ -100,5 +127,10 @@ updates:
       compose-images:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
