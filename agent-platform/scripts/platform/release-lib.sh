@@ -102,6 +102,14 @@ configure_release_environment() {
   RAG_WORKER_ENABLED="${RAG_WORKER_ENABLED:-0}"
   [[ "${RAG_WORKER_ENABLED}" == "0" || "${RAG_WORKER_ENABLED}" == "1" ]] ||
     die "AGENT_PLATFORM_ENABLE_RAG_WORKER must be 0 or 1"
+  WHATSAPP_INBOX_WORKER_ID_VALUE="$(effective_env_value WHATSAPP_INBOX_WORKER_ID "${ENV_FILE}")"
+  WHATSAPP_INBOX_WORKER_ID_VALUE="${WHATSAPP_INBOX_WORKER_ID_VALUE:-whatsapp-inbox-worker-1}"
+  WHATSAPP_INBOX_POLL_SECONDS_VALUE="$(effective_env_value WHATSAPP_INBOX_POLL_SECONDS "${ENV_FILE}")"
+  WHATSAPP_INBOX_POLL_SECONDS_VALUE="${WHATSAPP_INBOX_POLL_SECONDS_VALUE:-1}"
+  WHATSAPP_INBOX_STALE_SECONDS_VALUE="$(effective_env_value WHATSAPP_INBOX_STALE_SECONDS "${ENV_FILE}")"
+  WHATSAPP_INBOX_STALE_SECONDS_VALUE="${WHATSAPP_INBOX_STALE_SECONDS_VALUE:-1200}"
+  WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE="$(effective_env_value WHATSAPP_INBOX_MAX_ATTEMPTS "${ENV_FILE}")"
+  WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE="${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE:-5}"
 
   INTERNAL_TOKEN_FILE="${AGENT_PLATFORM_INTERNAL_TOKEN_SOURCE_FILE:-$(env_value AGENT_PLATFORM_INTERNAL_TOKEN_SOURCE_FILE "${ENV_FILE}")}"
   SOURCE_MASTER_FILE="${AGENT_PLATFORM_SOURCE_MASTER_KEY_FILE:-$(env_value AGENT_PLATFORM_SOURCE_MASTER_KEY_FILE "${ENV_FILE}")}"
@@ -142,6 +150,10 @@ EOF
   ENV_CONTRACT_SHA256="$({
     printf 'AGENT_PLATFORM_DEPLOY_ENV=%s\n' "${DEPLOY_ENV}"
     printf 'AGENT_PLATFORM_ENABLE_RAG_WORKER=%s\n' "${RAG_WORKER_ENABLED}"
+    printf 'WHATSAPP_INBOX_WORKER_ID=%s\n' "${WHATSAPP_INBOX_WORKER_ID_VALUE}"
+    printf 'WHATSAPP_INBOX_POLL_SECONDS=%s\n' "${WHATSAPP_INBOX_POLL_SECONDS_VALUE}"
+    printf 'WHATSAPP_INBOX_STALE_SECONDS=%s\n' "${WHATSAPP_INBOX_STALE_SECONDS_VALUE}"
+    printf 'WHATSAPP_INBOX_MAX_ATTEMPTS=%s\n' "${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}"
     for key in \
       FASTAPI_ENV LOG_LEVEL POSTGRES_DB POSTGRES_USER REDIS_MAX_MEMORY \
       ADMIN_INITIAL_EMAIL ADMIN_FRONTEND_URL DEFAULT_AGENT_SLUG \
@@ -199,6 +211,36 @@ receipt_value() {
   awk -F= -v wanted="${key}" '$1 == wanted {sub(/^[^=]*=/, ""); print; exit}' "${receipt}"
 }
 
+receipt_format_version() {
+  local receipt="$1"
+  local version
+  version="$(receipt_value "${receipt}" format_version)"
+  [[ "${version}" == "1" || "${version}" == "2" ]] ||
+    die "release receipt has an unsupported format version: ${receipt}"
+  printf '%s' "${version}"
+}
+
+receipt_whatsapp_worker_enabled() {
+  local receipt="$1"
+  local version worker_enabled api_image_id worker_image_id
+  version="$(receipt_format_version "${receipt}")"
+  if [[ "${version}" == "1" ]]; then
+    # Version 1 predates the durable inbox worker. It remains readable so an
+    # otherwise compatible historical receipt can restore its original runtime.
+    printf '0'
+    return
+  fi
+
+  worker_enabled="$(receipt_value "${receipt}" whatsapp_worker_enabled)"
+  [[ "${worker_enabled}" == "1" ]] ||
+    die "release receipt does not require the WhatsApp worker: ${receipt}"
+  api_image_id="$(receipt_value "${receipt}" api_image_id)"
+  worker_image_id="$(receipt_value "${receipt}" whatsapp_worker_image_id)"
+  [[ -n "${api_image_id}" && "${worker_image_id}" == "${api_image_id}" ]] ||
+    die "release receipt does not bind the WhatsApp worker to the API image: ${receipt}"
+  printf '1'
+}
+
 image_reference() {
   local component="$1"
   local release="$2"
@@ -235,7 +277,10 @@ probe_host() {
 
 verify_release_runtime() {
   local release="$1"
+  local whatsapp_worker_enabled="$2"
   local api_host panel_host
+  [[ "${whatsapp_worker_enabled}" == "0" || "${whatsapp_worker_enabled}" == "1" ]] ||
+    die "WhatsApp worker receipt state must be 0 or 1"
   api_host="$(probe_host "${API_BIND_ADDRESS}")"
   panel_host="$(probe_host "${PANEL_BIND_ADDRESS}")"
 
@@ -245,20 +290,60 @@ verify_release_runtime() {
     wget -qO- http://127.0.0.1/ | grep -Fq '<div id="root">'
   curl -fsS --max-time 5 "http://${api_host}:${API_PORT}/ready" >/dev/null
   curl -fsS --max-time 5 "http://${panel_host}:${PANEL_PORT}/" | grep -Fq '<div id="root">'
+  verify_whatsapp_worker_runtime "${release}" "${whatsapp_worker_enabled}"
+}
+
+verify_whatsapp_worker_runtime() {
+  local release="$1"
+  local enabled="$2"
+  local running_services container_id expected_reference configured_reference
+  local expected_image_id running_image_id
+  [[ "${enabled}" == "0" || "${enabled}" == "1" ]] ||
+    die "WhatsApp worker receipt state must be 0 or 1"
+
+  running_services="$(compose_release "${release}" ps --status running --services)"
+  if [[ "${enabled}" == "0" ]]; then
+    ! grep -Fxq whatsapp-worker <<<"${running_services}" ||
+      die "WhatsApp worker is running for a release whose receipt predates it"
+    return
+  fi
+
+  grep -Fxq whatsapp-worker <<<"${running_services}" ||
+    die "WhatsApp worker is not running"
+  container_id="$(compose_release "${release}" ps -q whatsapp-worker)"
+  [[ "${container_id}" =~ ^[a-f0-9]{64}$ ]] ||
+    die "WhatsApp worker container identity is invalid"
+
+  expected_reference="$(image_reference api "${release}")"
+  configured_reference="$(docker container inspect --format '{{.Config.Image}}' "${container_id}")"
+  [[ "${configured_reference}" == "${expected_reference}" ]] ||
+    die "WhatsApp worker does not use the immutable API image reference"
+  expected_image_id="$(image_id "${expected_reference}")"
+  running_image_id="$(docker container inspect --format '{{.Image}}' "${container_id}")"
+  [[ "${running_image_id}" == "${expected_image_id}" ]] ||
+    die "WhatsApp worker image ID does not match the immutable API image"
 }
 
 stop_application_services() {
   local release="$1"
-  compose_release "${release}" stop --timeout 30 panel rag-worker api >/dev/null
+  compose_release "${release}" stop --timeout 30 panel rag-worker whatsapp-worker api >/dev/null
 }
 
 start_application_services() {
   local release="$1"
   local rag_enabled="$2"
+  local whatsapp_worker_enabled="$3"
+  [[ "${rag_enabled}" == "0" || "${rag_enabled}" == "1" ]] ||
+    die "RAG worker receipt state must be 0 or 1"
+  [[ "${whatsapp_worker_enabled}" == "0" || "${whatsapp_worker_enabled}" == "1" ]] ||
+    die "WhatsApp worker receipt state must be 0 or 1"
   compose_release "${release}" up -d --wait --no-deps api
   compose_release "${release}" up -d --wait --no-deps panel
   if [[ "${rag_enabled}" == "1" ]]; then
     compose_release "${release}" up -d --no-deps rag-worker
+  fi
+  if [[ "${whatsapp_worker_enabled}" == "1" ]]; then
+    compose_release "${release}" up -d --wait --no-deps whatsapp-worker
   fi
 }
 
@@ -278,6 +363,8 @@ assert_release_restorable() {
     die "release ${release} uses a different Compose contract"
   [[ "$(receipt_value "${receipt}" environment_contract_sha256)" == "${ENV_CONTRACT_SHA256}" ]] ||
     die "release ${release} uses a different environment contract"
+  receipt_format_version "${receipt}" >/dev/null
+  receipt_whatsapp_worker_enabled "${receipt}" >/dev/null
 
   expected="$(receipt_value "${receipt}" api_image_id)"
   [[ "$(image_id "$(image_reference api "${release}")")" == "${expected}" ]] ||
@@ -302,7 +389,7 @@ record_deploy_receipt() {
 
   umask 0027
   {
-    printf 'format_version=1\n'
+    printf 'format_version=2\n'
     printf 'component=agent-platform\n'
     printf 'action=deploy\n'
     printf 'release=%s\n' "${RELEASE}"
@@ -317,6 +404,8 @@ record_deploy_receipt() {
     printf 'api_image_id=%s\n' "${api_image_id}"
     printf 'panel_image_id=%s\n' "${panel_image_id}"
     printf 'rag_worker_enabled=%s\n' "${RAG_WORKER_ENABLED}"
+    printf 'whatsapp_worker_enabled=1\n'
+    printf 'whatsapp_worker_image_id=%s\n' "${api_image_id}"
     printf 'verification=passed\n'
   } >"${temporary}"
   chmod 0640 "${temporary}"
@@ -328,14 +417,22 @@ record_rollback_receipt() {
   local from_release="$1"
   local target_release="$2"
   local database_revision="$3"
-  local timestamp receipt temporary
+  local timestamp receipt temporary target_receipt target_rag target_whatsapp
+  local target_api_image_id target_panel_image_id
   timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   receipt="${ROLLBACK_RECEIPT_DIR}/${timestamp}-${from_release}-to-${target_release}.receipt"
   [[ ! -e "${receipt}" ]] || die "rollback receipt already exists: ${receipt}"
+  target_receipt="$(deploy_receipt_path "${target_release}")"
+  target_rag="$(receipt_value "${target_receipt}" rag_worker_enabled)"
+  [[ "${target_rag}" == "0" || "${target_rag}" == "1" ]] ||
+    die "target release receipt has an invalid RAG worker state"
+  target_whatsapp="$(receipt_whatsapp_worker_enabled "${target_receipt}")"
+  target_api_image_id="$(receipt_value "${target_receipt}" api_image_id)"
+  target_panel_image_id="$(receipt_value "${target_receipt}" panel_image_id)"
   temporary="$(mktemp "${receipt}.tmp.XXXXXX")"
   umask 0027
   {
-    printf 'format_version=1\n'
+    printf 'format_version=2\n'
     printf 'component=agent-platform\n'
     printf 'action=rollback\n'
     printf 'from_release=%s\n' "${from_release}"
@@ -344,6 +441,11 @@ record_rollback_receipt() {
     printf 'database_revision=%s\n' "${database_revision}"
     printf 'database_restored=false\n'
     printf 'volumes_removed=false\n'
+    printf 'api_image_id=%s\n' "${target_api_image_id}"
+    printf 'panel_image_id=%s\n' "${target_panel_image_id}"
+    printf 'rag_worker_enabled=%s\n' "${target_rag}"
+    printf 'whatsapp_worker_enabled=%s\n' "${target_whatsapp}"
+    printf 'whatsapp_worker_image_id=%s\n' "$([[ "${target_whatsapp}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
     printf 'verification=passed\n'
   } >"${temporary}"
   chmod 0640 "${temporary}"

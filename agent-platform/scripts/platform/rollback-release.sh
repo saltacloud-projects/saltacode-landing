@@ -28,14 +28,16 @@ assert_release_restorable "${target_release}" "${current_database_revision}"
 target_receipt="$(deploy_receipt_path "${target_release}")"
 target_rag="$(receipt_value "${target_receipt}" rag_worker_enabled)"
 from_rag="$(receipt_value "${from_receipt}" rag_worker_enabled)"
+target_whatsapp="$(receipt_whatsapp_worker_enabled "${target_receipt}")"
+from_whatsapp="$(receipt_whatsapp_worker_enabled "${from_receipt}")"
 
 restore_current_after_failure() {
   local status=$?
   trap - ERR
   printf 'agent-platform rollback failed; attempting to restore release %s\n' "${from_release}" >&2
   stop_application_services "${target_release}" || true
-  if start_application_services "${from_release}" "${from_rag}" &&
-     verify_release_runtime "${from_release}"; then
+  if start_application_services "${from_release}" "${from_rag}" "${from_whatsapp}" &&
+     verify_release_runtime "${from_release}" "${from_whatsapp}"; then
     printf 'release %s was restored; persistent stores were untouched\n' "${from_release}" >&2
   fi
   exit "${status}"
@@ -43,8 +45,8 @@ restore_current_after_failure() {
 trap restore_current_after_failure ERR
 
 stop_application_services "${from_release}"
-start_application_services "${target_release}" "${target_rag}"
-verify_release_runtime "${target_release}"
+start_application_services "${target_release}" "${target_rag}" "${target_whatsapp}"
+verify_release_runtime "${target_release}" "${target_whatsapp}"
 record_rollback_receipt "${from_release}" "${target_release}" "${current_database_revision}"
 trap - ERR
 

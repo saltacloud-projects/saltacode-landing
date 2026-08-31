@@ -29,6 +29,20 @@ docker compose up --help | grep -q -- '--wait' ||
   die "agent API and panel ports must be numeric"
 (( API_PORT >= 1024 && API_PORT <= 65535 )) || die "AGENT_API_PORT is invalid"
 (( PANEL_PORT >= 1024 && PANEL_PORT <= 65535 )) || die "AGENT_PANEL_PORT is invalid"
+(( ${#WHATSAPP_INBOX_WORKER_ID_VALUE} >= 1 && ${#WHATSAPP_INBOX_WORKER_ID_VALUE} <= 70 )) ||
+  die "WHATSAPP_INBOX_WORKER_ID length is invalid"
+awk -v value="${WHATSAPP_INBOX_POLL_SECONDS_VALUE}" 'BEGIN {
+  valid = value ~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/ && value > 0 && value <= 60
+  exit !valid
+}' || die "WHATSAPP_INBOX_POLL_SECONDS must be greater than 0 and at most 60"
+if [[ ! "${WHATSAPP_INBOX_STALE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
+   (( 10#${WHATSAPP_INBOX_STALE_SECONDS_VALUE} < 960 || 10#${WHATSAPP_INBOX_STALE_SECONDS_VALUE} > 86400 )); then
+  die "WHATSAPP_INBOX_STALE_SECONDS must be between 960 and 86400"
+fi
+if [[ ! "${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}" =~ ^[0-9]+$ ]] ||
+   (( 10#${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE} < 1 || 10#${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE} > 20 )); then
+  die "WHATSAPP_INBOX_MAX_ATTEMPTS must be between 1 and 20"
+fi
 
 env_mode="$(stat -c '%a' "${ENV_FILE}")"
 [[ "${env_mode}" == "600" || "${env_mode}" == "640" ]] ||
@@ -103,5 +117,35 @@ grep -Fxq "$(image_reference api "${RELEASE}")" <<<"${images}" ||
 grep -Fxq "$(image_reference panel "${RELEASE}")" <<<"${images}" ||
   die "effective panel image does not use the immutable release tag"
 
-printf 'agent-platform preflight passed: environment=%s release=%s rag_worker=%s\n' \
+rendered_whatsapp_worker_value() {
+  local key="$1"
+  compose_release "${RELEASE}" config whatsapp-worker | awk -v wanted="${key}" '
+    $0 == "  whatsapp-worker:" {inside = 1; next}
+    inside && /^  [A-Za-z0-9_-]+:$/ {exit}
+    inside {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (index(line, wanted ":") == 1) {
+        sub(/^[^:]+:[[:space:]]*/, "", line)
+        if (substr(line, 1, 1) == "\"" && substr(line, length(line), 1) == "\"") {
+          line = substr(line, 2, length(line) - 2)
+        }
+        print line
+        exit
+      }
+    }
+  '
+}
+
+whatsapp_worker_image="$(rendered_whatsapp_worker_value image)"
+[[ "${whatsapp_worker_image}" == "$(image_reference api "${RELEASE}")" ]] ||
+  die "effective WhatsApp worker must use the immutable API image"
+for worker_setting in WORKER_ID POLL_SECONDS STALE_SECONDS MAX_ATTEMPTS; do
+  script_value_name="WHATSAPP_INBOX_${worker_setting}_VALUE"
+  rendered_value="$(rendered_whatsapp_worker_value "WHATSAPP_INBOX_${worker_setting}")"
+  [[ "${rendered_value}" == "${!script_value_name}" ]] ||
+    die "effective WHATSAPP_INBOX_${worker_setting} differs from the release contract"
+done
+
+printf 'agent-platform preflight passed: environment=%s release=%s rag_worker=%s whatsapp_worker=required\n' \
   "${DEPLOY_ENV}" "${RELEASE}" "${RAG_WORKER_ENABLED}"

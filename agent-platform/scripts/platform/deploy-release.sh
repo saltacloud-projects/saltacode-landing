@@ -41,8 +41,9 @@ restore_previous_after_failure() {
       if assert_release_restorable "${previous_release}" "${database_after}"; then
         previous_receipt="$(deploy_receipt_path "${previous_release}")"
         previous_rag="$(receipt_value "${previous_receipt}" rag_worker_enabled)"
-        if start_application_services "${previous_release}" "${previous_rag}" &&
-           verify_release_runtime "${previous_release}"; then
+        previous_whatsapp="$(receipt_whatsapp_worker_enabled "${previous_receipt}")"
+        if start_application_services "${previous_release}" "${previous_rag}" "${previous_whatsapp}" &&
+           verify_release_runtime "${previous_release}" "${previous_whatsapp}"; then
           printf 'previous release %s was restored; persistent stores were untouched\n' \
             "${previous_release}" >&2
         fi
@@ -60,8 +61,8 @@ stop_application_services "${RELEASE}"
 compose_release "${RELEASE}" run --rm --no-deps migrate
 database_after="$(database_revision "${RELEASE}")"
 compose_release "${RELEASE}" run --rm --no-deps bootstrap
-start_application_services "${RELEASE}" "${RAG_WORKER_ENABLED}"
-verify_release_runtime "${RELEASE}"
+start_application_services "${RELEASE}" "${RAG_WORKER_ENABLED}" 1
+verify_release_runtime "${RELEASE}" 1
 
 record_deploy_receipt "${previous_release}" "${database_before}" "${database_after}" \
   "${api_image_id}" "${panel_image_id}"
