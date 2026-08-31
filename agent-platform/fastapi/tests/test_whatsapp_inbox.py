@@ -94,7 +94,12 @@ def test_compose_pins_single_worker_and_safe_stale_default():
 
     assert "WHATSAPP_INBOX_STALE_SECONDS:-1200" in compose
     worker = compose[compose.index("  whatsapp-worker:") :]
-    assert 'app.workers.whatsapp_inbox", "--healthcheck"' in worker
+    healthcheck = worker[
+        worker.index("    healthcheck:") : worker.index("    depends_on:")
+    ]
+    assert '"/usr/local/libexec/agent-entrypoint.py"' in healthcheck
+    assert '"app.workers.whatsapp_inbox"' in healthcheck
+    assert '"--healthcheck"' in healthcheck
     assert "replicas: 1" in worker
 
 

@@ -156,7 +156,16 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.workers.whatsapp_inbox"]
     healthcheck:
-      test: ["CMD", "python", "-m", "app.workers.whatsapp_inbox", "--healthcheck"]
+      test:
+        [
+          "CMD",
+          "python",
+          "/usr/local/libexec/agent-entrypoint.py",
+          "python",
+          "-m",
+          "app.workers.whatsapp_inbox",
+          "--healthcheck",
+        ]
       interval: 30s
       timeout: 8s
       retries: 3
