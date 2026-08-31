@@ -51,6 +51,15 @@ effective_env_value() {
   fi
 }
 
+compose_contract_sha256() {
+  local compose_file="$1"
+  local override_file="$2"
+  {
+    printf 'compose=%s\n' "$(sha256sum <"${compose_file}" | awk '{print $1}')"
+    printf 'override=%s\n' "$(sha256sum <"${override_file}" | awk '{print $1}')"
+  } | sha256sum | awk '{print $1}'
+}
+
 cleanup_release_files() {
   if [[ -n "${COMPOSE_OVERRIDE_FILE}" ]]; then
     rm -f -- "${COMPOSE_OVERRIDE_FILE}"
@@ -141,10 +150,7 @@ EOF
       printf '%s=%s\n' "${key}" "$(effective_env_value "${key}" "${ENV_FILE}")"
     done
   } | sha256sum | awk '{print $1}')"
-  COMPOSE_CONTRACT_SHA256="$({
-    sha256sum "${COMPOSE_FILE}"
-    sha256sum "${COMPOSE_OVERRIDE_FILE}"
-  } | sha256sum | awk '{print $1}')"
+  COMPOSE_CONTRACT_SHA256="$(compose_contract_sha256 "${COMPOSE_FILE}" "${COMPOSE_OVERRIDE_FILE}")"
 
   export APP_VERSION="${RELEASE}"
 }

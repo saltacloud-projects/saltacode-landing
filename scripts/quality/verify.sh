@@ -227,6 +227,7 @@ verify_infrastructure() {
     -f "${agent_compose_override_fixture}" config --quiet
   AGENT_PLATFORM_ENV_FILE="${agent_env_fixture}" \
     agent-platform/scripts/platform/preflight-release.sh
+  agent-platform/scripts/platform/tests/release-lib-test.sh
 }
 
 verify_agentic() {
