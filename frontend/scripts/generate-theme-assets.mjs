@@ -15,7 +15,7 @@ const appIcons = [
     source: "src/assets/brand/logo_nav_light.png",
     output: "public/favicon.png",
     canvas: { width: 256, height: 256, maxWidth: 224, maxHeight: 224 },
-    background: { r: 0, g: 0, b: 0, alpha: 0 },
+    background: "#ffffff",
   },
   {
     id: "apple-touch-icon",

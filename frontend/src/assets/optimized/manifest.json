@@ -564,8 +564,8 @@
       },
       "output": {
         "path": "public/favicon.png",
-        "bytes": 18699,
-        "sha256": "380dcf228b254a629b234f3eef525ed54cfcf699027ee14ad3daf7be10e5390e",
+        "bytes": 16813,
+        "sha256": "0f4dd59ca9de27d3f7a85ace68711bf05fcb4d48acb9ff897f5418b9be4eb64c",
         "width": 256,
         "height": 256
       }
