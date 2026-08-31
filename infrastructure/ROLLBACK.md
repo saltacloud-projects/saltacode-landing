@@ -26,7 +26,7 @@ Only after verification passes, update `current-site-release`, `current-site-red
 
 Redis is intentionally ephemeral, so rollback starts with empty public rate-limit windows. Agent conversations and sources are not stored in the site stack and are not changed.
 
-The first self-hosted release has no prior local image receipt. Keep the Netlify origin and its provider configuration intact until the self-hosted candidate, preview, public cutover, and provider rollback have all been verified; do not describe an application rollback as available before that point.
+The first self-hosted release has no prior local image receipt, so it has no application rollback. Every later production release must prove that its distinct previous frontend, backend, and Redis images still match their immutable receipt before promotion.
 
 ## Agent rollback
 
@@ -39,6 +39,6 @@ AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
 
 The script validates immutable image IDs, Compose/environment hashes, and the current database revision before stopping the agent application. It never downgrades or restores PostgreSQL, deletes document/history volumes, rebuilds the landing, or changes DNS and Cloudflare. A database revision mismatch blocks rollback because restoring an older database would discard newer conversations. See [`../agent-platform/docs/operations/release-and-rollback.md`](../agent-platform/docs/operations/release-and-rollback.md).
 
-## Provider rollback
+## Provider recovery
 
-Capture the current DNS, redirect, cache, Tunnel, canonical, robots, sitemap, representative indexed URLs, and external performance evidence before cutover. Provider restoration remains a separate authorized operation; this repository never guesses its target.
+The production provider contract is the dedicated Cloudflare Tunnel plus the current DNS records. No external static-host fallback is retained. Capture DNS, redirect, cache, Tunnel, canonical, robots, sitemap, representative indexed URLs, and external performance evidence before changing that contract. Any provider recovery is a separately authorized operation and must restore from recorded Cloudflare state rather than guessing a target.

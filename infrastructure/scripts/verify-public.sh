@@ -47,9 +47,6 @@ for index in "${!public_routes[@]}"; do
   verify_security_headers "${headers}" "$([[ "${route}" == "/" ]] && printf yes || printf no)"
 done
 
-[[ -z "$(header_value "${temporary}/route-0.headers" X-Nf-Request-Id)" ]] ||
-  die "public homepage still exposes Netlify x-nf-request-id origin evidence"
-
 curl --fail --silent --show-error --max-time 20 --user-agent "${user_agent}" \
   "${base}/robots.txt" >"${temporary}/robots.txt"
 curl --fail --silent --show-error --max-time 20 --user-agent "${user_agent}" \

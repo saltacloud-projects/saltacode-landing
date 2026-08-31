@@ -15,7 +15,7 @@ Use Astro for the indexable landing surface, FastAPI for explicit HTTP boundarie
 | Orchestration | Compose builds application images locally and isolates origin, agent, rate-limit, and egress networks. |
 | Ingress | Host-managed `cloudflared` routes `/api/*` to the loopback BFF and other paths to the loopback static origin. |
 | Proxy layer | No Nginx or Caddy. Add one only when measured requirements exceed the existing origins and Tunnel. |
-| Deployment target | Self-hosted containers; Netlify and Cloudflare Pages are retired from this direction. |
+| Deployment target | Self-hosted containers only; external static-hosting platforms are not deployment targets. |
 
 ## Why this fits
 

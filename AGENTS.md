@@ -84,4 +84,4 @@ The repository now implements the approved platform foundation:
 - `compose.yml`: locally built application containers plus a private ephemeral Redis rate limiter.
 - `infrastructure/`: host-managed `cloudflared` path routing to loopback origins, without Nginx or Caddy.
 
-Netlify and Cloudflare Pages are not deployment targets for this direction. Repository implementation does not authorize or prove a production cutover. Follow `docs/architecture/platform-topology.md` and `infrastructure/README.md` for boundaries and evidence gates.
+External static-hosting platforms are not deployment targets for this direction. Repository implementation does not authorize or prove a production cutover. Follow `docs/architecture/platform-topology.md` and `infrastructure/README.md` for boundaries and evidence gates.

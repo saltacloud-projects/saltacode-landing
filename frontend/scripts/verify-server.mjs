@@ -169,14 +169,12 @@ try {
     }
   }
 
-  for (const host of ["127.0.0.1", "preview.saltacode.com.ar"]) {
-    const preview = await requestServer(`/servicios/?${canonicalQuery}`, {
-      method: "HEAD",
-      headers: { Host: host, "X-Forwarded-Proto": "http" },
-    });
-    if (preview.status !== 200 || preview.headers.has("strict-transport-security")) {
-      throw new Error(`${host} previews must not be redirected or receive HSTS.`);
-    }
+  const localReview = await requestServer(`/servicios/?${canonicalQuery}`, {
+    method: "HEAD",
+    headers: { Host: "127.0.0.1", "X-Forwarded-Proto": "http" },
+  });
+  if (localReview.status !== 200 || localReview.headers.has("strict-transport-security")) {
+    throw new Error("The loopback review origin must not be redirected or receive HSTS.");
   }
 
   for (const protocol of ["http", "https"]) {
