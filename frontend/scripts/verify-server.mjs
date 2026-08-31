@@ -80,8 +80,8 @@ try {
   if (home.status !== 200 || !home.headers.get("content-type")?.startsWith("text/html")) {
     throw new Error("Home page was not served as HTML with status 200.");
   }
-  if (home.headers.get("cache-control") !== "public, max-age=0, must-revalidate") {
-    throw new Error("HTML revalidation policy is missing.");
+  if (home.headers.get("cache-control") !== "public, max-age=0, must-revalidate, no-transform") {
+    throw new Error("HTML must retain revalidation while preventing intermediary transformations.");
   }
   if (
     home.headers.get("content-encoding") !== "gzip" ||
@@ -225,8 +225,14 @@ try {
     if (page.status !== 200 || !page.headers.get("content-type")?.startsWith("text/html")) {
       throw new Error(`${route} was not served as HTML with status 200.`);
     }
+    if (page.headers.get("cache-control") !== "public, max-age=0, must-revalidate, no-transform") {
+      throw new Error(`${route} lost the origin-integrity cache policy.`);
+    }
     if ((markup.match(/<h1(?:\s|>)/g) ?? []).length !== 1 || !markup.includes("class=\"breadcrumbs\"")) {
       throw new Error(`${route} lost its static h1 or visible breadcrumbs.`);
+    }
+    if (route === "/contacto/" && !markup.includes('href="mailto:')) {
+      throw new Error("The contact page must retain its static email link at the origin.");
     }
     const policy = page.headers.get("content-security-policy") ?? "";
     const inline = [...markup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)].filter(
@@ -268,6 +274,9 @@ try {
   const missingMarkup = await missing.text();
   if (missing.status !== 404 || !missingMarkup.includes("Página no encontrada")) {
     throw new Error("Unknown routes must return the branded 404 page with status 404.");
+  }
+  if (missing.headers.get("cache-control") !== "public, max-age=0, must-revalidate, no-transform") {
+    throw new Error("Branded HTML error responses must prevent intermediary transformations.");
   }
   const missingCsp = missing.headers.get("content-security-policy") ?? "";
   const missingInlineScripts = [

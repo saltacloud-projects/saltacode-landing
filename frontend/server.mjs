@@ -72,6 +72,7 @@ const mimeTypes = new Map([
 ]);
 
 const compressibleExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".txt", ".xml"]);
+const revalidatedHtmlCacheControl = "public, max-age=0, must-revalidate, no-transform";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -149,7 +150,11 @@ function cacheControl(pathname, extension) {
     return "public, max-age=31536000, immutable";
   }
 
-  if (extension === ".html" || pathname === "/robots.txt" || pathname === "/sitemap.xml") {
+  if (extension === ".html") {
+    return revalidatedHtmlCacheControl;
+  }
+
+  if (pathname === "/robots.txt" || pathname === "/sitemap.xml") {
     return "public, max-age=0, must-revalidate";
   }
 
@@ -221,7 +226,7 @@ async function sendFile(request, response, filePath, fileSize, extension) {
 async function sendNotFound(request, response) {
   const fallback = await resolveRequestPath("/404.html");
   response.statusCode = 404;
-  response.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+  response.setHeader("Cache-Control", revalidatedHtmlCacheControl);
 
   if (!fallback) {
     response.setHeader("Content-Type", "text/plain; charset=utf-8");
