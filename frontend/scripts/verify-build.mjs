@@ -164,6 +164,7 @@ const homeAssertions = [
   [/<meta name="description" content="[^"]+">/, "meta description"],
   [/<meta property="og:image" content="https:\/\/saltacode\.com\.ar\/images\/social\/saltacode-social\.webp">/, "OpenGraph image"],
   [/<meta name="twitter:card" content="summary_large_image">/, "Twitter card"],
+  [/<link rel="icon" href="\/favicon\.png\?v=2" type="image\/png" sizes="256x256">/, "versioned favicon"],
   [/<script type="application\/ld\+json">\{/, "JSON-LD"],
   [/data-theme-bootstrap/, "theme bootstrap"],
   [/value="light" data-theme-choice/, "light theme"],
