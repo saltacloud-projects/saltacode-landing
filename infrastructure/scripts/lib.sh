@@ -379,7 +379,7 @@ assert_site_restore_point() {
   PREVIOUS_FRONTEND_IMAGE_ID=none
   PREVIOUS_BACKEND_IMAGE_ID=none
   PREVIOUS_REDIS_IMAGE_ID=none
-  [[ -n "${previous}" ]] || return
+  [[ -n "${previous}" ]] || return 0
   [[ -n "${previous_redis}" ]] || die "previous site release has no recorded Redis image"
 
   PREVIOUS_FRONTEND_IMAGE_ID="$(image_id "localhost/saltacode/frontend:${previous}")"

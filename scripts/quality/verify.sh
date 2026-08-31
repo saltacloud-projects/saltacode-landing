@@ -228,6 +228,7 @@ verify_infrastructure() {
   AGENT_PLATFORM_ENV_FILE="${agent_env_fixture}" \
     agent-platform/scripts/platform/preflight-release.sh
   agent-platform/scripts/platform/tests/release-lib-test.sh
+  infrastructure/scripts/tests/lib-test.sh
 }
 
 verify_agentic() {
