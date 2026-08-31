@@ -37,6 +37,14 @@ from app.routers.webhooks import router as webhooks_router
 
 logger = logging.getLogger(__name__)
 
+_PRODUCTION_TRUSTED_HOSTS = (
+    settings.domain,
+    "fastapi",
+    "agent-platform",
+    "localhost",
+    "127.0.0.1",
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -175,7 +183,7 @@ app.add_middleware(
 if settings.fastapi_env == "production":
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=[settings.domain, "fastapi", "localhost", "127.0.0.1"],
+        allowed_hosts=list(_PRODUCTION_TRUSTED_HOSTS),
     )
 
 # ---------------------------------------------------------------------------
