@@ -3,11 +3,12 @@ import "../../../styles/interior.css";
 import Breadcrumbs from "../../../components/Breadcrumbs.astro";
 import Footer from "../../../components/Footer.astro";
 import Header from "../../../components/Header.astro";
-import { legalUpdatedAt, site } from "../../../data/site-content";
+import { site } from "../../../data/site-content";
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 
 const title = "Política de cookies y almacenamiento | SaltaCode";
 const description = "Detalle del almacenamiento técnico, preferencia de tema y consentimiento del chat utilizados por SaltaCode.";
+const legalUpdatedAt = "1 de septiembre de 2026";
 const breadcrumbs = [
   { name: "Inicio", path: "/" },
   { name: "Cookies y almacenamiento", path: "/legal/cookies/" },
@@ -52,17 +53,18 @@ const breadcrumbs = [
                   <tr><td><code>saltacode-theme</code></td><td>Recordar modo claro u oscuro.</td><td>Hasta que elijas “sistema” o borres los datos locales.</td></tr>
                   <tr><td><code>saltacode-privacy-preferences</code></td><td>Registrar la versión de configuración necesaria que revisaste.</td><td>Hasta que la restablezcas o cambie la versión.</td></tr>
                   <tr><td><code>saltacode-chat-consent</code></td><td>Registrar la versión de privacidad del chat y la fecha aceptada; no guarda mensajes.</td><td>Hasta que la restablezcas o cambie la versión.</td></tr>
+                  <tr><td><code>saltacode-chat-transcript</code></td><td>Mostrar nuevamente en este dispositivo los mensajes del chat sin reenviarlos al servidor.</td><td>Hasta 30 días desde la última interacción, con un máximo local de 80 mensajes y 64 KiB.</td></tr>
                 </tbody>
               </table>
             </div>
           </section>
           <section>
             <h2>4. Consentimiento independiente del chat</h2>
-            <p>La aceptación general de la configuración necesaria no habilita el envío de conversaciones. El chat pide una aceptación específica antes del primer mensaje y el servidor valida la versión vigente.</p>
+            <p>La aceptación general de la configuración necesaria no habilita el envío de conversaciones. El chat pide una aceptación específica antes del primer mensaje y el servidor valida la versión vigente. La copia local se crea sólo después de esa aceptación y restaurarla nunca reenvía mensajes ni inicia una solicitud automática.</p>
           </section>
           <section>
             <h2>5. Cómo controlar este almacenamiento</h2>
-            <p>Podés abrir “Preferencias de privacidad” desde el pie para revisar la configuración, la señal Global Privacy Control o restablecer las constancias locales. También podés eliminar cookies y datos desde tu navegador. La cookie HttpOnly del chat no puede borrarse mediante JavaScript; podés eliminarla desde el navegador y solicitar la supresión de conversaciones escribiendo a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
+            <p>Podés abrir “Preferencias de privacidad” desde el pie para revisar la configuración, la señal Global Privacy Control o restablecer las constancias locales. Esa acción elimina también la copia local del chat y bloquea nuevos envíos hasta que vuelvas a aceptar. También podés eliminar cookies y datos desde tu navegador. La cookie HttpOnly del chat no puede borrarse mediante JavaScript; podés eliminarla desde el navegador y solicitar la supresión de conversaciones escribiendo a <a href={`mailto:${site.email}`}>{site.email}</a>.</p>
           </section>
           <section>
             <h2>6. Categorías opcionales y señales de preferencia</h2>

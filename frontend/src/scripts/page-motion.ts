@@ -44,6 +44,15 @@ if (!reducedMotion.matches) {
   }
 }
 
+if (chatLauncher) try {
+  if (localStorage.getItem("saltacode-chat-transcript")) setTimeout(() => {
+    chatModulePromise ??= import("./chat-preview");
+    void chatModulePromise.then(({ initializeChatResume }) => initializeChatResume(chatLauncher));
+  }, 0);
+} catch {
+  // Storage can be disabled without affecting the first-use chat launcher.
+}
+
 reducedMotion.addEventListener("change", ({ matches }) => {
   if (!matches) initializeClientCarousel();
 });

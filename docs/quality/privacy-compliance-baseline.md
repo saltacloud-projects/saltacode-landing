@@ -1,15 +1,17 @@
 # Privacy compliance engineering baseline
 
-This document records the public site's current technical posture as of 2026-08-28. It is an engineering control set, not a legal opinion or a claim that one implementation automatically satisfies every jurisdiction.
+This document records the public site's current technical posture as of 2026-09-01. It is an engineering control set, not a legal opinion or a claim that one implementation automatically satisfies every jurisdiction.
 
 ## Current public posture
 
 - Controller disclosure: Oscar Vargas, CUIT 20-38213561-0, holder of the SaltaCode trade name.
-- Necessary storage only: theme preference, privacy-preference acknowledgement, versioned chat consent, and the anonymous HttpOnly chat-session cookie after an accepted message.
+- Necessary storage only: theme preference, privacy-preference acknowledgement, versioned chat consent, a bounded local transcript copy after consent, and the anonymous HttpOnly chat-session cookie after an accepted message.
 - No analytics, advertising, cross-context behavioural tracking, or marketing storage is enabled.
 - The first-visit notice describes the actual configuration; it does not mislabel necessary storage as optional consent.
 - The persistent privacy center exposes inactive optional categories, Global Privacy Control status, local reset, the chat-specific consent boundary, and the rights contact.
 - The browser cannot send a chat message before accepting the current chat privacy version, and the BFF rejects obsolete versions before rate limiting or session creation.
+- The local transcript is versioned, expires 30 days after the last interaction, is capped at 80 messages and 64 KiB, tolerates unavailable/corrupt storage, and is deleted by the privacy reset. Restoring it performs no request and never replays an interrupted response.
+- The WhatsApp action reuses the canonical public destination, sends no web transcript in the URL, and is presented as a channel change rather than cross-channel identity continuity.
 - Public policies disclose AI processing, human review for proposals and contracts, provider categories, international-transfer risk, retention, data-subject rights, minors, sensitive-data warnings, and the absence of sale or behavioural-advertising sharing.
 
 ## Regulatory references used for the baseline

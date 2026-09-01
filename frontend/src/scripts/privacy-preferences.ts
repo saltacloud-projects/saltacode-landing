@@ -3,6 +3,8 @@ import privacyStyleUrl from "../styles/privacy-preferences.css?url";
 const STORAGE_KEY = "saltacode-privacy-preferences";
 const STORAGE_VERSION = "saltacode-storage-2026-08-28";
 const CHAT_CONSENT_KEY = "saltacode-chat-consent";
+const CHAT_TRANSCRIPT_KEY = "saltacode-chat-transcript";
+const CHAT_PRIVACY_RESET_EVENT = "saltacode:privacy-reset";
 
 function initializePrivacyCenter(): void {
   const notice = document.querySelector<HTMLElement>("[data-privacy-notice]");
@@ -57,11 +59,13 @@ function initializePrivacyCenter(): void {
     try {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(CHAT_CONSENT_KEY);
-      if (status) status.textContent = "Se eliminaron las preferencias locales de privacidad y la aceptación local del chat.";
+      localStorage.removeItem(CHAT_TRANSCRIPT_KEY);
+      if (status) status.textContent = "Se eliminaron las preferencias locales, la aceptación y la copia local del chat.";
       if (notice) notice.hidden = false;
     } catch {
       if (status) status.textContent = "El navegador no permitió restablecer las preferencias locales.";
     }
+    window.dispatchEvent(new CustomEvent(CHAT_PRIVACY_RESET_EVENT));
   });
 }
 
