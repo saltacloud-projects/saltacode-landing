@@ -464,10 +464,6 @@ class ConversationMessageOut(BaseModel):
         )
 
 
-class SummaryUpdateRequest(BaseModel):
-    conversation_summary: str | None = None
-
-
 # ---------------------------------------------------------------------------
 # Audit
 # ---------------------------------------------------------------------------

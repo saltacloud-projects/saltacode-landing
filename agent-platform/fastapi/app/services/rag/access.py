@@ -83,14 +83,3 @@ async def get_user_area_ids(
         )
     )
     return set(result.scalars().all())
-
-
-async def get_general_area_id(db: AsyncSession) -> uuid.UUID | None:
-    return (
-        await db.execute(
-            select(OrganizationArea.id).where(
-                OrganizationArea.is_general == True,  # noqa: E712
-                OrganizationArea.is_active == True,  # noqa: E712
-            )
-        )
-    ).scalar_one_or_none()

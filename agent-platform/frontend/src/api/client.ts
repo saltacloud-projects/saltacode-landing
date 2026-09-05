@@ -113,5 +113,4 @@ export class ApiError extends Error {
   }
 }
 
-export type { TokenPair };
 export { clearTokens, getTokens, setTokens };

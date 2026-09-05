@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent_resource_binding import AgentAuthorizedUserBinding
 from app.models.authorized_user import AuthorizedUser
 from app.models.rag import AuthorizedUserArea, OrganizationArea
-from app.models.tool_config import ToolConfig
 from app.schemas.governance import (
     AccessCheckRequest,
     AccessCheckResponse,
@@ -135,46 +134,6 @@ class GovernanceService:
             .all()
         )
         return [str(value) for value in values]
-
-    async def get_available_tools_for_user(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID | None,
-        runtime_registered_tools: set[str],
-    ) -> list[dict]:
-        """
-        Construye la lista de tools disponibles: habilitadas en DB ∩ registradas
-        en runtime. Ya no hay permisos por tool (el agente es uno para todos).
-        Si `user_id` es None (fail-closed), retorna [].
-        """
-        if user_id is None:
-            return []
-
-        # 1. Tools habilitadas en DB
-        result = await db.execute(
-            select(ToolConfig).where(ToolConfig.is_enabled == True)  # noqa: E712
-        )
-        enabled_tools = [
-            {
-                "tool_name": t.tool_name,
-                "description": t.description or "",
-                "source_system": t.source_system,
-            }
-            for t in result.scalars().all()
-        ]
-
-        # 2. Intersectar con runtime (tools efectivamente cargadas)
-        if runtime_registered_tools:
-            enabled_tools = [
-                t for t in enabled_tools if t["tool_name"] in runtime_registered_tools
-            ]
-
-        if not enabled_tools:
-            return []
-
-        # Ya no hay permisos por tool: el agente es uno para todos los usuarios
-        # autorizados. Se devuelven todas las tools habilitadas ∩ runtime.
-        return enabled_tools
 
     # ---------------------------------------------------------------------------
     # Privados

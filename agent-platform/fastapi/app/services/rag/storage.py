@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import re
-import shutil
 import time
 import uuid
 from pathlib import Path
@@ -47,9 +46,6 @@ class LocalDocumentStorage:
         self.root = Path(root or settings.document_storage_root).resolve()
         self.blobs_root = self.root / "blobs"
         self.staging_root = self.root / "staging"
-
-    async def ensure_ready(self) -> None:
-        await run_in_threadpool(self._ensure_ready_sync)
 
     def ensure_ready_sync(self) -> None:
         self._ensure_ready_sync()
@@ -151,10 +147,6 @@ class LocalDocumentStorage:
 
     def delete(self, storage_key: str) -> None:
         self.path_for(storage_key).unlink(missing_ok=True)
-
-    def copy_to(self, storage_key: str, destination: Path) -> None:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(self.path_for(storage_key), destination)
 
     def cleanup_orphans(
         self,

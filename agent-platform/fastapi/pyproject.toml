@@ -48,7 +48,6 @@ dependencies = [
     "python-pptx==1.0.2",
     "xlrd==2.0.2",
     "filetype==1.2.0",
-    "tiktoken==0.13.0",
 
     # Admin panel — JWT + password hashing
     "PyJWT[crypto]==2.13.0",
@@ -61,7 +60,6 @@ dev = [
     "pip-audit==2.10.1",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
-    "respx==0.21.1",
     "ruff>=0.16.4",
 ]
 
