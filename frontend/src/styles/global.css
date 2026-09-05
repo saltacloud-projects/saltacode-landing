@@ -164,16 +164,6 @@ ul {
   pointer-events: none;
 }
 
-.section-heading {
-  max-width: 760px;
-  margin-bottom: clamp(3rem, 6vw, 5rem);
-}
-
-.section-heading > p:last-child {
-  color: var(--muted);
-  font-size: 1.08rem;
-}
-
 .centered {
   margin-inline: auto;
   text-align: center;

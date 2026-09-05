@@ -7,7 +7,7 @@ This contract covers Saltacode brand images, client logos, public app icons, and
 - `onLight` is the variant for a light surface.
 - `onDark` is the variant for a dark surface.
 - The pre-paint theme bootstrap selects the correct variant for light, dark, or system mode before themed images load.
-- Brand marks use a 256 × 256 transparent canvas; brand lockups use 720 × 288.
+- Brand lockups use a 720 × 288 transparent canvas. The light navigation source remains solely as the deterministic favicon and app-icon input.
 - Client logos use a 360 × 160 transparent canvas, preserving a consistent 9:4 visual area.
 - The navbar renders the official surface-specific brand lockup at 320 intrinsic pixels instead of composing the brand mark with a system-font `SaltaCode` label.
 - The hero loads one surface-specific vector lockup recovered from the historical production artwork. Each animated SVG is 26,527 raw bytes and 4,841 bytes over the local server's negotiated gzip response; reduced-motion visitors receive a static 13,627-byte vector instead of downloading or running the animation.
@@ -35,17 +35,17 @@ pnpm --dir frontend assets:check
 
 The build gate also requires:
 
-- exactly two brand assets and eleven displayed clients;
+- exactly one brand asset and eleven displayed clients;
 - both surface variants for every asset;
 - the canonical canvases above;
 - no variant larger than 32 KiB;
-- no more than 260 KiB for the complete 26-variant library;
+- no more than 260 KiB for the complete 24-variant library;
 - eager low-priority loading, asynchronous decoding, and explicit 180 × 80 rendered dimensions for all animated client logos so Firefox never decodes an incoming logo mid-motion.
 - one accessible client group, pause on keyboard focus, and a non-animated reduced-motion fallback.
 
 ## Verified sources
 
-- Saltacode mark and lockup variants were recovered from the repository's legacy commit `b6562bfa`.
+- Saltacode lockup variants and the app-icon source were recovered from the repository's legacy commit `b6562bfa`.
 - The animated hero lockup preserves the verified paths, gradient stops, vector wordmark, tagline, drawing order, easing, and delays from that commit's `index.html`, `assets/css/logo-animated.css`, and `assets/js/hero-logo-animated.js`. The historical 72,606-byte inline source was converted into hashed light/dark external assets, scoped animations, fixed dimensions, and dedicated static reduced-motion variants; it adds no font request and the selected response is compressed by the static server.
 - Metalnor uses its official first-party lockup as the shared source for both themes. A luminance-derived ink mask preserves the globe, arrows, and wordmark detail before applying the common client palette; flattening the complete alpha channel produced an unreadable solid emblem.
 - Cocel uses the provided variants verified against the first-party `website-cocel` working copy.

@@ -44,15 +44,6 @@ const clientPalette = Object.freeze({ onLight: "#74747D", onDark: "#D8D8E0" });
 
 const assets = [
   {
-    id: "brand-mark",
-    kind: "brand",
-    canvas: { width: 256, height: 256, maxWidth: 224, maxHeight: 224 },
-    variants: {
-      onLight: { source: "src/assets/brand/logo_nav_light.png" },
-      onDark: { source: "src/assets/brand/logo_nav_dark.png" },
-    },
-  },
-  {
     id: "brand-lockup",
     kind: "brand",
     canvas: { width: 720, height: 288, maxWidth: 640, maxHeight: 224 },

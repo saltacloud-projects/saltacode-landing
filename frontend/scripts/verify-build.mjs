@@ -266,7 +266,7 @@ for (const lockup of animatedLockups) {
   if (!/viewBox="0 0 370 152"/.test(markup) || (markup.match(/<animate\b/g) ?? []).length !== 42 || !/prefers-reduced-motion:reduce/.test(markup)) throw new Error(`${lockup.path} lost historical animation invariants.`);
 }
 
-if (assetManifest.schemaVersion !== 1 || assetManifest.assets?.length !== 13) throw new Error("Theme image manifest is incomplete.");
+if (assetManifest.schemaVersion !== 1 || assetManifest.assets?.length !== 12) throw new Error("Theme image manifest is incomplete.");
 let totalAssetVariantBytes = 0;
 for (const asset of assetManifest.assets) for (const variant of Object.values(asset.variants)) {
   totalAssetVariantBytes += variant.output.bytes;

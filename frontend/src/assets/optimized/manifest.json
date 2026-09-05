@@ -8,48 +8,6 @@
   },
   "assets": [
     {
-      "id": "brand-mark",
-      "kind": "brand",
-      "canvas": {
-        "width": 256,
-        "height": 256
-      },
-      "variants": {
-        "onLight": {
-          "source": {
-            "path": "src/assets/brand/logo_nav_light.png",
-            "bytes": 108143,
-            "sha256": "e3e7202d53260694b2bf1f69cbefec34659f7fc8fd77151e8127f464744e926a",
-            "width": 1452,
-            "height": 1610
-          },
-          "output": {
-            "path": "src/assets/optimized/brand/mark-onLight.webp",
-            "bytes": 14308,
-            "sha256": "9196e358615e7e446095b85872d1f12153a57abfe1497e0cebdfec5f322d6d12",
-            "width": 256,
-            "height": 256
-          }
-        },
-        "onDark": {
-          "source": {
-            "path": "src/assets/brand/logo_nav_dark.png",
-            "bytes": 108957,
-            "sha256": "49647fb421edcd9613df28bb0de91b74f5f5b5b5e0295341602a6c958661dd1e",
-            "width": 1452,
-            "height": 1610
-          },
-          "output": {
-            "path": "src/assets/optimized/brand/mark-onDark.webp",
-            "bytes": 14384,
-            "sha256": "6648b9edff5012f7f867585838c0b7786f4ae612ee8561f529729af26391b3fa",
-            "width": 256,
-            "height": 256
-          }
-        }
-      }
-    },
-    {
       "id": "brand-lockup",
       "kind": "brand",
       "canvas": {

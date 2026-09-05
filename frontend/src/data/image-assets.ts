@@ -2,8 +2,6 @@ import type { ImageMetadata } from "astro";
 
 import lockupOnDark from "../assets/optimized/brand/lockup-onDark.webp";
 import lockupOnLight from "../assets/optimized/brand/lockup-onLight.webp";
-import markOnDark from "../assets/optimized/brand/mark-onDark.webp";
-import markOnLight from "../assets/optimized/brand/mark-onLight.webp";
 import balanceOnDark from "../assets/optimized/client/balance-onDark.webp";
 import balanceOnLight from "../assets/optimized/client/balance-onLight.webp";
 import cocelOnDark from "../assets/optimized/client/cocel-onDark.webp";
@@ -38,7 +36,6 @@ export interface Client {
 }
 
 export const brandImages = {
-  mark: { onLight: markOnLight, onDark: markOnDark },
   lockup: { onLight: lockupOnLight, onDark: lockupOnDark },
 } satisfies Record<string, SurfaceImageVariants>;
 
