@@ -108,8 +108,8 @@ verify_agent_api() {
     export WHATSAPP_APP_SECRET=""
     uv run --locked alembic -c alembic-platform.ini upgrade head
     uv run --locked alembic -c alembic-platform.ini check
-    uv run --locked ruff format --check app tests
-    uv run --locked ruff check app tests
+    uv run --locked ruff format --check app tests scripts
+    uv run --locked ruff check app tests scripts
     uv run --locked pip-audit --strict
     uv run --locked pytest -o addopts='' -m 'not integration'
     export OPENAI_API_KEY=""
