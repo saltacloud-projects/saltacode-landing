@@ -1,7 +1,9 @@
 """Configuration and loop behavior for durable follow-up execution."""
 
 import asyncio
+import re
 from datetime import UTC, datetime, time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -14,6 +16,16 @@ from app.services.commercial.follow_up_execution import (
     _quiet_hours_end,
 )
 from app.workers.follow_ups import FollowUpWorker
+
+
+def _compose_service(compose: str, service: str) -> str:
+    match = re.search(
+        rf"^  {re.escape(service)}:\n(?P<body>.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",
+        compose,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None
+    return match.group("body")
 
 
 @pytest.mark.parametrize(
@@ -33,6 +45,19 @@ def test_follow_up_worker_settings_reject_unsafe_bounds(field, value):
             fastapi_api_key="test",
             **{field: value},
         )
+
+
+def test_compose_requires_private_follow_up_worker_with_schema_healthcheck():
+    compose = (Path(__file__).resolve().parents[2] / "docker-compose.yml").read_text()
+    worker = _compose_service(compose, "follow-up-worker")
+
+    assert "profiles:" not in worker
+    assert 'command: ["python", "-m", "app.workers.follow_ups"]' in worker
+    assert '"app.workers.follow_ups"' in worker
+    assert '"--healthcheck"' in worker
+    assert "replicas: 1" in worker
+    assert "networks:" not in worker
+    assert "FOLLOW_UP_EXECUTION_LEASE_SECONDS:-120" in compose
 
 
 @pytest.mark.asyncio

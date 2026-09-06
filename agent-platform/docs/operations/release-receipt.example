@@ -1,4 +1,4 @@
-format_version=3
+format_version=4
 component=agent-platform
 action=deploy
 release=2026.08.29-examplecommit
@@ -22,4 +22,7 @@ outbound_worker_health=passed
 web_execution_worker_enabled=1
 web_execution_worker_image_id=sha256:0000000000000000000000000000000000000000000000000000000000000000
 web_execution_worker_health=passed
+follow_up_worker_enabled=1
+follow_up_worker_image_id=sha256:0000000000000000000000000000000000000000000000000000000000000000
+follow_up_worker_health=passed
 verification=passed

@@ -29,7 +29,7 @@ The browser never receives provider keys, integration credentials, or the intern
 - Tools bound to a source, HTTP method, channel allowlist, risk level, confirmation, and idempotency policy.
 - Optional RAG worker and document administration.
 - Meta webhook signature validation and optional WhatsApp access policy.
-- Durable web execution and channel-neutral outbound workers with schema healthchecks.
+- Durable web execution, commercial follow-up, and channel-neutral outbound workers with schema healthchecks.
 
 ## Local stack
 
@@ -56,9 +56,11 @@ Stop the stack with:
 ./scripts/platform/down.sh
 ```
 
-The WhatsApp inbox, outbound delivery, and web execution workers are required
-services. They run as one replica each, share the immutable API image, and have
-provider egress without publishing ports. Inspect them with:
+The WhatsApp inbox, outbound delivery, web execution, and commercial follow-up
+workers are required services. They initially run as one replica each, share
+the immutable API image, and publish no ports. Only services that call providers
+join the egress network; the follow-up worker only commits outbound intent to
+PostgreSQL. Inspect them with:
 
 ```bash
 docker compose --env-file .env.platform.local ps
@@ -68,6 +70,9 @@ docker compose --env-file .env.platform.local exec outbound-worker \
 docker compose --env-file .env.platform.local exec web-execution-worker \
   python /usr/local/libexec/agent-entrypoint.py \
   python -m app.workers.web_executions --healthcheck
+docker compose --env-file .env.platform.local exec follow-up-worker \
+  python /usr/local/libexec/agent-entrypoint.py \
+  python -m app.workers.follow_ups --healthcheck
 ```
 
 Worker healthchecks verify their local database schema and required storage.
@@ -88,7 +93,7 @@ AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
 
 The deploy uses an immutable `APP_VERSION`, controlled one-shot migrations,
 `docker compose --wait`, internal and loopback health probes, and secret-free
-version 3 receipts under `/var/lib/saltacode-agent-platform`. The receipts bind
+version 4 receipts under `/var/lib/saltacode-agent-platform`. The receipts bind
 all required workers to the API image and record their health. Rollback preserves
 PostgreSQL, documents, conversation history, and audit data; it refuses a target
 whose database revision or runtime contract is incompatible.

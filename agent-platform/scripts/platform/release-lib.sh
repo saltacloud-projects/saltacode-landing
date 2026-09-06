@@ -118,6 +118,14 @@ configure_release_environment() {
   OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE="${OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE:-30}"
   OUTBOUND_DISPATCH_STALE_SECONDS_VALUE="$(effective_env_value OUTBOUND_DISPATCH_STALE_SECONDS "${ENV_FILE}")"
   OUTBOUND_DISPATCH_STALE_SECONDS_VALUE="${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE:-300}"
+  FOLLOW_UP_WORKER_ID_VALUE="$(effective_env_value FOLLOW_UP_WORKER_ID "${ENV_FILE}")"
+  FOLLOW_UP_WORKER_ID_VALUE="${FOLLOW_UP_WORKER_ID_VALUE:-follow-up-worker-1}"
+  FOLLOW_UP_WORKER_POLL_SECONDS_VALUE="$(effective_env_value FOLLOW_UP_WORKER_POLL_SECONDS "${ENV_FILE}")"
+  FOLLOW_UP_WORKER_POLL_SECONDS_VALUE="${FOLLOW_UP_WORKER_POLL_SECONDS_VALUE:-1}"
+  FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS_VALUE="$(effective_env_value FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS "${ENV_FILE}")"
+  FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS_VALUE="${FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS_VALUE:-30}"
+  FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE="$(effective_env_value FOLLOW_UP_EXECUTION_LEASE_SECONDS "${ENV_FILE}")"
+  FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE="${FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE:-120}"
   WEB_EXECUTION_WORKER_ID_VALUE="$(effective_env_value WEB_EXECUTION_WORKER_ID "${ENV_FILE}")"
   WEB_EXECUTION_WORKER_ID_VALUE="${WEB_EXECUTION_WORKER_ID_VALUE:-web-execution-worker-1}"
   WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE="$(effective_env_value WEB_EXECUTION_WORKER_POLL_SECONDS "${ENV_FILE}")"
@@ -188,6 +196,10 @@ EOF
     printf 'OUTBOUND_WORKER_POLL_SECONDS=%s\n' "${OUTBOUND_WORKER_POLL_SECONDS_VALUE}"
     printf 'OUTBOUND_WORKER_MAX_BACKOFF_SECONDS=%s\n' "${OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE}"
     printf 'OUTBOUND_DISPATCH_STALE_SECONDS=%s\n' "${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE}"
+    printf 'FOLLOW_UP_WORKER_ID=%s\n' "${FOLLOW_UP_WORKER_ID_VALUE}"
+    printf 'FOLLOW_UP_WORKER_POLL_SECONDS=%s\n' "${FOLLOW_UP_WORKER_POLL_SECONDS_VALUE}"
+    printf 'FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS=%s\n' "${FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS_VALUE}"
+    printf 'FOLLOW_UP_EXECUTION_LEASE_SECONDS=%s\n' "${FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE}"
     printf 'WEB_EXECUTION_WORKER_ID=%s\n' "${WEB_EXECUTION_WORKER_ID_VALUE}"
     printf 'WEB_EXECUTION_WORKER_POLL_SECONDS=%s\n' "${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE}"
     printf 'WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS=%s\n' "${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE}"
@@ -253,7 +265,8 @@ receipt_format_version() {
   local receipt="$1"
   local version
   version="$(receipt_value "${receipt}" format_version)"
-  [[ "${version}" == "1" || "${version}" == "2" || "${version}" == "3" ]] ||
+  [[ "${version}" == "1" || "${version}" == "2" || "${version}" == "3" ||
+     "${version}" == "4" ]] ||
     die "release receipt has an unsupported format version: ${receipt}"
   printf '%s' "${version}"
 }
@@ -276,7 +289,7 @@ receipt_worker_enabled() {
     action="$(receipt_value "${receipt}" action)"
     worker_image_id="$(receipt_value "${receipt}" "${worker_name}_worker_image_id")"
     worker_health="$(receipt_value "${receipt}" "${worker_name}_worker_health")"
-    [[ "${version}" == "3" && "${action}" == "rollback" ]] ||
+    [[ 10#${version} -ge 3 && "${action}" == "rollback" ]] ||
       die "release receipt does not require the ${worker_name} worker: ${receipt}"
     [[ "${worker_image_id}" == "none" && "${worker_health}" == "not_applicable" ]] ||
       die "release receipt has invalid disabled ${worker_name} evidence: ${receipt}"
@@ -305,6 +318,10 @@ receipt_outbound_worker_enabled() {
 
 receipt_web_execution_worker_enabled() {
   receipt_worker_enabled "$1" web_execution 3
+}
+
+receipt_follow_up_worker_enabled() {
+  receipt_worker_enabled "$1" follow_up 4
 }
 
 image_reference() {
@@ -346,6 +363,7 @@ verify_release_runtime() {
   local whatsapp_worker_enabled="$2"
   local outbound_worker_enabled="$3"
   local web_execution_worker_enabled="$4"
+  local follow_up_worker_enabled="$5"
   local api_host panel_host
   api_host="$(probe_host "${API_BIND_ADDRESS}")"
   panel_host="$(probe_host "${PANEL_BIND_ADDRESS}")"
@@ -360,6 +378,7 @@ verify_release_runtime() {
   verify_worker_runtime "${release}" outbound-worker "${outbound_worker_enabled}"
   verify_worker_runtime \
     "${release}" web-execution-worker "${web_execution_worker_enabled}"
+  verify_worker_runtime "${release}" follow-up-worker "${follow_up_worker_enabled}"
 }
 
 verify_worker_runtime() {
@@ -399,7 +418,7 @@ verify_worker_runtime() {
 stop_application_services() {
   local release="$1"
   compose_release "${release}" stop --timeout 30 \
-    panel rag-worker web-execution-worker outbound-worker whatsapp-worker api >/dev/null
+    panel rag-worker follow-up-worker web-execution-worker outbound-worker whatsapp-worker api >/dev/null
 }
 
 start_application_services() {
@@ -408,6 +427,7 @@ start_application_services() {
   local whatsapp_worker_enabled="$3"
   local outbound_worker_enabled="$4"
   local web_execution_worker_enabled="$5"
+  local follow_up_worker_enabled="$6"
   [[ "${rag_enabled}" == "0" || "${rag_enabled}" == "1" ]] ||
     die "RAG worker receipt state must be 0 or 1"
   [[ "${whatsapp_worker_enabled}" == "0" || "${whatsapp_worker_enabled}" == "1" ]] ||
@@ -416,6 +436,8 @@ start_application_services() {
     die "outbound worker receipt state must be 0 or 1"
   [[ "${web_execution_worker_enabled}" == "0" || "${web_execution_worker_enabled}" == "1" ]] ||
     die "web execution worker receipt state must be 0 or 1"
+  [[ "${follow_up_worker_enabled}" == "0" || "${follow_up_worker_enabled}" == "1" ]] ||
+    die "follow-up worker receipt state must be 0 or 1"
   compose_release "${release}" up -d --wait --no-deps api
   compose_release "${release}" up -d --wait --no-deps panel
   if [[ "${rag_enabled}" == "1" ]]; then
@@ -429,6 +451,9 @@ start_application_services() {
   fi
   if [[ "${web_execution_worker_enabled}" == "1" ]]; then
     compose_release "${release}" up -d --wait --no-deps web-execution-worker
+  fi
+  if [[ "${follow_up_worker_enabled}" == "1" ]]; then
+    compose_release "${release}" up -d --wait --no-deps follow-up-worker
   fi
 }
 
@@ -452,6 +477,7 @@ assert_release_restorable() {
   receipt_whatsapp_worker_enabled "${receipt}" >/dev/null
   receipt_outbound_worker_enabled "${receipt}" >/dev/null
   receipt_web_execution_worker_enabled "${receipt}" >/dev/null
+  receipt_follow_up_worker_enabled "${receipt}" >/dev/null
 
   expected="$(receipt_value "${receipt}" api_image_id)"
   [[ "$(image_id "$(image_reference api "${release}")")" == "${expected}" ]] ||
@@ -476,7 +502,7 @@ record_deploy_receipt() {
 
   umask 0027
   {
-    printf 'format_version=3\n'
+    printf 'format_version=4\n'
     printf 'component=agent-platform\n'
     printf 'action=deploy\n'
     printf 'release=%s\n' "${RELEASE}"
@@ -500,6 +526,9 @@ record_deploy_receipt() {
     printf 'web_execution_worker_enabled=1\n'
     printf 'web_execution_worker_image_id=%s\n' "${api_image_id}"
     printf 'web_execution_worker_health=passed\n'
+    printf 'follow_up_worker_enabled=1\n'
+    printf 'follow_up_worker_image_id=%s\n' "${api_image_id}"
+    printf 'follow_up_worker_health=passed\n'
     printf 'verification=passed\n'
   } >"${temporary}"
   chmod 0640 "${temporary}"
@@ -512,7 +541,7 @@ record_rollback_receipt() {
   local target_release="$2"
   local database_revision="$3"
   local timestamp receipt temporary target_receipt target_rag target_whatsapp
-  local target_outbound target_web_execution
+  local target_outbound target_web_execution target_follow_up
   local target_api_image_id target_panel_image_id
   timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   receipt="${ROLLBACK_RECEIPT_DIR}/${timestamp}-${from_release}-to-${target_release}.receipt"
@@ -524,12 +553,13 @@ record_rollback_receipt() {
   target_whatsapp="$(receipt_whatsapp_worker_enabled "${target_receipt}")"
   target_outbound="$(receipt_outbound_worker_enabled "${target_receipt}")"
   target_web_execution="$(receipt_web_execution_worker_enabled "${target_receipt}")"
+  target_follow_up="$(receipt_follow_up_worker_enabled "${target_receipt}")"
   target_api_image_id="$(receipt_value "${target_receipt}" api_image_id)"
   target_panel_image_id="$(receipt_value "${target_receipt}" panel_image_id)"
   temporary="$(mktemp "${receipt}.tmp.XXXXXX")"
   umask 0027
   {
-    printf 'format_version=3\n'
+    printf 'format_version=4\n'
     printf 'component=agent-platform\n'
     printf 'action=rollback\n'
     printf 'from_release=%s\n' "${from_release}"
@@ -550,6 +580,9 @@ record_rollback_receipt() {
     printf 'web_execution_worker_enabled=%s\n' "${target_web_execution}"
     printf 'web_execution_worker_image_id=%s\n' "$([[ "${target_web_execution}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
     printf 'web_execution_worker_health=%s\n' "$([[ "${target_web_execution}" == "1" ]] && printf passed || printf not_applicable)"
+    printf 'follow_up_worker_enabled=%s\n' "${target_follow_up}"
+    printf 'follow_up_worker_image_id=%s\n' "$([[ "${target_follow_up}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
+    printf 'follow_up_worker_health=%s\n' "$([[ "${target_follow_up}" == "1" ]] && printf passed || printf not_applicable)"
     printf 'verification=passed\n'
   } >"${temporary}"
   chmod 0640 "${temporary}"

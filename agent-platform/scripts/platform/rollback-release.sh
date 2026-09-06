@@ -34,6 +34,8 @@ target_outbound="$(receipt_outbound_worker_enabled "${target_receipt}")"
 from_outbound="$(receipt_outbound_worker_enabled "${from_receipt}")"
 target_web_execution="$(receipt_web_execution_worker_enabled "${target_receipt}")"
 from_web_execution="$(receipt_web_execution_worker_enabled "${from_receipt}")"
+target_follow_up="$(receipt_follow_up_worker_enabled "${target_receipt}")"
+from_follow_up="$(receipt_follow_up_worker_enabled "${from_receipt}")"
 
 restore_current_after_failure() {
   local status=$?
@@ -42,10 +44,10 @@ restore_current_after_failure() {
   stop_application_services "${target_release}" || true
   if start_application_services \
        "${from_release}" "${from_rag}" "${from_whatsapp}" \
-       "${from_outbound}" "${from_web_execution}" &&
+       "${from_outbound}" "${from_web_execution}" "${from_follow_up}" &&
      verify_release_runtime \
        "${from_release}" "${from_whatsapp}" \
-       "${from_outbound}" "${from_web_execution}"; then
+       "${from_outbound}" "${from_web_execution}" "${from_follow_up}"; then
     printf 'release %s was restored; persistent stores were untouched\n' "${from_release}" >&2
   fi
   exit "${status}"
@@ -55,10 +57,10 @@ trap restore_current_after_failure ERR
 stop_application_services "${from_release}"
 start_application_services \
   "${target_release}" "${target_rag}" "${target_whatsapp}" \
-  "${target_outbound}" "${target_web_execution}"
+  "${target_outbound}" "${target_web_execution}" "${target_follow_up}"
 verify_release_runtime \
   "${target_release}" "${target_whatsapp}" \
-  "${target_outbound}" "${target_web_execution}"
+  "${target_outbound}" "${target_web_execution}" "${target_follow_up}"
 record_rollback_receipt "${from_release}" "${target_release}" "${current_database_revision}"
 trap - ERR
 

@@ -45,7 +45,8 @@ if [[ ! "${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}" =~ ^[0-9]+$ ]] ||
 fi
 for worker_id in \
   "${OUTBOUND_WORKER_ID_VALUE}" \
-  "${WEB_EXECUTION_WORKER_ID_VALUE}"; do
+  "${WEB_EXECUTION_WORKER_ID_VALUE}" \
+  "${FOLLOW_UP_WORKER_ID_VALUE}"; do
   (( ${#worker_id} >= 1 && ${#worker_id} <= 70 )) ||
     die "worker identifier length must be between 1 and 70"
 done
@@ -68,10 +69,18 @@ validate_decimal_range "${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE}" 0.000001 60 
   WEB_EXECUTION_WORKER_POLL_SECONDS
 validate_decimal_range "${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE}" 1 300 \
   WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS
+validate_decimal_range "${FOLLOW_UP_WORKER_POLL_SECONDS_VALUE}" 0.000001 60 \
+  FOLLOW_UP_WORKER_POLL_SECONDS
+validate_decimal_range "${FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS_VALUE}" 1 300 \
+  FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS
 awk -v poll="${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE}" \
     -v backoff="${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE}" \
     'BEGIN { exit !(backoff >= poll) }' ||
   die "WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS must not be below its poll interval"
+awk -v poll="${FOLLOW_UP_WORKER_POLL_SECONDS_VALUE}" \
+    -v backoff="${FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS_VALUE}" \
+    'BEGIN { exit !(backoff >= poll) }' ||
+  die "FOLLOW_UP_WORKER_MAX_BACKOFF_SECONDS must not be below its poll interval"
 if [[ ! "${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
    (( 10#${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE} < 60 || 10#${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE} > 86400 )); then
   die "OUTBOUND_DISPATCH_STALE_SECONDS must be between 60 and 86400"
@@ -79,6 +88,10 @@ fi
 if [[ ! "${WEB_EXECUTION_LEASE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
    (( 10#${WEB_EXECUTION_LEASE_SECONDS_VALUE} <= 900 || 10#${WEB_EXECUTION_LEASE_SECONDS_VALUE} > 86400 )); then
   die "WEB_EXECUTION_LEASE_SECONDS must be greater than 900 and at most 86400"
+fi
+if [[ ! "${FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
+   (( 10#${FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE} < 30 || 10#${FOLLOW_UP_EXECUTION_LEASE_SECONDS_VALUE} > 3600 )); then
+  die "FOLLOW_UP_EXECUTION_LEASE_SECONDS must be between 30 and 3600"
 fi
 
 env_mode="$(stat -c '%a' "${ENV_FILE}")"
@@ -182,7 +195,8 @@ rendered_service_value() {
   '
 }
 
-for worker_service in whatsapp-worker outbound-worker web-execution-worker; do
+for worker_service in \
+  whatsapp-worker outbound-worker web-execution-worker follow-up-worker; do
   worker_image="$(rendered_service_value "${worker_service}" image)"
   [[ "${worker_image}" == "$(image_reference api "${RELEASE}")" ]] ||
     die "effective ${worker_service} must use the immutable API image"
@@ -190,7 +204,8 @@ done
 for worker_contract in \
   "whatsapp-worker:WHATSAPP_INBOX:WORKER_ID POLL_SECONDS STALE_SECONDS MAX_ATTEMPTS" \
   "outbound-worker:OUTBOUND:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS DISPATCH_STALE_SECONDS" \
-  "web-execution-worker:WEB_EXECUTION:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS LEASE_SECONDS"; do
+  "web-execution-worker:WEB_EXECUTION:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS LEASE_SECONDS" \
+  "follow-up-worker:FOLLOW_UP:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS EXECUTION_LEASE_SECONDS"; do
   service="${worker_contract%%:*}"
   remainder="${worker_contract#*:}"
   prefix="${remainder%%:*}"
