@@ -23,7 +23,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAgentWorkspace } from "../agents/AgentWorkspaceContext";
 import { useAuth } from "../auth/AuthContext";
@@ -34,89 +34,210 @@ interface NavigationItem {
   label: string;
   icon: LucideIcon;
   permission?: string;
+  end?: boolean;
 }
 
-const PLATFORM_ITEMS: NavigationItem[] = [
-  { to: "/agents", label: "Agentes", icon: Bot, permission: PERMISSIONS.PROFILES_READ },
+interface NavigationGroup {
+  id: string;
+  label: string;
+  description?: string;
+  items: NavigationItem[];
+}
+
+interface WorkspaceNavigationItem extends Omit<NavigationItem, "to"> {
+  segment: string;
+}
+
+interface WorkspaceNavigationGroup {
+  id: string;
+  label: string;
+  description?: string;
+  items: WorkspaceNavigationItem[];
+}
+
+const PLATFORM_GROUPS: NavigationGroup[] = [
   {
-    to: "/shared/sources",
-    label: "Fuentes compartidas",
-    icon: Cable,
-    permission: PERMISSIONS.SOURCES_READ,
+    id: "platform-library",
+    label: "Biblioteca global",
+    description: "Recursos compartidos que después se vinculan a cada agente.",
+    items: [
+      {
+        to: "/shared/sources",
+        label: "Biblioteca de fuentes",
+        icon: Cable,
+        permission: PERMISSIONS.SOURCES_READ,
+      },
+      {
+        to: "/shared/knowledge",
+        label: "Biblioteca de conocimiento",
+        icon: Library,
+        permission: PERMISSIONS.KNOWLEDGE_READ,
+      },
+      {
+        to: "/shared/tools",
+        label: "Biblioteca de herramientas",
+        icon: Wrench,
+        permission: PERMISSIONS.TOOLS_READ,
+      },
+      {
+        to: "/shared/documents",
+        label: "Biblioteca de documentos",
+        icon: Files,
+        permission: PERMISSIONS.DOCUMENTS_READ,
+      },
+    ],
   },
   {
-    to: "/shared/knowledge",
-    label: "Conocimiento compartido",
-    icon: Library,
-    permission: PERMISSIONS.KNOWLEDGE_READ,
-  },
-  {
-    to: "/shared/tools",
-    label: "Herramientas compartidas",
-    icon: Wrench,
-    permission: PERMISSIONS.TOOLS_READ,
-  },
-  {
-    to: "/shared/documents",
-    label: "Documentos compartidos",
-    icon: Files,
-    permission: PERMISSIONS.DOCUMENTS_READ,
-  },
-  {
-    to: "/shared/provider-connections",
-    label: "Conexiones de IA",
-    icon: CloudCog,
-    permission: PERMISSIONS.CONNECTIONS_READ,
-  },
-  {
-    to: "/shared/channel-connections",
-    label: "Conexiones de canal",
-    icon: Globe2,
-    permission: PERMISSIONS.CONNECTIONS_READ,
-  },
-  {
-    to: "/panel-users",
-    label: "Accesos del panel",
-    icon: ShieldCheck,
-    permission: PERMISSIONS.PANEL_USERS_MANAGE,
+    id: "platform-administration",
+    label: "Administrar plataforma",
+    items: [
+      {
+        to: "/agents",
+        label: "Agentes",
+        icon: Bot,
+        permission: PERMISSIONS.PROFILES_READ,
+        end: true,
+      },
+      {
+        to: "/shared/provider-connections",
+        label: "Conexiones de IA",
+        icon: CloudCog,
+        permission: PERMISSIONS.CONNECTIONS_READ,
+      },
+      {
+        to: "/shared/channel-connections",
+        label: "Conexiones de canal",
+        icon: Globe2,
+        permission: PERMISSIONS.CONNECTIONS_READ,
+      },
+      {
+        to: "/panel-users",
+        label: "Accesos del panel",
+        icon: ShieldCheck,
+        permission: PERMISSIONS.PANEL_USERS_MANAGE,
+      },
+    ],
   },
 ];
 
-const WORKSPACE_ITEMS: Omit<NavigationItem, "to">[] = [
-  { label: "Resumen", icon: Gauge, permission: PERMISSIONS.DASHBOARD_READ },
-  { label: "Identidad", icon: Bot, permission: PERMISSIONS.PROFILES_READ },
-  { label: "Conocimiento", icon: Brain, permission: PERMISSIONS.KNOWLEDGE_READ },
-  { label: "Documentos", icon: Files, permission: PERMISSIONS.DOCUMENTS_READ },
-  { label: "Fuentes", icon: Cable, permission: PERMISSIONS.SOURCES_READ },
-  { label: "Herramientas", icon: Wrench, permission: PERMISSIONS.TOOLS_READ },
-  { label: "Runtime", icon: Cpu, permission: PERMISSIONS.RUNTIME_READ },
-  { label: "Canales", icon: Globe2, permission: PERMISSIONS.RUNTIME_READ },
-  { label: "Acceso WhatsApp", icon: ShieldCheck, permission: PERMISSIONS.USERS_READ },
-  { label: "Inbox", icon: Inbox, permission: PERMISSIONS.CONVERSATIONS_READ },
-  { label: "Oportunidades", icon: Target, permission: PERMISSIONS.OPPORTUNITIES_READ },
-  { label: "Handoffs", icon: ArrowRightLeft, permission: PERMISSIONS.OPPORTUNITIES_MANAGE },
-  { label: "Entregas", icon: Send, permission: PERMISSIONS.DELIVERIES_READ },
-  { label: "Auditoría", icon: ClipboardList, permission: PERMISSIONS.AUDIT_READ },
-  { label: "PromptLab", icon: FlaskConical, permission: PERMISSIONS.PROMPTLAB_USE },
+const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
+  {
+    id: "workspace-overview",
+    label: "Agente seleccionado",
+    items: [
+      {
+        segment: "overview",
+        label: "Resumen",
+        icon: Gauge,
+        permission: PERMISSIONS.DASHBOARD_READ,
+        end: true,
+      },
+    ],
+  },
+  {
+    id: "workspace-operate",
+    label: "Operar",
+    items: [
+      {
+        segment: "inbox",
+        label: "Inbox",
+        icon: Inbox,
+        permission: PERMISSIONS.CONVERSATIONS_READ,
+      },
+      {
+        segment: "opportunities",
+        label: "Oportunidades",
+        icon: Target,
+        permission: PERMISSIONS.OPPORTUNITIES_READ,
+      },
+      {
+        segment: "deliveries",
+        label: "Entregas",
+        icon: Send,
+        permission: PERMISSIONS.DELIVERIES_READ,
+      },
+      {
+        segment: "audit",
+        label: "Auditoría",
+        icon: ClipboardList,
+        permission: PERMISSIONS.AUDIT_READ,
+      },
+    ],
+  },
+  {
+    id: "workspace-automate",
+    label: "Automatizar",
+    items: [
+      {
+        segment: "handoffs",
+        label: "Handoffs",
+        icon: ArrowRightLeft,
+        permission: PERMISSIONS.OPPORTUNITIES_MANAGE,
+      },
+      {
+        segment: "promptlab",
+        label: "PromptLab",
+        icon: FlaskConical,
+        permission: PERMISSIONS.PROMPTLAB_USE,
+      },
+    ],
+  },
+  {
+    id: "workspace-configure",
+    label: "Configurar agente",
+    description: "Vinculá bibliotecas globales y ajustá sólo este agente.",
+    items: [
+      {
+        segment: "identity",
+        label: "Identidad",
+        icon: Bot,
+        permission: PERMISSIONS.PROFILES_READ,
+      },
+      {
+        segment: "runtime",
+        label: "Runtime",
+        icon: Cpu,
+        permission: PERMISSIONS.RUNTIME_READ,
+      },
+      {
+        segment: "knowledge",
+        label: "Conocimiento",
+        icon: Brain,
+        permission: PERMISSIONS.KNOWLEDGE_READ,
+      },
+      {
+        segment: "documents",
+        label: "Documentos",
+        icon: Files,
+        permission: PERMISSIONS.DOCUMENTS_READ,
+      },
+      {
+        segment: "sources",
+        label: "Fuentes",
+        icon: Cable,
+        permission: PERMISSIONS.SOURCES_READ,
+      },
+      {
+        segment: "tools",
+        label: "Herramientas",
+        icon: Wrench,
+        permission: PERMISSIONS.TOOLS_READ,
+      },
+      {
+        segment: "channels",
+        label: "Canales",
+        icon: Globe2,
+        permission: PERMISSIONS.RUNTIME_READ,
+      },
+      {
+        segment: "access",
+        label: "Acceso WhatsApp",
+        icon: ShieldCheck,
+        permission: PERMISSIONS.USERS_READ,
+      },
+    ],
+  },
 ];
-
-const WORKSPACE_SEGMENTS: Record<string, string> = {
-  Resumen: "overview",
-  Identidad: "identity",
-  Conocimiento: "knowledge",
-  Documentos: "documents",
-  Fuentes: "sources",
-  Herramientas: "tools",
-  Runtime: "runtime",
-  Canales: "channels",
-  "Acceso WhatsApp": "access",
-  Inbox: "inbox",
-  Oportunidades: "opportunities",
-  Handoffs: "handoffs",
-  Entregas: "deliveries",
-  Auditoría: "audit",
-  PromptLab: "promptlab",
-};
 
 function NavigationLink({
   item,
@@ -131,6 +252,7 @@ function NavigationLink({
   return (
     <NavLink
       to={item.to}
+      end={item.end}
       title={collapsed ? item.label : undefined}
       onClick={onNavigate}
       className={({ isActive }) =>
@@ -150,24 +272,52 @@ export default function AdminLayout() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  const platformItems = PLATFORM_ITEMS.filter(
-    (item) => !item.permission || hasPermission(user, item.permission),
-  );
-  const workspaceItems = selectedAgent
-    ? WORKSPACE_ITEMS.filter(
-        (item) => !item.permission || hasPermission(user, item.permission),
-      ).map((item) => ({
-        ...item,
-        to: `/agents/${selectedAgent.id}/${WORKSPACE_SEGMENTS[item.label]}`,
-      }))
+  const platformGroups = PLATFORM_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.permission || hasPermission(user, item.permission)),
+  })).filter((group) => group.items.length > 0);
+  const workspaceGroups = selectedAgent
+    ? WORKSPACE_GROUPS.map((group) => ({
+        ...group,
+        items: group.items
+          .filter((item) => !item.permission || hasPermission(user, item.permission))
+          .map((item) => ({
+            ...item,
+            to: `/agents/${selectedAgent.id}/${item.segment}`,
+          })),
+      })).filter((group) => group.items.length > 0)
     : [];
 
+  const closeMobileNavigation = (restoreFocus = false) => {
+    setMobileOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    closeButtonRef.current?.focus();
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMobileOpen(false);
+      requestAnimationFrame(() => menuButtonRef.current?.focus());
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [mobileOpen]);
+
   const changeAgent = (agentId: string) => {
-    if (!agentId) return navigate("/agents");
+    if (!agentId) {
+      navigate("/agents");
+      closeMobileNavigation();
+      return;
+    }
     const currentSection = location.pathname.match(/^\/agents\/[^/]+\/([^/]+)/)?.[1] || "overview";
     navigate(`/agents/${agentId}/${currentSection}`);
-    setMobileOpen(false);
+    closeMobileNavigation();
   };
 
   return (
@@ -179,11 +329,13 @@ export default function AdminLayout() {
         Saltar al contenido
       </a>
       <button
+        ref={menuButtonRef}
         type="button"
         onClick={() => setMobileOpen(true)}
         className="fixed left-3 top-3 z-30 rounded border border-[var(--border-color)] bg-[var(--bg-card)] p-2 text-[var(--text-primary)] md:hidden"
         aria-label="Abrir navegación"
         aria-expanded={mobileOpen}
+        aria-controls="admin-navigation"
       >
         <Menu size={20} />
       </button>
@@ -191,13 +343,14 @@ export default function AdminLayout() {
         <button
           type="button"
           className="fixed inset-0 z-30 bg-black/55 md:hidden"
-          onClick={() => setMobileOpen(false)}
+          onClick={() => closeMobileNavigation(true)}
           aria-label="Cerrar navegación"
         />
       )}
 
       <aside
-        className={`${collapsed ? "md:w-16" : "md:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-[min(18rem,88vw)] flex-col border-r border-[var(--border-color)] bg-[var(--bg-secondary)] transition-[width,transform] duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0`}
+        id="admin-navigation"
+        className={`${collapsed ? "md:w-16" : "md:w-64"} ${mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-[min(18rem,88vw)] flex-col border-r border-[var(--border-color)] bg-[var(--bg-secondary)] transition-[width,transform] duration-200 md:visible md:sticky md:top-0 md:h-screen md:translate-x-0`}
         aria-label="Administración"
       >
         <div className="flex h-14 items-center justify-between gap-2 border-b border-[var(--border-color)] px-4">
@@ -208,9 +361,10 @@ export default function AdminLayout() {
             <p className="truncate text-xs text-[var(--text-muted)]">Administración por agente</p>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             className="p-1.5 md:hidden"
-            onClick={() => setMobileOpen(false)}
+            onClick={() => closeMobileNavigation(true)}
             aria-label="Cerrar navegación"
           >
             <X size={18} />
@@ -251,46 +405,71 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación del panel">
-          {workspaceItems.length > 0 && (
-            <section aria-labelledby="workspace-nav-title">
-              <h2
-                id="workspace-nav-title"
-                className={`${collapsed ? "md:sr-only" : ""} px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]`}
-              >
-                {selectedAgent?.name}
-              </h2>
-              {workspaceItems.map((item) => (
-                <NavigationLink
-                  key={item.to}
-                  item={item}
-                  collapsed={collapsed}
-                  onNavigate={() => setMobileOpen(false)}
-                />
-              ))}
-            </section>
-          )}
-          {platformItems.length > 0 && (
+          {workspaceGroups.map((group, index) => (
             <section
-              aria-labelledby="platform-nav-title"
-              className={
-                workspaceItems.length ? "mt-3 border-t border-[var(--border-color)] pt-2" : ""
-              }
+              key={group.id}
+              aria-labelledby={`${group.id}-title`}
+              className={index > 0 ? "mt-2 border-t border-[var(--border-color)] pt-2" : ""}
             >
               <h2
-                id="platform-nav-title"
+                id={`${group.id}-title`}
                 className={`${collapsed ? "md:sr-only" : ""} px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]`}
               >
-                Plataforma
+                {group.id === "workspace-overview" ? selectedAgent?.name : group.label}
               </h2>
-              {platformItems.map((item) => (
+              {group.description && (
+                <p
+                  className={`${collapsed ? "md:hidden" : ""} px-4 pb-2 text-xs leading-4 text-[var(--text-muted)]`}
+                >
+                  {group.description}
+                </p>
+              )}
+              {group.items.map((item) => (
                 <NavigationLink
                   key={item.to}
                   item={item}
                   collapsed={collapsed}
-                  onNavigate={() => setMobileOpen(false)}
+                  onNavigate={() => closeMobileNavigation()}
                 />
               ))}
             </section>
+          ))}
+          {platformGroups.length > 0 && (
+            <div
+              className={
+                workspaceGroups.length ? "mt-3 border-t-2 border-[var(--border-color)] pt-2" : ""
+              }
+            >
+              {platformGroups.map((group, index) => (
+                <section
+                  key={group.id}
+                  aria-labelledby={`${group.id}-title`}
+                  className={index > 0 ? "mt-2 border-t border-[var(--border-color)] pt-2" : ""}
+                >
+                  <h2
+                    id={`${group.id}-title`}
+                    className={`${collapsed ? "md:sr-only" : ""} px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]`}
+                  >
+                    {group.label}
+                  </h2>
+                  {group.description && (
+                    <p
+                      className={`${collapsed ? "md:hidden" : ""} px-4 pb-2 text-xs leading-4 text-[var(--text-muted)]`}
+                    >
+                      {group.description}
+                    </p>
+                  )}
+                  {group.items.map((item) => (
+                    <NavigationLink
+                      key={item.to}
+                      item={item}
+                      collapsed={collapsed}
+                      onNavigate={() => closeMobileNavigation()}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
           )}
         </nav>
 

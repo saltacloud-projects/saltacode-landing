@@ -91,6 +91,43 @@ test("agent selection only exposes server-authorized profiles", async ({ page })
   await expect(page.getByLabel("Agente de trabajo").locator("option")).toHaveCount(2);
 });
 
+test("dashboard separates operations, automation, agent settings, and global libraries", async ({
+  page,
+}) => {
+  await mockWorkspace(page);
+  await page.goto(`/agents/${AGENT_A}/overview`);
+
+  const content = page.locator("#panel-content");
+  await expect(content.getByRole("heading", { name: "Operar" })).toBeVisible();
+  await expect(content.getByRole("heading", { name: "Automatizar" })).toBeVisible();
+  await expect(content.getByRole("heading", { name: "Configurar agente" })).toBeVisible();
+  await expect(
+    content.getByRole("heading", { name: "Biblioteca global de la plataforma" }),
+  ).toBeVisible();
+
+  await expect(content.getByRole("link", { name: /^Inbox/ })).toHaveAttribute(
+    "href",
+    `/agents/${AGENT_A}/inbox`,
+  );
+  await expect(content.getByRole("link", { name: /^Oportunidades/ })).toHaveAttribute(
+    "href",
+    `/agents/${AGENT_A}/opportunities`,
+  );
+  await expect(content.getByRole("link", { name: /^Entregas/ })).toHaveAttribute(
+    "href",
+    `/agents/${AGENT_A}/deliveries`,
+  );
+  await expect(content.getByRole("link", { name: /^Handoffs/ })).toHaveAttribute(
+    "href",
+    `/agents/${AGENT_A}/handoffs`,
+  );
+  await expect(content.getByText("Habilitado", { exact: true })).toBeVisible();
+  await expect(content.getByText("Permitida", { exact: true })).toBeVisible();
+  await expect(
+    content.getByText(/no prueban disponibilidad.*requieren configuración y verificación/i),
+  ).toBeVisible();
+});
+
 test("source library assignment uses the selected agent contract", async ({ page }) => {
   await mockWorkspace(page);
   await page.goto(`/agents/${AGENT_A}/sources`);
@@ -104,9 +141,20 @@ test("mobile agent navigation uses a vertical drawer without horizontal overflow
   await mockWorkspace(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/agents/${AGENT_A}/overview`);
-  await page.getByRole("button", { name: "Abrir navegación" }).click();
-  await expect(page.getByRole("navigation", { name: "Navegación del panel" })).toBeVisible();
-  await page.getByRole("link", { name: "Fuentes", exact: true }).click();
+  const openNavigation = page.getByRole("button", { name: "Abrir navegación" });
+  const drawer = page.locator("#admin-navigation");
+
+  await expect(drawer).toBeHidden();
+  await openNavigation.click();
+  await expect(drawer.getByRole("navigation", { name: "Navegación del panel" })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Cerrar navegación" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(openNavigation).toBeFocused();
+
+  await openNavigation.click();
+  await drawer.getByRole("link", { name: "Fuentes", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_A}/sources$`));
   const dimensions = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth);
