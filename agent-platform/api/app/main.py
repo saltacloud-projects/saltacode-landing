@@ -20,6 +20,9 @@ from app.routers.admin.agent_runtime import router as admin_agent_runtime_router
 from app.routers.admin.audit import router as admin_audit_router
 from app.routers.admin.auth import router as admin_auth_router
 from app.routers.admin.config import router as admin_config_router
+from app.routers.admin.conversation_control import (
+    router as admin_conversation_control_router,
+)
 from app.routers.admin.conversations import router as admin_conversations_router
 from app.routers.admin.documents import router as admin_documents_router
 from app.routers.admin.knowledge_blocks import router as admin_kb_router
@@ -214,6 +217,10 @@ app.include_router(admin_tools_router, prefix="/api/admin/tools")
 app.include_router(admin_users_router, prefix="/api/admin/users")
 app.include_router(admin_audit_router, prefix="/api/admin/audit")
 app.include_router(admin_conversations_router, prefix="/api/admin/conversations")
+app.include_router(
+    admin_conversation_control_router,
+    prefix="/api/admin/conversations",
+)
 app.include_router(admin_config_router, prefix="/api/admin/config")
 app.include_router(admin_promptlab_router, prefix="/api/admin/promptlab")
 app.include_router(admin_documents_router, prefix="/api/admin/documents")

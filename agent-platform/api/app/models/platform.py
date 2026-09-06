@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -72,6 +76,24 @@ class ChatConversation(TimestampedModel):
             name="uq_chat_conversation_external_thread",
         ),
         Index("ix_chat_conversation_principal_updated", "principal_id", "updated_at"),
+        Index(
+            "ix_chat_conversation_agent_control_updated",
+            "agent_id",
+            "control_mode",
+            "updated_at",
+        ),
+        CheckConstraint(
+            "control_mode IN ('automated', 'paused', 'human', 'closed')",
+            name="ck_chat_conversation_control_mode",
+        ),
+        CheckConstraint(
+            "control_version >= 0",
+            name="ck_chat_conversation_control_version",
+        ),
+        CheckConstraint(
+            "control_mode != 'human' OR assigned_admin_id IS NOT NULL",
+            name="ck_chat_conversation_human_assignment",
+        ),
     )
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
@@ -92,6 +114,20 @@ class ChatConversation(TimestampedModel):
         index=True,
     )
     status: Mapped[str] = mapped_column(String(30), default="active", nullable=False)
+    control_mode: Mapped[str] = mapped_column(
+        String(20), default="automated", nullable=False
+    )
+    control_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    assigned_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    control_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    control_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     consent_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
     transcript_consent: Mapped[bool] = mapped_column(
@@ -134,6 +170,12 @@ class ChatExecution(TimestampedModel):
     """Idempotent execution record and correlation boundary for one inbound message."""
 
     __tablename__ = "chat_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "control_version >= 0",
+            name="ck_chat_execution_control_version",
+        ),
+    )
 
     request_id: Mapped[str] = mapped_column(
         String(64), unique=True, nullable=False, index=True
@@ -149,6 +191,7 @@ class ChatExecution(TimestampedModel):
         unique=True,
     )
     status: Mapped[str] = mapped_column(String(30), default="accepted", nullable=False)
+    control_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     output_message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("chat_messages.id", ondelete="SET NULL"),
