@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     session_signing_secret: SecretStr | None = Field(default=None, min_length=32)
     session_signing_secret_file: Path | None = None
     session_cookie_name: str = "saltacode_chat_session"
+    session_cookie_v2_name: str = Field(
+        default="saltacode_chat_session_v2",
+        min_length=1,
+        max_length=80,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
     session_cookie_max_age_seconds: int = Field(default=2_592_000, ge=300, le=31_536_000)
     chat_privacy_version: str = Field(
         default="saltacode-chat-privacy-2026-08-28",
@@ -38,6 +44,10 @@ class Settings(BaseSettings):
     )
     agent_ai_connect_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     agent_ai_response_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
+    chat_v2_poll_seconds: float = Field(default=1.0, gt=0, le=30)
+    chat_v2_heartbeat_seconds: float = Field(default=15.0, gt=0, le=60)
+    chat_v2_stream_max_seconds: float = Field(default=55.0, gt=0, le=300)
+    chat_v2_event_page_size: int = Field(default=100, ge=1, le=200)
     rate_limit_backend: Literal["memory", "redis"] = "memory"
     rate_limit_requests: int = Field(default=20, ge=1, le=10_000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=86_400)
@@ -90,6 +100,8 @@ class Settings(BaseSettings):
             raise ValueError("configure either agent internal token or token file, not both")
         if self.session_signing_secret is not None and self.session_signing_secret_file is not None:
             raise ValueError("configure either session signing secret or secret file, not both")
+        if self.session_cookie_v2_name == self.session_cookie_name:
+            raise ValueError("v1 and v2 session cookie names must differ")
 
         if self.rate_limit_backend == "redis" and self.redis_url is None:
             raise ValueError("Redis rate-limit backend requires a Redis URL")

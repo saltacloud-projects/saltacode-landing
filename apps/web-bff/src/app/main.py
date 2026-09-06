@@ -6,6 +6,10 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.chat_v2.client import HttpWebChatV2Client, UnavailableWebChatV2Client
+from app.chat_v2.ports import WebChatV2Client
+from app.chat_v2.routes import router as chat_v2_router
+from app.chat_v2.routes import upgrade_router as chat_v2_upgrade_router
 from app.config import Settings, load_settings
 from app.correlation import correlation_middleware
 from app.errors import (
@@ -26,6 +30,18 @@ def _build_agent_gateway(settings: Settings) -> AgentGateway:
     if settings.agent_ai_base_url is None:
         return UnavailableAgentGateway()
     return HttpAgentGateway(
+        base_url=settings.agent_ai_base_url,
+        route_key=settings.agent_route_key or "",
+        connect_timeout_seconds=settings.agent_ai_connect_timeout_seconds,
+        response_timeout_seconds=settings.agent_ai_response_timeout_seconds,
+        internal_token=settings.resolve_agent_internal_token(),
+    )
+
+
+def _build_web_chat_v2_client(settings: Settings) -> WebChatV2Client:
+    if settings.agent_ai_base_url is None:
+        return UnavailableWebChatV2Client()
+    return HttpWebChatV2Client(
         base_url=settings.agent_ai_base_url,
         route_key=settings.agent_route_key or "",
         connect_timeout_seconds=settings.agent_ai_connect_timeout_seconds,
@@ -56,6 +72,7 @@ def create_app(
     settings: Settings | None = None,
     agent_gateway: AgentGateway | None = None,
     rate_limiter: RateLimiter | None = None,
+    web_chat_v2_client: WebChatV2Client | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_settings()
 
@@ -65,7 +82,10 @@ def create_app(
         try:
             await application.state.agent_gateway.aclose()
         finally:
-            await application.state.rate_limiter.aclose()
+            try:
+                await application.state.web_chat_v2_client.aclose()
+            finally:
+                await application.state.rate_limiter.aclose()
 
     app = FastAPI(
         title=resolved_settings.app_name,
@@ -78,6 +98,9 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.rate_limiter = rate_limiter or _build_rate_limiter(resolved_settings)
     app.state.agent_gateway = agent_gateway or _build_agent_gateway(resolved_settings)
+    app.state.web_chat_v2_client = web_chat_v2_client or _build_web_chat_v2_client(
+        resolved_settings
+    )
     session_secret = resolved_settings.resolve_session_signing_secret() or secrets.token_urlsafe(48)
     app.state.session_manager = SignedSessionManager(session_secret)
 
@@ -87,7 +110,7 @@ def create_app(
         allow_origins=sorted(resolved_settings.allowed_origin_set),
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "X-Correlation-ID"],
+        allow_headers=["Content-Type", "Last-Event-ID", "X-Correlation-ID"],
         expose_headers=["X-Correlation-ID", "X-RateLimit-Remaining"],
     )
 
@@ -97,6 +120,8 @@ def create_app(
 
     app.include_router(health_router)
     app.include_router(chat_router)
+    app.include_router(chat_v2_upgrade_router)
+    app.include_router(chat_v2_router)
     return app
 
 

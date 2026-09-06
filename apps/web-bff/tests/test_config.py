@@ -50,6 +50,22 @@ def test_chat_privacy_version_uses_current_notice() -> None:
     assert settings.chat_privacy_version == "saltacode-chat-privacy-2026-08-28"
 
 
+def test_v2_cookie_has_distinct_server_owned_name() -> None:
+    settings = Settings(app_env="test")
+
+    assert settings.session_cookie_v2_name == "saltacode_chat_session_v2"
+    assert settings.session_cookie_v2_name != settings.session_cookie_name
+
+
+def test_v2_cookie_must_not_reuse_legacy_name() -> None:
+    with pytest.raises(ValidationError, match="cookie names must differ"):
+        Settings(
+            app_env="test",
+            session_cookie_name="saltacode_chat",
+            session_cookie_v2_name="saltacode_chat",
+        )
+
+
 @pytest.mark.parametrize("value", ["Privacy Version 1", "a" * 81])
 def test_chat_privacy_version_rejects_unsafe_values(value: str) -> None:
     with pytest.raises(ValidationError):

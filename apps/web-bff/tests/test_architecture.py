@@ -19,15 +19,22 @@ def test_delivery_modules_depend_on_ports_not_concrete_adapters() -> None:
     delivery_modules = [
         APPLICATION_ROOT / "dependencies.py",
         *sorted((APPLICATION_ROOT / "routes").glob("*.py")),
+        APPLICATION_ROOT / "chat_v2" / "routes.py",
     ]
 
     for path in delivery_modules:
         imports = imported_modules(path)
         assert "app.gateway" not in imports, path
         assert "app.rate_limit" not in imports, path
+        assert "app.chat_v2.client" not in imports, path
 
 
 def test_ports_do_not_depend_on_framework_or_infrastructure_packages() -> None:
-    imports = imported_modules(APPLICATION_ROOT / "ports.py")
+    port_modules = [
+        APPLICATION_ROOT / "ports.py",
+        APPLICATION_ROOT / "chat_v2" / "ports.py",
+    ]
 
-    assert not imports.intersection({"fastapi", "httpx2", "redis", "redis.asyncio"})
+    for path in port_modules:
+        imports = imported_modules(path)
+        assert not imports.intersection({"fastapi", "httpx2", "redis", "redis.asyncio"}), path
