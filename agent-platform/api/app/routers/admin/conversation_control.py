@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
@@ -113,6 +113,11 @@ async def create_operator_message(
     conversation_id: uuid.UUID,
     data: OperatorMessageRequest,
     agent_id: uuid.UUID,
+    idempotency_key: str = Header(
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=220,
+    ),
     admin: AdminUser = Depends(
         require_permission(AdminPermission.CONVERSATIONS_MANAGE)
     ),
@@ -122,6 +127,7 @@ async def create_operator_message(
         (
             conversation,
             message,
+            outbound,
         ) = await conversation_control_service.record_operator_message(
             db,
             conversation_id=conversation_id,
@@ -129,12 +135,13 @@ async def create_operator_message(
             actor_admin_id=admin.id,
             content=data.content,
             expected_version=data.expected_version,
+            idempotency_key=idempotency_key,
         )
     except ConversationControlError as exc:
         _raise_http_error(exc)
     return OperatorMessageOut(
         message_id=message.id,
-        delivery_status=message.status,
+        delivery_status=outbound.message.status,
         control=ConversationControlSnapshotOut.from_model(conversation),
     )
 

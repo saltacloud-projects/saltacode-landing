@@ -21,7 +21,7 @@ from app.models.platform import (
 )
 from app.schemas.conversation_control import ConversationControlMode
 from app.schemas.executions import InternalExecutionRequest, TranscriptConsent
-from app.services.agent_loop import AgentFile, run_agent_loop
+from app.services.agent_loop import run_agent_loop
 from app.services.chat_application import AgentNotReady, ChatApplicationService
 from app.services.conversation_control import (
     AutomationBlockedError,
@@ -355,64 +355,113 @@ async def test_web_discards_automatic_output_when_takeover_occurs_during_loop(
 
 
 @pytest.mark.asyncio
-async def test_whatsapp_does_not_send_text_after_control_change(monkeypatch):
-    guard = AsyncMock(side_effect=ControlVersionConflictError(expected=1, actual=2))
-    send = AsyncMock()
+async def test_whatsapp_human_control_persists_inbound_without_automation(
+    monkeypatch,
+):
+    from app.services import pipeline as module
+
+    class FakeDb:
+        commits = 0
+        rollbacks = 0
+
+        async def commit(self):
+            self.commits += 1
+
+        async def rollback(self):
+            self.rollbacks += 1
+
+    class FakeSession:
+        db = FakeDb()
+
+        async def __aenter__(self):
+            return self.db
+
+        async def __aexit__(self, *_args):
+            return False
+
+    profile = _profile()
+    route_id = uuid4()
+    conversation = SimpleNamespace(id=uuid4(), control_version=5)
+    runtime = SimpleNamespace(
+        profile=profile,
+        config=SimpleNamespace(
+            history_message_limit=20,
+            history_cache_ttl_seconds=0,
+        ),
+    )
+    guard = AsyncMock(side_effect=AutomationBlockedError("human control"))
+    inbound = AsyncMock()
+    loop = AsyncMock()
+    exchange = AsyncMock()
+    notification = AsyncMock()
+
+    monkeypatch.setattr(module, "AsyncSessionLocal", FakeSession)
+    monkeypatch.setattr(module.whatsapp_service, "mark_as_read", AsyncMock())
+    monkeypatch.setattr(module.whatsapp_service, "show_typing", AsyncMock())
     monkeypatch.setattr(
-        "app.services.pipeline.whatsapp_service.send_text_message",
-        send,
-    )
-
-    with pytest.raises(ControlVersionConflictError):
-        await PipelineService()._send_required_text(
-            phone="549test",
-            text="stale response",
-            request_id="whatsapp-text-guard",
-            connection=None,
-            require_accepted=True,
-            automation_guard=guard,
-        )
-
-    send.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_whatsapp_does_not_send_uploaded_file_after_control_change(monkeypatch):
-    guard = AsyncMock(
-        side_effect=[None, ControlVersionConflictError(expected=3, actual=4)]
-    )
-    upload = AsyncMock(return_value="media-id")
-    send_image = AsyncMock()
-    send_document = AsyncMock()
-    monkeypatch.setattr(
-        "app.services.pipeline.whatsapp_service.upload_media",
-        upload,
+        module.chat_application_service,
+        "load_whatsapp_context",
+        AsyncMock(return_value=([], None, conversation)),
     )
     monkeypatch.setattr(
-        "app.services.pipeline.whatsapp_service.send_image_message",
-        send_image,
+        module.governance_service,
+        "check_access",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                allowed=True,
+                user={"user_id": str(uuid4()), "name": "Lead"},
+            )
+        ),
     )
     monkeypatch.setattr(
-        "app.services.pipeline.whatsapp_service.send_document_message",
-        send_document,
+        module.chat_application_service,
+        "record_whatsapp_inbound",
+        inbound,
+    )
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "record_whatsapp_exchange",
+        exchange,
+    )
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "record_whatsapp_notification",
+        notification,
+    )
+    monkeypatch.setattr(module, "run_agent_loop", loop)
+    service = PipelineService()
+    monkeypatch.setattr(service, "_build_automation_guard", lambda **_kwargs: guard)
+
+    await service._process_locked(
+        phone="5493870000000",
+        content="I need a person.",
+        message_id="wamid.human",
+        input_type="text",
+        audio_media_id=None,
+        interactive_id=None,
+        quoted_id=None,
+        redis=None,
+        request_id="inbound-human-control",
+        start=0.0,
+        resolved_runtime=runtime,
+        whatsapp_connection=SimpleNamespace(),
+        route_key="whatsapp-human",
+        channel_route_id=route_id,
+        propagate_errors=True,
+        notify_on_error=True,
     )
 
-    with pytest.raises(ControlVersionConflictError):
-        await PipelineService()._deliver_agent_file(
-            agent_file=AgentFile(
-                content=b"image",
-                name="result.png",
-                mime="image/png",
-            ),
-            phone="549test",
-            request_id="whatsapp-file-guard",
-            connection=None,
-            automation_guard=guard,
-        )
-
-    upload.assert_awaited_once()
-    send_image.assert_not_awaited()
-    send_document.assert_not_awaited()
+    inbound.assert_awaited_once_with(
+        FakeSession.db,
+        conversation=conversation,
+        request_id="inbound-human-control",
+        content="I need a person.",
+    )
+    assert FakeSession.db.commits == 2
+    loop.assert_not_awaited()
+    exchange.assert_not_awaited()
+    notification.assert_not_awaited()
+    module.whatsapp_service.show_typing.assert_not_awaited()
 
 
 @pytest.mark.integration

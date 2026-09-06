@@ -1,5 +1,6 @@
 """Focused contracts for the durable WhatsApp inbox."""
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -14,7 +15,6 @@ from app.services.agent_runtime import AgentRuntimeUnavailable
 from app.services.pipeline import (
     PipelineFinalizationFailed,
     PipelineService,
-    WhatsAppDeliveryFailed,
 )
 from app.services.whatsapp_inbox import minimal_inbound_payload, whatsapp_inbox_worker
 
@@ -130,32 +130,51 @@ def test_worker_rejects_route_rebound_to_another_authenticated_connection():
         whatsapp_inbox_worker._assert_route_ownership(job, stored_route, rebound)
 
 
+def test_pipeline_has_no_direct_outbound_provider_calls():
+    source = inspect.getsource(PipelineService)
+
+    for method in (
+        "send_text_message",
+        "send_document_message",
+        "send_image_message",
+        "upload_media",
+        "upload_media_path",
+    ):
+        assert f".{method}(" not in source
+
+
 @pytest.mark.asyncio
-async def test_durable_pipeline_propagates_meta_send_failure(monkeypatch):
+async def test_legacy_pipeline_without_persisted_route_fails_closed(monkeypatch):
     from app.services import pipeline as module
 
-    send = AsyncMock(return_value=None)
-    monkeypatch.setattr(module.whatsapp_service, "send_text_message", send)
-    service = PipelineService()
-
-    with pytest.raises(WhatsAppDeliveryFailed):
-        await service._send_required_text(
-            phone="5493870000000",
-            text="hello",
-            request_id=str(uuid4()),
-            connection=SimpleNamespace(),
-            require_accepted=True,
-        )
-    assert (
-        await service._send_required_text(
-            phone="5493870000000",
-            text="hello",
-            request_id=str(uuid4()),
-            connection=None,
-            require_accepted=False,
-        )
-        is None
+    provider_calls = [
+        AsyncMock(),
+        AsyncMock(),
+        AsyncMock(),
+    ]
+    monkeypatch.setattr(
+        module.whatsapp_service,
+        "send_text_message",
+        provider_calls[0],
     )
+    monkeypatch.setattr(
+        module.whatsapp_service,
+        "send_document_message",
+        provider_calls[1],
+    )
+    monkeypatch.setattr(
+        module.whatsapp_service,
+        "send_image_message",
+        provider_calls[2],
+    )
+
+    await PipelineService().process_whatsapp_message(
+        phone="5493870000000",
+        content="hello",
+        message_id="wamid.legacy",
+    )
+    for provider_call in provider_calls:
+        provider_call.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -171,7 +190,13 @@ async def test_durable_pipeline_propagates_final_commit_failure(monkeypatch):
 
     service = PipelineService()
     monkeypatch.setattr(service, "_log_audit", AsyncMock())
+    persist = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.pipeline.chat_application_service.record_whatsapp_notification",
+        persist,
+    )
     db = FailingDb()
+    runtime = SimpleNamespace(profile=SimpleNamespace(id=uuid4()))
 
     with pytest.raises(PipelineFinalizationFailed):
         await service._finalize_pipeline(
@@ -188,9 +213,14 @@ async def test_durable_pipeline_propagates_final_commit_failure(monkeypatch):
             tool_used=None,
             status="success",
             persist_conversation=False,
+            resolved_runtime=runtime,
+            route_key="test-route",
+            channel_route_id=uuid4(),
+            control_version=0,
             raise_on_error=True,
         )
     assert db.rolled_back is True
+    persist.assert_awaited_once()
 
 
 @pytest.mark.asyncio

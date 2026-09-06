@@ -37,3 +37,9 @@ def test_control_endpoints_require_agent_scope_and_authentication():
     ]["post"]
     assert transition["security"] == [{"HTTPBearer": []}]
     assert operator_message["security"] == [{"HTTPBearer": []}]
+    idempotency_parameter = next(
+        item
+        for item in operator_message["parameters"]
+        if item["name"] == "Idempotency-Key" and item["in"] == "header"
+    )
+    assert idempotency_parameter["required"] is True

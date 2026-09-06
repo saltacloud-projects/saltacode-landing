@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -39,6 +40,9 @@ class _SequenceDb:
     async def execute(self, statement):
         self.statements.append(statement)
         return self.results.pop(0)
+
+    async def get(self, _model, _identifier):
+        return None
 
     def add(self, model):
         self.added.append(model)
@@ -183,13 +187,16 @@ async def test_operator_message_requires_current_owner():
             actor_admin_id=uuid4(),
             content="I can help with that.",
             expected_version=2,
+            idempotency_key="manual-reply-1",
         )
 
     assert db.added == []
 
 
 @pytest.mark.asyncio
-async def test_operator_message_is_persisted_without_claiming_external_delivery():
+async def test_operator_message_and_outbound_command_are_persisted_together(
+    monkeypatch,
+):
     agent_id = uuid4()
     operator_id = uuid4()
     conversation = _conversation(
@@ -200,22 +207,31 @@ async def test_operator_message_is_persisted_without_claiming_external_delivery(
     )
     db = _SequenceDb(_Result(conversation))
     service = ConversationControlService()
+    queued = SimpleNamespace(message=SimpleNamespace(status="queued"), duplicate=False)
+    enqueue = AsyncMock(return_value=queued)
+    monkeypatch.setattr(
+        "app.services.conversation_control.outbound_delivery_service.enqueue",
+        enqueue,
+    )
 
-    result, message = await service.record_operator_message(
+    result, message, outbound = await service.record_operator_message(
         db,
         conversation_id=conversation.id,
         agent_id=agent_id,
         actor_admin_id=operator_id,
         content="I can help with that.",
         expected_version=2,
+        idempotency_key="manual-reply-1",
     )
 
     assert result.control_version == 2
     assert isinstance(message, ChatMessage)
-    assert message.status == "pending_delivery"
+    assert message.status == "completed"
     assert message.metadata_json["origin"] == "operator"
     assert message.metadata_json["control_version"] == 2
-    assert message.metadata_json["delivery"] == "not_attempted"
+    assert outbound is queued
+    assert enqueue.await_args.kwargs["chat_message_id"] == message.id
+    assert enqueue.await_args.kwargs["idempotency_key"] == "operator:manual-reply-1"
     assert not any(isinstance(item, ConversationControlEvent) for item in db.added)
     assert db.flush_count == 1
 

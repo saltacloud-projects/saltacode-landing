@@ -7,7 +7,7 @@ Orquesta el procesamiento de un mensaje de WhatsApp con filosofía de AGENTE:
   4. Audio       — transcribir notas de voz (Whisper)
   5. Tools       — cargar herramientas disponibles (incluye DB para superusuarios)
   6. Agent Loop  — cerebro único: conversa, razona y usa herramientas/bases
-  7. Response    — enviar respuesta + archivos por WhatsApp
+  7. Response    — persistir respuesta + comandos outbound durables
   8. Memoria/Audit — persistir conversación y auditar
 
 No hay clasificador, menús, ni ramas de intent enlatadas: el agente maneja
@@ -24,16 +24,16 @@ from sqlalchemy import select
 from app.core.concurrency import pipeline_semaphore
 from app.core.database import AsyncSessionLocal
 from app.core.dedup_lock import conversation_lock
+from app.models.outbound import OutboundMessage
+from app.models.platform import ChatMessage
 from app.models.tool_config import ToolConfig
 from app.schemas.audit import AuditLogCreate
 from app.schemas.common import ChannelEnum, InputTypeEnum, StatusEnum
 from app.schemas.governance import AccessCheckRequest
-from app.services.agent_loop import AgentFile, run_agent_loop
-from app.services.agent_profile import agent_profile_service
+from app.services.agent_loop import run_agent_loop
 from app.services.agent_runtime import ResolvedAgentRuntime
 from app.services.audit import audit_service
-from app.services.configuration import configuration_service
-from app.services.conversation import conversation_service
+from app.services.chat_application import chat_application_service
 from app.services.conversation_control import (
     AutomationBlockedError,
     ControlVersionConflictError,
@@ -46,10 +46,6 @@ from app.services.whatsapp import WhatsAppConnectionContext, whatsapp_service
 
 logger = logging.getLogger(__name__)
 AutomationGuard = Callable[[], Awaitable[None]]
-
-
-class WhatsAppDeliveryFailed(RuntimeError):
-    """Meta did not accept a required outbound WhatsApp message."""
 
 
 class PipelineFinalizationFailed(RuntimeError):
@@ -92,7 +88,12 @@ class PipelineService:
         ):
             raise ValueError("resolved WhatsApp runtime requires route context")
         if resolved_runtime is None:
-            logger.warning("legacy_whatsapp_pipeline_without_resolved_runtime")
+            logger.error("legacy_whatsapp_pipeline_disabled_without_route")
+            if propagate_errors:
+                raise PipelineFinalizationFailed(
+                    "WhatsApp processing requires a persisted route"
+                )
+            return
 
         logger.info(
             "pipeline_started",
@@ -182,86 +183,37 @@ class PipelineService:
                 notify_on_error=notify_on_error,
             )
 
-    async def _send_required_text(
-        self,
+    @staticmethod
+    async def _resolve_quoted_text(
+        db,
         *,
-        phone: str,
-        text: str,
-        request_id: str,
-        connection: WhatsAppConnectionContext | None,
-        require_accepted: bool,
-        automation_guard: AutomationGuard | None = None,
+        quoted_id: str,
+        agent_id: uuid.UUID,
+        channel_route_id: uuid.UUID,
+        route_key: str,
+        redis,
     ) -> str | None:
-        # This check narrows, but cannot eliminate, the race between a control
-        # transition and Meta accepting the direct request. A transactional outbox
-        # is required to fence that external side effect atomically.
-        if automation_guard is not None:
-            await automation_guard()
-        message_id = await whatsapp_service.send_text_message(
-            phone=phone,
-            text=text,
-            request_id=request_id,
-            connection=connection,
-        )
-        if require_accepted and not message_id:
-            raise WhatsAppDeliveryFailed("Meta did not accept the WhatsApp message")
-        return message_id
-
-    async def _deliver_agent_file(
-        self,
-        *,
-        agent_file: AgentFile,
-        phone: str,
-        request_id: str,
-        connection: WhatsAppConnectionContext | None,
-        automation_guard: AutomationGuard | None,
-    ) -> bool:
-        """Upload and send one artifact only while the captured epoch is active."""
-        if automation_guard is not None:
-            await automation_guard()
-        if agent_file.storage_key:
-            from app.services.rag.storage import document_storage
-
-            media_id = await whatsapp_service.upload_media_path(
-                file_path=document_storage.path_for(agent_file.storage_key),
-                filename=agent_file.name,
-                mime_type=agent_file.mime,
-                request_id=request_id,
-                connection=connection,
-            )
-        elif agent_file.content is not None:
-            media_id = await whatsapp_service.upload_media(
-                file_bytes=agent_file.content,
-                filename=agent_file.name,
-                mime_type=agent_file.mime,
-                request_id=request_id,
-                connection=connection,
-            )
-        else:
-            return False
-        if not media_id:
-            return False
-
-        if automation_guard is not None:
-            await automation_guard()
-        if agent_file.mime.startswith("image/"):
-            return bool(
-                await whatsapp_service.send_image_message(
-                    phone=phone,
-                    media_id=media_id,
-                    request_id=request_id,
-                    connection=connection,
+        text = (
+            await db.execute(
+                select(ChatMessage.content)
+                .join(
+                    OutboundMessage,
+                    OutboundMessage.chat_message_id == ChatMessage.id,
+                )
+                .where(
+                    OutboundMessage.agent_id == agent_id,
+                    OutboundMessage.channel_route_id == channel_route_id,
+                    OutboundMessage.provider_message_id == quoted_id,
                 )
             )
-        return bool(
-            await whatsapp_service.send_document_message(
-                phone=phone,
-                media_id=media_id,
-                filename=agent_file.name,
-                request_id=request_id,
-                connection=connection,
-            )
-        )
+        ).scalar_one_or_none()
+        if text is not None or redis is None:
+            return text
+        try:
+            cached = await redis.get(f"wamsg:{route_key}:{quoted_id}")
+        except Exception:
+            return None
+        return cached if isinstance(cached, str) else None
 
     @staticmethod
     def _build_automation_guard(
@@ -310,7 +262,11 @@ class PipelineService:
         permanece es el de SEGURIDAD (autorización del número y permisos de
         herramientas), que NO se relaja.
         """
-        profile = resolved_runtime.profile if resolved_runtime is not None else None
+        if resolved_runtime is None:
+            raise PipelineFinalizationFailed(
+                "WhatsApp processing requires a persisted route"
+            )
+        profile = resolved_runtime.profile
         automation_guard: AutomationGuard | None = None
         control_version: int | None = None
         try:
@@ -321,12 +277,31 @@ class PipelineService:
                     request_id=request_id,
                     connection=whatsapp_connection,
                 )
-                await whatsapp_service.show_typing(
-                    message_id, connection=whatsapp_connection
-                )
 
             async with AsyncSessionLocal() as db:
                 try:
+                    (
+                        openai_history,
+                        conversation_summary,
+                        controlled_conversation,
+                    ) = await chat_application_service.load_whatsapp_context(
+                        db,
+                        agent_id=profile.id,
+                        external_subject=phone,
+                        limit=resolved_runtime.config.history_message_limit,
+                        route_key=route_key,
+                        channel_route_id=channel_route_id,
+                        history_cache_ttl_seconds=resolved_runtime.config.history_cache_ttl_seconds,
+                        redis=redis,
+                    )
+                    control_version = controlled_conversation.control_version
+                    automation_guard = self._build_automation_guard(
+                        conversation_id=controlled_conversation.id,
+                        agent_id=profile.id,
+                        control_version=control_version,
+                    )
+                    await db.commit()
+
                     # -----------------------------------------------------------
                     # 1. Governance — verificar autorización
                     # -----------------------------------------------------------
@@ -336,21 +311,13 @@ class PipelineService:
                             request_id=request_id,
                             phone_number=phone,
                             channel="whatsapp",
-                            agent_id=profile.id if profile is not None else None,
+                            agent_id=profile.id,
                         ),
                     )
 
                     if not access.allowed:
-                        # Cargar perfil solo para el mensaje de rechazo
-                        if profile is None:
-                            profile = await agent_profile_service.get_active_profile(
-                                db, redis
-                            )
-                        rejection_msg = (
-                            profile.unauthorized_message
-                            if profile
-                            else "Tu número no está autorizado para usar este asistente."
-                        )
+                        await automation_guard()
+                        rejection_msg = profile.unauthorized_message
                         logger.info(
                             "pipeline_access_denied",
                             extra={
@@ -358,14 +325,6 @@ class PipelineService:
                                 "phone": phone,
                                 "reason": access.reason,
                             },
-                        )
-                        await self._send_required_text(
-                            phone=phone,
-                            text=rejection_msg,
-                            request_id=request_id,
-                            connection=whatsapp_connection,
-                            require_accepted=propagate_errors,
-                            automation_guard=automation_guard,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -386,6 +345,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            control_version=control_version,
                             raise_on_error=propagate_errors,
                         )
                         return
@@ -398,25 +358,8 @@ class PipelineService:
                             "pipeline_access_check_inconsistent_failing_closed",
                             extra={"request_id": request_id, "phone": phone},
                         )
-                        if profile is None:
-                            profile = await agent_profile_service.get_active_profile(
-                                db, redis
-                            )
-                        msg_err = (
-                            profile.error_message
-                            if profile
-                            else (
-                                "No pudimos verificar tu acceso en este momento. Intentá de nuevo en unos minutos."
-                            )
-                        )
-                        await self._send_required_text(
-                            phone=phone,
-                            text=msg_err,
-                            request_id=request_id,
-                            connection=whatsapp_connection,
-                            require_accepted=propagate_errors,
-                            automation_guard=automation_guard,
-                        )
+                        await automation_guard()
+                        msg_err = profile.error_message
                         await self._finalize_pipeline(
                             db=db,
                             redis=redis,
@@ -436,6 +379,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            control_version=control_version,
                             raise_on_error=propagate_errors,
                         )
                         return
@@ -447,113 +391,22 @@ class PipelineService:
 
                     user_id = _uuid.UUID(access.user["user_id"])
 
-                    # -----------------------------------------------------------
-                    # 1b. Configuración — verificar que el agente está configurado
-                    # -----------------------------------------------------------
-                    config_status = (
-                        await configuration_service.check(db)
-                        if resolved_runtime is None
-                        else None
+                    # Make the inbound visible to a human operator before any
+                    # automation guard can stop this execution. A retry reuses
+                    # the same provider-scoped request id.
+                    await chat_application_service.record_whatsapp_inbound(
+                        db,
+                        conversation=controlled_conversation,
+                        request_id=request_id,
+                        content=content,
                     )
-                    if config_status is not None and not config_status.is_ready:
-                        errors = [
-                            i.message
-                            for i in config_status.issues
-                            if i.level == "error"
-                        ]
-                        logger.warning(
-                            "pipeline_configuration_error",
-                            extra={
-                                "request_id": request_id,
-                                "phone": phone,
-                                "issues": errors,
-                            },
-                        )
-                        config_msg = (
-                            "⚠️ El asistente no está completamente configurado. "
-                            "Un administrador debe completar la configuración desde el panel."
-                        )
-                        await self._send_required_text(
-                            phone=phone,
-                            text=config_msg,
-                            request_id=request_id,
-                            connection=whatsapp_connection,
-                            require_accepted=propagate_errors,
-                            automation_guard=automation_guard,
-                        )
-                        await self._finalize_pipeline(
-                            db=db,
-                            redis=redis,
-                            phone=phone,
-                            content=content,
-                            response_text=config_msg,
-                            request_id=request_id,
-                            input_type=input_type,
-                            start=start,
-                            intent="configuration_error",
-                            source_system="internal",
-                            tool_used=None,
-                            status="error",
-                            persist_conversation=False,
-                            error_code="configuration_error",
-                            error_message="; ".join(errors),
-                            resolved_runtime=resolved_runtime,
-                            route_key=route_key,
-                            channel_route_id=channel_route_id,
-                            raise_on_error=propagate_errors,
-                        )
-                        return
-
-                    # -----------------------------------------------------------
-                    # 2. AgentProfile — cargar identidad y system prompt del agente configurado
-                    # -----------------------------------------------------------
-                    if profile is None:
-                        profile = await agent_profile_service.get_active_profile(
-                            db, redis
-                        )
+                    await db.commit()
+                    await automation_guard()
 
                     # -----------------------------------------------------------
                     # 2b. Memoria — ventana activa + resumen rodante de largo plazo
                     # (continuidad más allá de la ventana de los últimos mensajes).
                     # -----------------------------------------------------------
-                    if resolved_runtime is not None:
-                        from app.services.chat_application import (
-                            chat_application_service,
-                        )
-
-                        (
-                            openai_history,
-                            conversation_summary,
-                            controlled_conversation,
-                        ) = await chat_application_service.load_whatsapp_context(
-                            db,
-                            agent_id=profile.id,
-                            external_subject=phone,
-                            limit=resolved_runtime.config.history_message_limit,
-                            route_key=route_key,
-                            channel_route_id=channel_route_id,
-                            history_cache_ttl_seconds=resolved_runtime.config.history_cache_ttl_seconds,
-                            redis=redis,
-                        )
-                        control_version = controlled_conversation.control_version
-                        automation_guard = self._build_automation_guard(
-                            conversation_id=controlled_conversation.id,
-                            agent_id=profile.id,
-                            control_version=control_version,
-                        )
-                        await db.commit()
-                        await automation_guard()
-                    else:
-                        conv_window = await conversation_service.load_window(
-                            phone, db, redis
-                        )
-                        openai_history = conversation_service.build_openai_messages(
-                            conv_window
-                        )
-                        conversation_summary = await conversation_service.get_summary(
-                            db, phone
-                        )
-
                     # -----------------------------------------------------------
                     # 2c. Transcripción de audio
                     # Si es una nota de voz, descargar de Meta y transcribir
@@ -575,14 +428,6 @@ class PipelineService:
                                 "No pude acceder al audio que enviaste. "
                                 "¿Podés escribir tu consulta?"
                             )
-                            await self._send_required_text(
-                                phone=phone,
-                                text=fallback,
-                                request_id=request_id,
-                                connection=whatsapp_connection,
-                                require_accepted=propagate_errors,
-                                automation_guard=automation_guard,
-                            )
                             await self._finalize_pipeline(
                                 db=db,
                                 redis=redis,
@@ -601,6 +446,7 @@ class PipelineService:
                                 resolved_runtime=resolved_runtime,
                                 route_key=route_key,
                                 channel_route_id=channel_route_id,
+                                control_version=control_version,
                                 raise_on_error=propagate_errors,
                             )
                             return
@@ -627,14 +473,6 @@ class PipelineService:
                                 "No pude entender el audio que enviaste. "
                                 "¿Podés repetirlo o escribir tu consulta?"
                             )
-                            await self._send_required_text(
-                                phone=phone,
-                                text=fallback,
-                                request_id=request_id,
-                                connection=whatsapp_connection,
-                                require_accepted=propagate_errors,
-                                automation_guard=automation_guard,
-                            )
                             await self._finalize_pipeline(
                                 db=db,
                                 redis=redis,
@@ -653,6 +491,7 @@ class PipelineService:
                                 resolved_runtime=resolved_runtime,
                                 route_key=route_key,
                                 channel_route_id=channel_route_id,
+                                control_version=control_version,
                                 raise_on_error=propagate_errors,
                             )
                             return
@@ -687,14 +526,6 @@ class PipelineService:
                                 "input_type": input_type,
                             },
                         )
-                        await self._send_required_text(
-                            phone=phone,
-                            text=unsupported_msg,
-                            request_id=request_id,
-                            connection=whatsapp_connection,
-                            require_accepted=propagate_errors,
-                            automation_guard=automation_guard,
-                        )
                         await self._finalize_pipeline(
                             db=db,
                             redis=redis,
@@ -712,6 +543,7 @@ class PipelineService:
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
+                            control_version=control_version,
                             raise_on_error=propagate_errors,
                         )
                         return
@@ -730,7 +562,7 @@ class PipelineService:
                             extra={
                                 "request_id": request_id,
                                 "phone": phone,
-                                "error": str(e),
+                                "error_type": type(e).__name__,
                             },
                         )
 
@@ -742,7 +574,7 @@ class PipelineService:
                         request_id=request_id,
                         channel="whatsapp",
                         principal_id=str(user_id) if user_id else None,
-                        agent_id=str(profile.id) if profile is not None else None,
+                        agent_id=str(profile.id),
                         external_subject=phone,
                         scopes={"tools:read", "tools:write"},
                     )
@@ -793,14 +625,15 @@ class PipelineService:
                     # citando un mensaje nuestro, resolvemos su texto (guardado por
                     # wamid) para que el agente sepa a qué se refiere
                     # ("¿cómo obtuviste este dato?").
-                    if quoted_id and redis is not None:
-                        try:
-                            quote_scope = route_key or "legacy"
-                            quoted_text = await redis.get(
-                                f"wamsg:{quote_scope}:{quoted_id}"
-                            )
-                        except Exception:
-                            quoted_text = None
+                    if quoted_id:
+                        quoted_text = await self._resolve_quoted_text(
+                            db,
+                            quoted_id=quoted_id,
+                            agent_id=profile.id,
+                            channel_route_id=channel_route_id,
+                            route_key=route_key,
+                            redis=redis,
+                        )
                         if quoted_text:
                             content = (
                                 f"[El usuario respondió citando tu mensaje anterior: "
@@ -832,93 +665,13 @@ class PipelineService:
 
                     response_text = agent_result.response_text
 
-                    # -----------------------------------------------------------
-                    # 5. Archivos producidos durante el loop (imágenes/Excel)
-                    # -----------------------------------------------------------
-                    for agent_file in agent_result.files:
-                        try:
-                            delivered = await self._deliver_agent_file(
-                                agent_file=agent_file,
-                                phone=phone,
-                                request_id=request_id,
-                                connection=whatsapp_connection,
-                                automation_guard=automation_guard,
-                            )
-                            if not delivered and propagate_errors:
-                                raise WhatsAppDeliveryFailed(
-                                    "Meta did not accept the WhatsApp attachment"
-                                )
-                            if delivered:
-                                logger.info(
-                                    "pipeline_file_sent",
-                                    extra={
-                                        "request_id": request_id,
-                                        "file_name": agent_file.name,
-                                        "phone": phone,
-                                    },
-                                )
-                        except (
-                            AutomationBlockedError,
-                            ControlVersionConflictError,
-                        ):
-                            raise
-                        except Exception as file_exc:
-                            logger.error(
-                                "pipeline_file_send_error",
-                                extra={
-                                    "request_id": request_id,
-                                    "error": str(file_exc),
-                                },
-                            )
-                            if propagate_errors:
-                                raise
-
-                    # -----------------------------------------------------------
-                    # 6. Enviar la respuesta del agente (sin botones de menú)
-                    # -----------------------------------------------------------
-                    sent_wamid = await self._send_required_text(
-                        phone=phone,
-                        text=response_text,
-                        request_id=request_id,
-                        connection=whatsapp_connection,
-                        require_accepted=propagate_errors,
-                        automation_guard=automation_guard,
-                    )
-                    # Guardar el texto enviado por wamid para poder resolver
-                    # futuras respuestas citadas del usuario (ver quoted_id).
-                    if sent_wamid and redis is not None:
-                        try:
-                            await redis.setex(
-                                f"wamsg:{route_key or 'legacy'}:{sent_wamid}",
-                                86400,
-                                response_text[:1000],
-                            )
-                        except Exception as e:
-                            logger.debug(
-                                "wamsg_store_failed",
-                                extra={"request_id": request_id, "error": str(e)},
-                            )
-
-                    # -----------------------------------------------------------
-                    # 7. Memoria — persistir la conversación
-                    # -----------------------------------------------------------
+                    # Persist the neutral exchange and every outbound command in
+                    # one transaction. Provider I/O belongs only to the worker.
                     tools_str = (
                         ",".join(agent_result.tools_used)
                         if agent_result.tools_used
                         else None
                     )
-                    if resolved_runtime is None:
-                        await conversation_service.save_messages(
-                            phone,
-                            content,
-                            response_text,
-                            db,
-                            redis,
-                            intent="agent",
-                            tool_used=tools_str,
-                        )
-                    from app.services.chat_application import chat_application_service
-
                     await chat_application_service.record_whatsapp_exchange(
                         db,
                         profile=profile,
@@ -931,6 +684,7 @@ class PipelineService:
                         route_key=route_key,
                         channel_route_id=channel_route_id,
                         control_version=control_version,
+                        outbound_files=list(agent_result.files),
                         runtime=resolved_runtime,
                         redis=redis,
                     )
@@ -940,10 +694,8 @@ class PipelineService:
                     # -----------------------------------------------------------
                     await self._log_audit(
                         db,
-                        agent_id=profile.id if resolved_runtime is not None else None,
-                        channel_route_id=channel_route_id
-                        if resolved_runtime is not None
-                        else None,
+                        agent_id=profile.id,
+                        channel_route_id=channel_route_id,
                         request_id=request_id,
                         phone=phone,
                         input_type=input_type,
@@ -960,12 +712,6 @@ class PipelineService:
                     )
 
                     await db.commit()
-
-                    # Memoria nivel 3: refrescar el resumen rodante si hay mensajes
-                    # que envejecieron fuera de la ventana. Best-effort y post-respuesta
-                    # (no agrega latencia perceptible); usa su propia sesión DB.
-                    if resolved_runtime is None:
-                        await conversation_service.maybe_update_summary(phone)
 
                     elapsed = int((time.monotonic() - start) * 1000)
                     logger.info(
@@ -1002,18 +748,13 @@ class PipelineService:
                 extra={
                     "request_id": request_id,
                     "phone": phone,
-                    "error": str(e),
+                    "error_type": type(e).__name__,
                     "duration_ms": elapsed,
                 },
                 exc_info=True,
             )
             if notify_on_error:
                 try:
-                    if profile is None:
-                        async with AsyncSessionLocal() as db_err:
-                            profile = await agent_profile_service.get_active_profile(
-                                db_err, redis
-                            )
                     error_msg = (
                         profile.error_message
                         if profile
@@ -1021,14 +762,25 @@ class PipelineService:
                             "⚠️ Ocurrió un error procesando tu mensaje. Por favor intentá de nuevo más tarde."
                         )
                     )
-                    await self._send_required_text(
-                        phone=phone,
-                        text=error_msg,
-                        request_id=request_id,
-                        connection=whatsapp_connection,
-                        require_accepted=False,
-                        automation_guard=automation_guard,
-                    )
+                    if control_version is None:
+                        raise PipelineFinalizationFailed(
+                            "conversation control was not initialized"
+                        )
+                    if automation_guard is not None:
+                        await automation_guard()
+                    async with AsyncSessionLocal() as db_err:
+                        await chat_application_service.record_whatsapp_notification(
+                            db_err,
+                            profile=resolved_runtime.profile,
+                            request_id=request_id,
+                            purpose="pipeline-error",
+                            external_subject=phone,
+                            content=error_msg,
+                            route_key=route_key,
+                            channel_route_id=channel_route_id,
+                            control_version=control_version,
+                        )
+                        await db_err.commit()
                 except (AutomationBlockedError, ControlVersionConflictError):
                     logger.info(
                         "pipeline_error_notification_blocked",
@@ -1106,7 +858,7 @@ class PipelineService:
         except Exception as e:
             logger.error(
                 "pipeline_audit_error",
-                extra={"request_id": request_id, "error": str(e)},
+                extra={"request_id": request_id, "error_type": type(e).__name__},
             )
             if raise_on_error:
                 raise
@@ -1132,6 +884,7 @@ class PipelineService:
         resolved_runtime: ResolvedAgentRuntime | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
+        control_version: int | None = None,
         raise_on_error: bool = False,
     ) -> None:
         """
@@ -1139,64 +892,66 @@ class PipelineService:
 
         Para cualquier salida del pipeline (acceso denegado, audio fallido,
         tool no encontrada, timeout, out-of-domain, etc.) este helper:
-          1. Persiste el par (user_message, assistant_response) en conversation
-             (opcional, por defecto activo).
+          1. Persiste el mensaje visible y su comando outbound en la misma
+             transacción; opcionalmente conserva también el inbound.
           2. Registra el evento en audit_logs con todos los metadatos.
-          3. Hace commit de la sesión DB.
+          3. Hace commit antes de que el worker contacte al proveedor.
 
         Esto garantiza trazabilidad completa de qué sucedió con cada mensaje,
         incluso en ramas que antes salían sin guardar nada.
         """
         try:
-            if persist_conversation:
-                try:
-                    if resolved_runtime is not None:
-                        from app.services.chat_application import (
-                            chat_application_service,
-                        )
-
-                        await chat_application_service.record_whatsapp_exchange(
-                            db,
-                            profile=resolved_runtime.profile,
-                            request_id=request_id,
-                            external_subject=phone,
-                            user_content=content,
-                            assistant_content=response_text,
-                            tools_used=[tool_used] if tool_used else [],
-                            route_key=route_key,
-                            channel_route_id=channel_route_id,
-                            runtime=resolved_runtime,
-                            redis=redis,
-                        )
-                    else:
-                        await conversation_service.save_messages(
-                            phone,
-                            content,
-                            response_text,
-                            db,
-                            redis,
-                            intent=intent,
-                            tool_used=tool_used,
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "pipeline_finalize_conversation_save_failed",
-                        extra={
-                            "request_id": request_id,
-                            "phone": phone,
-                            "error": str(e),
-                        },
+            if (
+                resolved_runtime is None
+                or route_key is None
+                or channel_route_id is None
+                or control_version is None
+            ):
+                raise PipelineFinalizationFailed(
+                    "WhatsApp finalization requires a persisted route and control epoch"
+                )
+            try:
+                if persist_conversation:
+                    await chat_application_service.record_whatsapp_exchange(
+                        db,
+                        profile=resolved_runtime.profile,
+                        request_id=request_id,
+                        external_subject=phone,
+                        user_content=content,
+                        assistant_content=response_text,
+                        tools_used=[tool_used] if tool_used else [],
+                        route_key=route_key,
+                        channel_route_id=channel_route_id,
+                        control_version=control_version,
+                        runtime=resolved_runtime,
+                        redis=redis,
                     )
-                    if raise_on_error:
-                        raise
+                else:
+                    await chat_application_service.record_whatsapp_notification(
+                        db,
+                        profile=resolved_runtime.profile,
+                        request_id=request_id,
+                        purpose=intent,
+                        external_subject=phone,
+                        content=response_text,
+                        route_key=route_key,
+                        channel_route_id=channel_route_id,
+                        control_version=control_version,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "pipeline_finalize_conversation_save_failed",
+                    extra={
+                        "request_id": request_id,
+                        "phone": phone,
+                        "error_type": type(e).__name__,
+                    },
+                )
+                raise
             await self._log_audit(
                 db,
-                agent_id=resolved_runtime.profile.id
-                if resolved_runtime is not None
-                else None,
-                channel_route_id=channel_route_id
-                if resolved_runtime is not None
-                else None,
+                agent_id=resolved_runtime.profile.id,
+                channel_route_id=channel_route_id,
                 request_id=request_id,
                 phone=phone,
                 input_type=input_type,
@@ -1215,7 +970,11 @@ class PipelineService:
         except Exception as e:
             logger.error(
                 "pipeline_finalize_failed",
-                extra={"request_id": request_id, "phone": phone, "error": str(e)},
+                extra={
+                    "request_id": request_id,
+                    "phone": phone,
+                    "error_type": type(e).__name__,
+                },
                 exc_info=True,
             )
             try:

@@ -12,6 +12,13 @@ from app.models.admin_user import AdminUser
 from app.models.conversation_control import ConversationControlEvent
 from app.models.platform import ChatConversation, ChatMessage
 from app.schemas.conversation_control import ConversationControlMode
+from app.services.outbound_delivery import (
+    OutboundDeliveryError,
+    OutboundEnqueueResult,
+    OutboundKind,
+    OutboundSenderType,
+    outbound_delivery_service,
+)
 
 
 class ConversationControlError(Exception):
@@ -39,6 +46,10 @@ class InvalidControlTransitionError(ConversationControlError):
 
 class OperatorControlRequiredError(ConversationControlError):
     """A manual action was requested without ownership of the conversation."""
+
+
+class OperatorMessagePersistenceError(ConversationControlError):
+    """A manual response could not be persisted as one durable command."""
 
 
 class AutomationBlockedError(ConversationControlError):
@@ -194,7 +205,8 @@ class ConversationControlService:
         actor_admin_id: uuid.UUID,
         content: str,
         expected_version: int,
-    ) -> tuple[ChatConversation, ChatMessage]:
+        idempotency_key: str,
+    ) -> tuple[ChatConversation, ChatMessage, OutboundEnqueueResult]:
         conversation = await self._get_conversation(
             db,
             conversation_id=conversation_id,
@@ -210,27 +222,58 @@ class ConversationControlService:
                 "the authenticated operator does not control this conversation"
             )
 
-        # Manual messages belong to the current ownership epoch. Advancing it here
-        # would invalidate earlier messages that the future outbox has not sent yet.
-        message_id = uuid.uuid4()
-        message = ChatMessage(
-            id=message_id,
-            conversation_id=conversation.id,
-            client_message_id=f"operator:{message_id}",
-            role="assistant",
-            content=content,
-            status="pending_delivery",
-            tool_names=[],
-            metadata_json={
-                "origin": "operator",
-                "actor_admin_id": str(actor_admin_id),
-                "control_version": conversation.control_version,
-                "delivery": "not_attempted",
-            },
+        normalized_key = idempotency_key.strip()
+        if not normalized_key or len(normalized_key) > 220:
+            raise OperatorMessagePersistenceError(
+                "invalid operator message idempotency key"
+            )
+
+        # The stable message identifier makes an HTTP retry reference the same
+        # persisted message without preventing a deliberate repeat under a new key.
+        message_id = uuid.uuid5(
+            conversation.id,
+            f"operator:{actor_admin_id}:{normalized_key}",
         )
-        db.add(message)
-        await db.flush()
-        return conversation, message
+        message = await db.get(ChatMessage, message_id)
+        if message is None:
+            message = ChatMessage(
+                id=message_id,
+                conversation_id=conversation.id,
+                client_message_id=f"operator:{message_id}",
+                role="assistant",
+                content=content,
+                status="completed",
+                tool_names=[],
+                metadata_json={
+                    "origin": "operator",
+                    "actor_admin_id": str(actor_admin_id),
+                    "control_version": conversation.control_version,
+                },
+            )
+            db.add(message)
+            await db.flush()
+        elif message.content != content:
+            raise OperatorMessagePersistenceError(
+                "operator idempotency key belongs to another message"
+            )
+
+        try:
+            outbound = await outbound_delivery_service.enqueue(
+                db,
+                conversation_id=conversation.id,
+                agent_id=agent_id,
+                chat_message_id=message.id,
+                kind=OutboundKind.TEXT,
+                payload={"text": content},
+                sender_type=OutboundSenderType.OPERATOR,
+                sender_admin_id=actor_admin_id,
+                control_version=conversation.control_version,
+                idempotency_key=f"operator:{normalized_key}",
+                correlation_id=f"operator:{message.id}",
+            )
+        except OutboundDeliveryError as exc:
+            raise OperatorMessagePersistenceError(str(exc)) from exc
+        return conversation, message, outbound
 
     async def _get_conversation(
         self,

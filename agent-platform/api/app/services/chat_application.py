@@ -23,7 +23,7 @@ from app.models.platform import (
 from app.models.tool_config import ToolConfig
 from app.schemas.executions import InternalExecutionRequest
 from app.schemas.tools import ToolExecutionContext
-from app.services.agent_loop import run_agent_loop
+from app.services.agent_loop import AgentFile, run_agent_loop
 from app.services.agent_runtime import (
     AgentRuntimeUnavailable,
     ResolvedAgentRuntime,
@@ -35,6 +35,11 @@ from app.services.conversation_control import (
     conversation_control_service,
 )
 from app.services.conversation_memory import conversation_memory_service
+from app.services.outbound_delivery import (
+    OutboundKind,
+    OutboundSenderType,
+    outbound_delivery_service,
+)
 from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
 
@@ -60,6 +65,40 @@ class ExecutionOutcome:
 
 
 class ChatApplicationService:
+    async def record_whatsapp_inbound(
+        self,
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        request_id: str,
+        content: str,
+    ) -> ChatMessage:
+        """Persist one provider inbound idempotently before automation starts."""
+        message = (
+            await db.execute(
+                select(ChatMessage).where(
+                    ChatMessage.conversation_id == conversation.id,
+                    ChatMessage.client_message_id == request_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if message is not None:
+            if message.role != "user":
+                raise AgentNotReady("WhatsApp request id belongs to a non-user message")
+            return message
+
+        message = ChatMessage(
+            conversation_id=conversation.id,
+            client_message_id=request_id,
+            role="user",
+            content=content,
+            status="completed",
+            metadata_json={"origin": "channel_inbound"},
+        )
+        db.add(message)
+        await db.flush()
+        return message
+
     async def record_whatsapp_exchange(
         self,
         db: AsyncSession,
@@ -74,12 +113,15 @@ class ChatApplicationService:
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
         control_version: int | None = None,
+        outbound_files: list[AgentFile] | None = None,
         runtime: ResolvedAgentRuntime | None = None,
         redis=None,
     ) -> None:
-        """Persist a WhatsApp exchange in the agent-scoped neutral history."""
+        """Persist a WhatsApp exchange and its delivery commands atomically."""
         if await self._existing_outcome(db, request_id) is not None:
             return
+        if route_key is None or channel_route_id is None:
+            raise AgentNotReady("WhatsApp outbound requires an explicit route")
         route_scope = route_key or profile.slug
         identity = await self._resolve_identity(
             db, "whatsapp", route_scope, external_subject
@@ -99,13 +141,13 @@ class ChatApplicationService:
             route_key=route_scope,
             channel_route_id=channel_route_id,
         )
-        inbound = ChatMessage(
-            conversation_id=conversation.id,
-            client_message_id=request_id,
-            role="user",
+        inbound = await self.record_whatsapp_inbound(
+            db,
+            conversation=conversation,
+            request_id=request_id,
             content=user_content,
-            status="completed",
         )
+        inbound.content = user_content
         outbound = ChatMessage(
             conversation_id=conversation.id,
             client_message_id=f"{request_id}:assistant",
@@ -113,9 +155,32 @@ class ChatApplicationService:
             content=assistant_content,
             status="completed",
             tool_names=list(tools_used),
+            metadata_json={"origin": "automation"},
         )
-        db.add_all([inbound, outbound])
+        db.add(outbound)
         await db.flush()
+        effective_control_version = (
+            conversation.control_version if control_version is None else control_version
+        )
+        await self._enqueue_whatsapp_message(
+            db,
+            conversation=conversation,
+            message=outbound,
+            kind=OutboundKind.TEXT,
+            payload={"text": assistant_content},
+            control_version=effective_control_version,
+            idempotency_key=f"whatsapp:{request_id}:assistant:text",
+            correlation_id=request_id,
+        )
+        for index, agent_file in enumerate(outbound_files or []):
+            await self._record_whatsapp_file(
+                db,
+                conversation=conversation,
+                request_id=request_id,
+                index=index,
+                agent_file=agent_file,
+                control_version=effective_control_version,
+            )
         db.add(
             ChatExecution(
                 request_id=request_id,
@@ -123,11 +188,7 @@ class ChatApplicationService:
                 inbound_message_id=inbound.id,
                 output_message_id=outbound.id,
                 status="completed",
-                control_version=(
-                    conversation.control_version
-                    if control_version is None
-                    else control_version
-                ),
+                control_version=effective_control_version,
                 tools_used=list(tools_used),
             )
         )
@@ -139,6 +200,148 @@ class ChatApplicationService:
             redis,
             conversation.id,
             runtime.config.history_message_limit if runtime else 20,
+        )
+
+    async def record_whatsapp_notification(
+        self,
+        db: AsyncSession,
+        *,
+        profile: AgentProfile,
+        request_id: str,
+        purpose: str,
+        external_subject: str,
+        content: str,
+        route_key: str | None,
+        channel_route_id: uuid.UUID | None,
+        control_version: int,
+    ) -> ChatMessage:
+        """Persist one automated notification and delivery command atomically."""
+        if route_key is None or channel_route_id is None:
+            raise AgentNotReady("WhatsApp outbound requires an explicit route")
+        identity = await self._resolve_identity(
+            db,
+            "whatsapp",
+            route_key,
+            external_subject,
+        )
+        conversation = await self._resolve_conversation(
+            db,
+            agent_id=profile.id,
+            principal_id=identity.principal_id,
+            channel="whatsapp",
+            external_thread_id=external_subject,
+            consent_version="whatsapp-existing-history-v1",
+            route_key=route_key,
+            channel_route_id=channel_route_id,
+        )
+        client_message_id = f"{request_id}:notification:{purpose}"
+        message = (
+            await db.execute(
+                select(ChatMessage).where(
+                    ChatMessage.conversation_id == conversation.id,
+                    ChatMessage.client_message_id == client_message_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if message is None:
+            message = ChatMessage(
+                conversation_id=conversation.id,
+                client_message_id=client_message_id,
+                role="assistant",
+                content=content,
+                status="completed",
+                metadata_json={"origin": "automation", "purpose": purpose},
+            )
+            db.add(message)
+            await db.flush()
+        elif message.content != content:
+            raise AgentNotReady(
+                "notification idempotency key was reused with different content"
+            )
+        await self._enqueue_whatsapp_message(
+            db,
+            conversation=conversation,
+            message=message,
+            kind=OutboundKind.TEXT,
+            payload={"text": content},
+            control_version=control_version,
+            idempotency_key=f"whatsapp:{request_id}:notification:{purpose}",
+            correlation_id=request_id,
+        )
+        return message
+
+    async def _record_whatsapp_file(
+        self,
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        request_id: str,
+        index: int,
+        agent_file: AgentFile,
+        control_version: int,
+    ) -> None:
+        if agent_file.storage_key is None:
+            raise AgentNotReady("WhatsApp outbound files require durable storage")
+        kind = (
+            OutboundKind.IMAGE
+            if agent_file.mime.startswith("image/")
+            else OutboundKind.DOCUMENT
+        )
+        message = ChatMessage(
+            conversation_id=conversation.id,
+            client_message_id=f"{request_id}:assistant:file:{index}",
+            role="assistant",
+            content=f"[{kind.value}: {agent_file.name}]",
+            status="completed",
+            metadata_json={
+                "origin": "automation",
+                "attachment": {
+                    "storage_key": agent_file.storage_key,
+                    "name": agent_file.name,
+                    "mime": agent_file.mime,
+                },
+            },
+        )
+        db.add(message)
+        await db.flush()
+        await self._enqueue_whatsapp_message(
+            db,
+            conversation=conversation,
+            message=message,
+            kind=kind,
+            payload={
+                "storage_key": agent_file.storage_key,
+                "name": agent_file.name,
+                "mime": agent_file.mime,
+            },
+            control_version=control_version,
+            idempotency_key=f"whatsapp:{request_id}:assistant:file:{index}",
+            correlation_id=request_id,
+        )
+
+    @staticmethod
+    async def _enqueue_whatsapp_message(
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        message: ChatMessage,
+        kind: OutboundKind,
+        payload: dict,
+        control_version: int,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> None:
+        await outbound_delivery_service.enqueue(
+            db,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            chat_message_id=message.id,
+            kind=kind,
+            payload=payload,
+            sender_type=OutboundSenderType.AUTOMATION,
+            control_version=control_version,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
         )
 
     async def load_whatsapp_context(

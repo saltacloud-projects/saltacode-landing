@@ -208,6 +208,10 @@ async def test_pipeline_finalize_forwards_resolved_agent_and_route_scope(
     service = PipelineService()
     log_audit = AsyncMock()
     monkeypatch.setattr(service, "_log_audit", log_audit)
+    monkeypatch.setattr(
+        "app.services.pipeline.chat_application_service.record_whatsapp_notification",
+        AsyncMock(),
+    )
     db = _Db()
     runtime = SimpleNamespace(profile=SimpleNamespace(id=agent_id))
 
@@ -228,6 +232,7 @@ async def test_pipeline_finalize_forwards_resolved_agent_and_route_scope(
         resolved_runtime=runtime,
         route_key="route-a",
         channel_route_id=route_id,
+        control_version=0,
     )
 
     assert log_audit.await_args.kwargs["agent_id"] == agent_id
