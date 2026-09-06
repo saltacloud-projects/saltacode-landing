@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete
@@ -12,6 +12,11 @@ from app.core.database import AsyncSessionLocal, engine
 from app.models.agent_profile import AgentProfile
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.whatsapp_inbox import WhatsAppInboundJob
+from app.schemas.inbound import (
+    InboundContentType,
+    InboundMessageEnvelope,
+    InboundRouteContext,
+)
 from app.services.whatsapp_inbox import whatsapp_inbox_service, whatsapp_inbox_worker
 from app.workers.whatsapp_inbox import check_worker_health
 
@@ -24,16 +29,28 @@ async def _dispose_engine_between_tests():
     await engine.dispose()
 
 
-def _message(message_id: str) -> dict:
-    return {
-        "phone_number": "5493870000000",
-        "content": "hello",
-        "message_id": message_id,
-        "input_type": "text",
-        "audio_media_id": None,
-        "interactive_id": None,
-        "quoted_id": None,
-    }
+def _message(
+    message_id: str,
+    *,
+    route_key: str,
+    channel_route_id: UUID,
+    channel_connection_id: UUID,
+) -> InboundMessageEnvelope:
+    return InboundMessageEnvelope(
+        correlation_id=uuid4(),
+        channel="whatsapp",
+        route=InboundRouteContext(
+            route_key=route_key,
+            channel_route_id=channel_route_id,
+            channel_connection_id=channel_connection_id,
+        ),
+        provider_message_id=message_id,
+        provider_thread_id="5493870000000",
+        provider_sender_id="5493870000000",
+        content="hello",
+        content_type=InboundContentType.TEXT,
+        timestamp=datetime.now(timezone.utc),
+    )
 
 
 @pytest.mark.asyncio
@@ -96,24 +113,30 @@ async def test_duplicate_scope_and_stale_job_recovery() -> None:
 
             first = await whatsapp_inbox_service.enqueue(
                 db,
-                channel_route_id=primary_route_id,
-                channel_connection_id=connection_id,
-                provider_message_id=provider_message_id,
-                message=_message(provider_message_id),
+                message=_message(
+                    provider_message_id,
+                    route_key=primary_route_key,
+                    channel_route_id=primary_route_id,
+                    channel_connection_id=connection_id,
+                ),
             )
             duplicate = await whatsapp_inbox_service.enqueue(
                 db,
-                channel_route_id=primary_route_id,
-                channel_connection_id=connection_id,
-                provider_message_id=provider_message_id,
-                message=_message(provider_message_id),
+                message=_message(
+                    provider_message_id,
+                    route_key=primary_route_key,
+                    channel_route_id=primary_route_id,
+                    channel_connection_id=connection_id,
+                ),
             )
             other_route = await whatsapp_inbox_service.enqueue(
                 db,
-                channel_route_id=second_route.id,
-                channel_connection_id=connection_id,
-                provider_message_id=provider_message_id,
-                message=_message(provider_message_id),
+                message=_message(
+                    provider_message_id,
+                    route_key=second_route_key,
+                    channel_route_id=second_route.id,
+                    channel_connection_id=connection_id,
+                ),
             )
             assert first.job_id is not None
             assert duplicate.duplicate is True
@@ -163,6 +186,7 @@ async def test_duplicate_scope_and_stale_job_recovery() -> None:
             retrying = await db.get(WhatsAppInboundJob, other_route.job_id)
             assert retrying is not None
             assert retrying.status == "queued"
+            assert retrying.payload_json["schema_version"] == "1"
             assert retrying.payload_json["content"] == "hello"
             retrying.status = "processing"
             retrying.attempts = retrying.max_attempts

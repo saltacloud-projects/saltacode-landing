@@ -43,6 +43,11 @@ def _payload(account_id: str, message_id: str) -> bytes:
                                         "timestamp": "1700000000",
                                         "type": "text",
                                         "text": {"body": "hello"},
+                                        "context": {
+                                            "id": "wamid.quoted",
+                                            "from": "must-not-cross-boundary",
+                                            "forwarded": True,
+                                        },
                                     }
                                 ],
                             }
@@ -154,15 +159,39 @@ async def test_routes_enqueue_with_route_scoped_ownership(route_app, monkeypatch
             assert response.status_code == 200
     assert enqueue.await_count == 2
     first, second = enqueue.await_args_list
-    assert first.kwargs["channel_route_id"] == resolved["route-a"].route.id
-    assert first.kwargs["channel_connection_id"] == connections["route-a"].connection_id
-    assert first.kwargs["provider_message_id"] == "wamid.a"
-    assert second.kwargs["channel_route_id"] == resolved["route-b"].route.id
+    first_message = first.kwargs["message"]
+    second_message = second.kwargs["message"]
+    assert first_message.route.channel_route_id == resolved["route-a"].route.id
     assert (
-        second.kwargs["channel_connection_id"] == connections["route-b"].connection_id
+        first_message.route.channel_connection_id
+        == connections["route-a"].connection_id
     )
-    assert second.kwargs["provider_message_id"] == "wamid.b"
+    assert first_message.provider_message_id == "wamid.a"
+    assert first_message.provider_thread_id == "5493870000000"
+    assert first_message.provider_sender_id == "5493870000000"
+    assert first_message.timestamp.isoformat() == "2023-11-14T22:13:20+00:00"
+    assert first_message.reply_context.model_dump() == {
+        "provider_message_id": "wamid.quoted"
+    }
+    assert "must-not-cross-boundary" not in repr(first_message)
+    assert second_message.route.channel_route_id == resolved["route-b"].route.id
+    assert (
+        second_message.route.channel_connection_id
+        == connections["route-b"].connection_id
+    )
+    assert second_message.provider_message_id == "wamid.b"
     resolve_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unkeyed_legacy_webhook_is_not_registered(route_app):
+    transport = httpx.ASGITransport(app=route_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        get_response = await client.get("/webhooks/whatsapp")
+        post_response = await client.post("/webhooks/whatsapp", content=b"{}")
+
+    assert get_response.status_code == 404
+    assert post_response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -181,8 +210,8 @@ async def test_route_rejects_wrong_signature_before_processing(route_app, monkey
         "resolve_connection",
         lambda _row, *, route_key: connection,
     )
-    process = AsyncMock()
-    monkeypatch.setattr(webhooks.pipeline_service, "process_whatsapp_message", process)
+    enqueue = AsyncMock()
+    monkeypatch.setattr(webhooks.whatsapp_inbox_service, "enqueue", enqueue)
     body = b"{not-json"
 
     transport = httpx.ASGITransport(app=route_app)
@@ -194,7 +223,7 @@ async def test_route_rejects_wrong_signature_before_processing(route_app, monkey
         )
 
     assert response.status_code == 401
-    process.assert_not_awaited()
+    enqueue.assert_not_awaited()
     resolve_agent.assert_not_awaited()
 
 
@@ -214,8 +243,8 @@ async def test_route_rejects_wrong_account_before_processing(route_app, monkeypa
         "resolve_connection",
         lambda _row, *, route_key: connection,
     )
-    process = AsyncMock()
-    monkeypatch.setattr(webhooks.pipeline_service, "process_whatsapp_message", process)
+    enqueue = AsyncMock()
+    monkeypatch.setattr(webhooks.whatsapp_inbox_service, "enqueue", enqueue)
     body = _payload("another-account", "wamid.a")
 
     transport = httpx.ASGITransport(app=route_app)
@@ -227,7 +256,7 @@ async def test_route_rejects_wrong_account_before_processing(route_app, monkeypa
         )
 
     assert response.status_code == 403
-    process.assert_not_awaited()
+    enqueue.assert_not_awaited()
     resolve_agent.assert_not_awaited()
 
 

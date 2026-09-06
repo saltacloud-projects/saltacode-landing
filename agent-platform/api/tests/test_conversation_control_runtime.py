@@ -381,7 +381,11 @@ async def test_whatsapp_human_control_persists_inbound_without_automation(
 
     profile = _profile()
     route_id = uuid4()
-    conversation = SimpleNamespace(id=uuid4(), control_version=5)
+    conversation = SimpleNamespace(
+        id=uuid4(),
+        principal_id=uuid4(),
+        control_version=5,
+    )
     runtime = SimpleNamespace(
         profile=profile,
         config=SimpleNamespace(
@@ -396,22 +400,18 @@ async def test_whatsapp_human_control_persists_inbound_without_automation(
     notification = AsyncMock()
 
     monkeypatch.setattr(module, "AsyncSessionLocal", FakeSession)
+    monkeypatch.setattr(
+        "app.services.inbound.governance_service.check_access",
+        AsyncMock(
+            side_effect=AssertionError("public profiles must bypass the whitelist")
+        ),
+    )
     monkeypatch.setattr(module.whatsapp_service, "mark_as_read", AsyncMock())
     monkeypatch.setattr(module.whatsapp_service, "show_typing", AsyncMock())
     monkeypatch.setattr(
         module.chat_application_service,
         "load_whatsapp_context",
         AsyncMock(return_value=([], None, conversation)),
-    )
-    monkeypatch.setattr(
-        module.governance_service,
-        "check_access",
-        AsyncMock(
-            return_value=SimpleNamespace(
-                allowed=True,
-                user={"user_id": str(uuid4()), "name": "Lead"},
-            )
-        ),
     )
     monkeypatch.setattr(
         module.chat_application_service,

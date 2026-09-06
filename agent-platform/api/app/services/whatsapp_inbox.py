@@ -18,7 +18,9 @@ from app.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models.agent_runtime import ChannelAgentRoute
 from app.models.whatsapp_inbox import WhatsAppInboundJob
+from app.schemas.inbound import InboundMessageEnvelope
 from app.services.agent_runtime import AgentRuntimeUnavailable, agent_runtime_resolver
+from app.services.inbound import dump_inbound_payload, load_inbound_payload
 from app.services.pipeline import pipeline_service
 from app.services.whatsapp import whatsapp_service
 
@@ -38,35 +40,22 @@ class WhatsAppEnqueueResult:
         return self.job_id is None
 
 
-def minimal_inbound_payload(message: dict) -> dict:
-    """Keep only fields required by the pipeline; never persist credentials."""
-    return {
-        "phone_number": message["phone_number"],
-        "content": message["content"],
-        "input_type": message["input_type"],
-        "audio_media_id": message.get("audio_media_id"),
-        "interactive_id": message.get("interactive_id"),
-        "quoted_id": message.get("quoted_id"),
-    }
-
-
 class WhatsAppInboxService:
     async def enqueue(
         self,
         db: AsyncSession,
         *,
-        channel_route_id: uuid.UUID,
-        channel_connection_id: uuid.UUID,
-        provider_message_id: str,
-        message: dict,
+        message: InboundMessageEnvelope,
     ) -> WhatsAppEnqueueResult:
+        if message.channel != "whatsapp":
+            raise ValueError("WhatsApp inbox accepts only WhatsApp envelopes")
         statement = (
             insert(WhatsAppInboundJob)
             .values(
-                channel_route_id=channel_route_id,
-                channel_connection_id=channel_connection_id,
-                provider_message_id=provider_message_id,
-                payload_json=minimal_inbound_payload(message),
+                channel_route_id=message.route.channel_route_id,
+                channel_connection_id=message.route.channel_connection_id,
+                provider_message_id=message.provider_message_id,
+                payload_json=dump_inbound_payload(message),
                 status="queued",
                 attempts=0,
                 max_attempts=settings.whatsapp_inbox_max_attempts,
@@ -224,26 +213,24 @@ class WhatsAppInboxWorker:
             connection = whatsapp_service.resolve_connection(
                 resolved_route.connection, route_key=stored_route.route_key
             )
-            payload = dict(job.payload_json)
+            message = load_inbound_payload(
+                dict(job.payload_json),
+                channel="whatsapp",
+                route_key=stored_route.route_key,
+                channel_route_id=job.channel_route_id,
+                channel_connection_id=job.channel_connection_id,
+                provider_message_id=job.provider_message_id,
+                fallback_correlation_id=job.id,
+                fallback_timestamp=job.created_at,
+            )
             notify_on_error = self._is_final_attempt(job)
-            provider_message_id = job.provider_message_id
-            route_key = stored_route.route_key
-            channel_route_id = stored_route.id
 
         await pipeline_service.process_whatsapp_message(
-            phone=payload["phone_number"],
-            content=payload["content"],
-            message_id=provider_message_id,
-            input_type=payload["input_type"],
-            audio_media_id=payload.get("audio_media_id"),
-            interactive_id=payload.get("interactive_id"),
-            quoted_id=payload.get("quoted_id"),
+            message=message,
             redis=redis,
             resolved_runtime=runtime,
             whatsapp_connection=connection,
-            route_key=route_key,
-            channel_route_id=channel_route_id,
-            request_id=str(job_id),
+            request_id=str(message.correlation_id),
             propagate_errors=True,
             notify_on_error=notify_on_error,
         )

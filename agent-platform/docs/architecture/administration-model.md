@@ -81,9 +81,11 @@ Provider and WhatsApp environment credentials are compatibility inputs for the i
 
 ### WhatsApp
 
-The preferred Meta webhook is `GET|POST /webhooks/whatsapp/{route_key}`. The route key resolves a persisted WhatsApp channel connection and one agent route. The adapter verifies the connection-specific token, exact-body signature, and external account identifier before resolving provider runtime for a processable message; verification and status callbacks never materialize provider credentials.
+The only Meta webhook is `GET|POST /webhooks/whatsapp/{route_key}`. The route key resolves a persisted WhatsApp channel connection and one agent route. The adapter verifies the connection-specific token, exact-body signature, and external account identifier before normalizing supported messages into the immutable inbound envelope. That versioned envelope carries only bounded channel, route, provider identity, content, timestamp, correlation, media-reference, and sanitized reply-reference fields. Verification and status callbacks never materialize provider credentials.
 
-Each WhatsApp number or business route therefore needs its own channel connection and route key. The unkeyed `/webhooks/whatsapp` endpoint is a legacy compatibility path and cannot provide deterministic multi-agent ownership.
+Each WhatsApp number or business route therefore needs its own channel connection and route key. The durable inbox commits the minimal envelope payload, route ownership, and provider idempotency key before returning an acknowledgement. Workers also read pre-envelope jobs through an in-memory compatibility decoder; no historical row is rewritten or attributed differently.
+
+Public agents accept a provisional channel identity backed by the conversation principal and do not create or infer an authorized-user row. Their agent loop receives `user_id=null`, so it cannot inherit private document-area grants. Private agents retain the explicit, agent-scoped WhatsApp allowlist and fail closed when the sender is absent or inactive. This policy changes identity authorization only; channel-route authentication, human-control fences, FIFO processing, tool bindings, and outbox delivery remain server-owned.
 
 ### Web BFF
 

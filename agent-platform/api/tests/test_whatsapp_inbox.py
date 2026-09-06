@@ -1,6 +1,7 @@
 """Focused contracts for the durable WhatsApp inbox."""
 
 import inspect
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -11,39 +12,52 @@ from pydantic import ValidationError
 
 from app.config import Settings
 from app.models.whatsapp_inbox import WhatsAppInboundJob
+from app.schemas.inbound import (
+    InboundContentType,
+    InboundMessageEnvelope,
+    InboundRouteContext,
+)
 from app.services.agent_runtime import AgentRuntimeUnavailable
+from app.services.inbound import dump_inbound_payload
 from app.services.pipeline import (
     PipelineFinalizationFailed,
     PipelineService,
 )
-from app.services.whatsapp_inbox import minimal_inbound_payload, whatsapp_inbox_worker
+from app.services.whatsapp import WhatsAppConnectionContext
+from app.services.whatsapp_inbox import whatsapp_inbox_worker
 
 
 def test_minimal_payload_excludes_route_and_credential_material():
-    payload = minimal_inbound_payload(
-        {
-            "phone_number": "5493870000000",
-            "content": "hello",
-            "message_id": "wamid.test",
-            "input_type": "text",
-            "audio_media_id": None,
-            "interactive_id": None,
-            "quoted_id": None,
-            "timestamp": "1700000000",
-            "access_token": "must-not-persist",
-            "app_secret": "must-not-persist",
-        }
+    route = InboundRouteContext(
+        route_key="route-a",
+        channel_route_id=uuid4(),
+        channel_connection_id=uuid4(),
     )
+    message = InboundMessageEnvelope(
+        correlation_id=uuid4(),
+        channel="whatsapp",
+        route=route,
+        provider_message_id="wamid.test",
+        provider_thread_id="5493870000000",
+        provider_sender_id="5493870000000",
+        content="hello",
+        content_type=InboundContentType.TEXT,
+        timestamp=datetime(2026, 9, 6, tzinfo=timezone.utc),
+    )
+    payload = dump_inbound_payload(message)
 
     assert payload == {
-        "phone_number": "5493870000000",
+        "schema_version": "1",
+        "correlation_id": str(message.correlation_id),
+        "channel": "whatsapp",
+        "provider_thread_id": "5493870000000",
+        "provider_sender_id": "5493870000000",
         "content": "hello",
-        "input_type": "text",
-        "audio_media_id": None,
-        "interactive_id": None,
-        "quoted_id": None,
+        "content_type": "text",
+        "timestamp": "2026-09-06T00:00:00+00:00",
     }
-    assert "must-not-persist" not in repr(payload)
+    assert "provider_message_id" not in payload
+    assert "route-a" not in repr(payload)
 
 
 def test_model_idempotency_is_route_scoped():
@@ -144,37 +158,38 @@ def test_pipeline_has_no_direct_outbound_provider_calls():
 
 
 @pytest.mark.asyncio
-async def test_legacy_pipeline_without_persisted_route_fails_closed(monkeypatch):
-    from app.services import pipeline as module
-
-    provider_calls = [
-        AsyncMock(),
-        AsyncMock(),
-        AsyncMock(),
-    ]
-    monkeypatch.setattr(
-        module.whatsapp_service,
-        "send_text_message",
-        provider_calls[0],
+async def test_whatsapp_pipeline_rejects_another_channel() -> None:
+    route = InboundRouteContext(
+        route_key="route-a",
+        channel_route_id=uuid4(),
+        channel_connection_id=uuid4(),
     )
-    monkeypatch.setattr(
-        module.whatsapp_service,
-        "send_document_message",
-        provider_calls[1],
-    )
-    monkeypatch.setattr(
-        module.whatsapp_service,
-        "send_image_message",
-        provider_calls[2],
-    )
-
-    await PipelineService().process_whatsapp_message(
-        phone="5493870000000",
+    message = InboundMessageEnvelope(
+        correlation_id=uuid4(),
+        channel="instagram",
+        route=route,
+        provider_message_id="provider.message",
+        provider_thread_id="provider.thread",
+        provider_sender_id="provider.sender",
         content="hello",
-        message_id="wamid.legacy",
+        content_type=InboundContentType.TEXT,
+        timestamp=datetime.now(timezone.utc),
     )
-    for provider_call in provider_calls:
-        provider_call.assert_not_awaited()
+    connection = WhatsAppConnectionContext(
+        connection_id=route.channel_connection_id,
+        phone_number_id="account-a",
+        access_token="access-a",
+        verify_token="verify-a",
+        app_secret="secret-a",
+        route_key=route.route_key,
+    )
+
+    with pytest.raises(ValueError, match="WhatsApp envelope"):
+        await PipelineService().process_whatsapp_message(
+            message=message,
+            resolved_runtime=SimpleNamespace(),
+            whatsapp_connection=connection,
+        )
 
 
 @pytest.mark.asyncio
@@ -249,6 +264,7 @@ async def test_worker_notifies_only_on_the_final_attempt(
         attempts=attempts,
         max_attempts=5,
         locked_by=whatsapp_inbox_worker._worker_id,
+        created_at=datetime.now(timezone.utc),
     )
     stored_route = SimpleNamespace(
         id=route_id,
@@ -293,3 +309,7 @@ async def test_worker_notifies_only_on_the_final_attempt(
 
     assert process.await_args.kwargs["notify_on_error"] is expected
     assert process.await_args.kwargs["propagate_errors"] is True
+    message = process.await_args.kwargs["message"]
+    assert message.correlation_id == job_id
+    assert message.content == "hello"
+    assert process.await_args.kwargs["request_id"] == str(job_id)

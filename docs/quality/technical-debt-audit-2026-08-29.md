@@ -44,7 +44,7 @@ Deletion requires evidence, not a name or a missing import alone.
 | Old admin metrics, agent defaults, quota storage, and orphaned assets | Removed | Their UI, API, persistence, or asset paths were disconnected from effective behavior. |
 | `ConversationMessage` and `app/services/conversation.py` | Retained as active | The WhatsApp pipeline calls them for durable recent history and rolling summaries. They are a consolidation candidate only if all channels later converge on one conversation path. |
 | `GET|POST /webhooks/whatsapp/{route_key}` | Retained as primary | This is the persisted, deterministic multi-agent WhatsApp route. |
-| Unkeyed `/webhooks/whatsapp` and singular `/webhook` mount | Retained as compatibility | Repository code labels the unkeyed route as legacy, but current Meta callback configuration and live traffic evidence are required before removal. |
+| Unkeyed `/webhooks/whatsapp` | Removed on 2026-09-06 | It had no internal caller or test contract and its pipeline already rejected processing without persisted route ownership. The keyed route is now the only webhook contract. |
 | `import_rag_corpus.py` and `verify_documents_live.py` | Retained as operator tools | Static references cannot prove whether host runbooks or manual operations use them. Remove only after checking operational history and documentation. |
 | Metalnor client marks in public site content | Retained as legitimate content | No Metalnor, Scrappy, SIM, or GeneXus business logic remains in the agent platform; the public mark represents an actual listed SaltaCode client. |
 

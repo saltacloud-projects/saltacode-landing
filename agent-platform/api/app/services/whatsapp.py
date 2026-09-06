@@ -12,9 +12,12 @@ Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID
+from typing import Any
+from uuid import UUID, uuid4
 
 import httpx
 from pydantic import ValidationError
@@ -22,7 +25,14 @@ from pydantic import ValidationError
 from app.config import settings
 from app.core.concurrency import whatsapp_semaphore
 from app.models.agent_runtime import ChannelConnection
+from app.ports.inbound import InboundChannelAdapter
 from app.schemas.agent_runtime import WhatsAppCredentials
+from app.schemas.inbound import (
+    InboundContentType,
+    InboundMessageEnvelope,
+    InboundReplyContext,
+    InboundRouteContext,
+)
 from app.services.credentials import (
     CredentialDecryptError,
     CredentialStoreUnavailable,
@@ -42,10 +52,25 @@ _MD_HEADER = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _MD_BULLET = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
 _MD_BOLD = re.compile(r"\*{1,3}(\S.*?\S|\S)\*{1,3}")
 _MULTI_BLANK = re.compile(r"\n{3,}")
+_INBOUND_TYPE_MAP = {
+    "text": InboundContentType.TEXT,
+    "interactive": InboundContentType.TEXT,
+    "audio": InboundContentType.AUDIO,
+    "voice": InboundContentType.AUDIO,
+    "image": InboundContentType.IMAGE,
+    "video": InboundContentType.VIDEO,
+    "document": InboundContentType.FILE,
+    "sticker": InboundContentType.IMAGE,
+    "location": InboundContentType.TEXT,
+}
 
 
 class WhatsAppConnectionUnavailable(RuntimeError):
     """Raised when a persisted WhatsApp connection cannot be used safely."""
+
+
+class WhatsAppInboundPayloadInvalid(ValueError):
+    """An authenticated Meta payload contains an invalid message contract."""
 
 
 @dataclass(frozen=True)
@@ -83,7 +108,9 @@ def sanitize_whatsapp_text(text: str) -> str:
     return t.strip()
 
 
-class WhatsAppService:
+class WhatsAppService(InboundChannelAdapter):
+    channel = "whatsapp"
+
     def resolve_connection(
         self, connection: ChannelConnection, *, route_key: str
     ) -> WhatsAppConnectionContext:
@@ -152,106 +179,101 @@ class WhatsAppService:
         logger.warning("whatsapp_webhook_verification_failed")
         return None
 
-    def parse_inbound(self, payload: dict) -> dict | None:
-        """
-        Extrae phone_number, content, message_id e input_type de un payload de Meta.
-        Retorna None solo si no es un mensaje real (status updates, reactions, etc.).
-
-        input_type canónicos:
-          text     → mensaje de texto normal
-          audio    → nota de voz o audio
-          image    → imagen / foto
-          video    → video
-          file     → documento adjunto (PDF, Excel, etc.)
-          sticker  → sticker (se trata como imagen no soportada)
-          location → ubicación compartida
-        """
-        # Mapeo de tipos Meta → input_type canónico interno
-        TYPE_MAP = {
-            "text": "text",
-            "interactive": "text",  # selección de menú interactivo → se trata como texto
-            "audio": "audio",
-            "voice": "audio",
-            "image": "image",
-            "video": "video",
-            "document": "file",
-            "sticker": "image",
-            "location": "text",  # podría ser útil en el futuro
-        }
-
+    def normalize_messages(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        route: InboundRouteContext,
+    ) -> tuple[InboundMessageEnvelope, ...]:
+        """Normalize every supported Meta message into the canonical envelope."""
+        messages: list[InboundMessageEnvelope] = []
         try:
-            entry = payload.get("entry", [{}])[0]
-            change = entry.get("changes", [{}])[0].get("value", {})
-            messages = change.get("messages", [])
-            if not messages:
-                return None  # status update, delivery receipt, etc.
+            for entry in payload.get("entry", []):
+                for change in entry.get("changes", []):
+                    value = change.get("value") or {}
+                    for raw_message in value.get("messages", []):
+                        message = self._normalize_message(raw_message, route=route)
+                        if message is not None:
+                            messages.append(message)
+        except (
+            AttributeError,
+            KeyError,
+            OSError,
+            OverflowError,
+            TypeError,
+            ValueError,
+            ValidationError,
+        ) as exc:
+            raise WhatsAppInboundPayloadInvalid(
+                "Meta message payload is invalid"
+            ) from exc
+        return tuple(messages)
 
-            msg = messages[0]
-            msg_type = msg.get("type", "")
-            input_type = TYPE_MAP.get(msg_type)
-
-            if input_type is None:
-                # Tipo desconocido — ignorar silenciosamente
-                logger.warning(
-                    "whatsapp_unknown_message_type", extra={"type": msg_type}
-                )
-                return None
-
-            # Extraer content y media_id según el tipo
-            audio_media_id: str | None = None
-            interactive_id: str | None = None
-
-            if msg_type == "interactive":
-                # El usuario tocó una opción del menú interactivo.
-                # Preservamos el `id` (estable, definido por la app) además del
-                # `title` (lo que el usuario ve). El id permite enrutar
-                # determinísticamente en el pipeline sin depender del LLM.
-                interactive = msg.get("interactive", {})
-                list_reply = (
-                    interactive.get("list_reply")
-                    or interactive.get("button_reply")
-                    or {}
-                )
-                interactive_id = list_reply.get("id") or None
-                # Usamos el título como contenido — es lo que el usuario "dijo"
-                content = list_reply.get("title", "")
-                if not content:
-                    content = list_reply.get("id", "")
-            elif input_type == "text":
-                content = msg.get("text", {}).get("body", "")
-            elif input_type == "audio":
-                audio_data = msg.get("audio") or msg.get("voice") or {}
-                audio_media_id = audio_data.get("id")
-                content = "[audio]"  # placeholder, el pipeline lo reemplazará con la transcripción
-            elif input_type == "image":
-                content = msg.get("image", {}).get("caption", "[imagen]") or "[imagen]"
-            elif input_type == "video":
-                content = msg.get("video", {}).get("caption", "[video]") or "[video]"
-            elif input_type == "file":
-                filename = msg.get("document", {}).get("filename", "")
-                content = f"[archivo: {filename}]" if filename else "[archivo]"
-            else:
-                content = f"[{msg_type}]"
-
-            # Mensaje citado (reply): Meta manda `context.id` con el wamid del
-            # mensaje al que el usuario respondió. Lo usamos para resolver el
-            # referente ("¿cómo obtuviste este dato?") contra el texto que enviamos.
-            quoted_id = (msg.get("context") or {}).get("id")
-
-            return {
-                "phone_number": msg["from"],
-                "content": content,
-                "message_id": msg["id"],
-                "timestamp": msg.get("timestamp", ""),
-                "input_type": input_type,
-                "audio_media_id": audio_media_id,  # None si no es audio
-                "interactive_id": interactive_id,  # None salvo en menus/botones
-                "quoted_id": quoted_id,  # None salvo en respuestas citadas
-            }
-
-        except (KeyError, IndexError, TypeError) as e:
-            logger.error("whatsapp_parse_error", extra={"error": str(e)})
+    @staticmethod
+    def _normalize_message(
+        message: Mapping[str, Any],
+        *,
+        route: InboundRouteContext,
+    ) -> InboundMessageEnvelope | None:
+        provider_type = str(message.get("type", ""))
+        content_type = _INBOUND_TYPE_MAP.get(provider_type)
+        if content_type is None:
+            logger.warning(
+                "whatsapp_unknown_message_type",
+                extra={"type": provider_type},
+            )
             return None
+
+        provider_media_id: str | None = None
+        interaction_id: str | None = None
+        if provider_type == "interactive":
+            interactive = message.get("interactive") or {}
+            selection = (
+                interactive.get("list_reply") or interactive.get("button_reply") or {}
+            )
+            interaction_id = selection.get("id") or None
+            content = selection.get("title") or selection.get("id") or ""
+        elif content_type == InboundContentType.TEXT:
+            if provider_type == "location":
+                content = "[ubicación]"
+            else:
+                content = (message.get("text") or {}).get("body", "")
+        elif content_type == InboundContentType.AUDIO:
+            media = message.get("audio") or message.get("voice") or {}
+            provider_media_id = media.get("id")
+            content = "[audio]"
+        elif content_type == InboundContentType.IMAGE:
+            content = (message.get("image") or {}).get("caption") or "[imagen]"
+        elif content_type == InboundContentType.VIDEO:
+            content = (message.get("video") or {}).get("caption") or "[video]"
+        else:
+            filename = (message.get("document") or {}).get("filename", "")
+            content = f"[archivo: {filename}]" if filename else "[archivo]"
+
+        sender_id = message["from"]
+        reply_message_id = (message.get("context") or {}).get("id")
+        timestamp = datetime.fromtimestamp(
+            int(message["timestamp"]),
+            tz=timezone.utc,
+        )
+        return InboundMessageEnvelope(
+            correlation_id=uuid4(),
+            channel="whatsapp",
+            route=route,
+            provider_message_id=message["id"],
+            provider_thread_id=sender_id,
+            provider_sender_id=sender_id,
+            content=content,
+            content_type=content_type,
+            timestamp=timestamp,
+            reply_context=(
+                InboundReplyContext(provider_message_id=reply_message_id)
+                if reply_message_id
+                else None
+            ),
+            provider_media_id=provider_media_id,
+            interaction_id=interaction_id,
+        )
 
     def parse_statuses(self, payload: dict) -> list[dict]:
         """

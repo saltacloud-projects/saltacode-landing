@@ -29,7 +29,7 @@ from app.models.platform import ChatMessage
 from app.models.tool_config import ToolConfig
 from app.schemas.audit import AuditLogCreate
 from app.schemas.common import ChannelEnum, InputTypeEnum, StatusEnum
-from app.schemas.governance import AccessCheckRequest
+from app.schemas.inbound import InboundMessageEnvelope
 from app.services.agent_loop import run_agent_loop
 from app.services.agent_runtime import ResolvedAgentRuntime
 from app.services.audit import audit_service
@@ -39,7 +39,11 @@ from app.services.conversation_control import (
     ControlVersionConflictError,
     conversation_control_service,
 )
-from app.services.governance import governance_service
+from app.services.inbound import (
+    InboundAccessDenied,
+    InboundAccessPolicyError,
+    inbound_access_policy,
+)
 from app.services.tools.registry import tool_registry
 from app.services.transcription import transcription_service
 from app.services.whatsapp import WhatsAppConnectionContext, whatsapp_service
@@ -55,18 +59,11 @@ class PipelineFinalizationFailed(RuntimeError):
 class PipelineService:
     async def process_whatsapp_message(
         self,
-        phone: str,
-        content: str,
-        message_id: str,
-        input_type: str = "text",
-        audio_media_id: str | None = None,
-        interactive_id: str | None = None,
-        quoted_id: str | None = None,
+        *,
+        message: InboundMessageEnvelope,
         redis=None,
-        resolved_runtime: ResolvedAgentRuntime | None = None,
-        whatsapp_connection: WhatsAppConnectionContext | None = None,
-        route_key: str | None = None,
-        channel_route_id: uuid.UUID | None = None,
+        resolved_runtime: ResolvedAgentRuntime,
+        whatsapp_connection: WhatsAppConnectionContext,
         request_id: str | None = None,
         propagate_errors: bool = False,
         notify_on_error: bool = True,
@@ -81,19 +78,28 @@ class PipelineService:
         Para selecciones de menú interactivo (`interactive_id` presente):
         enruta determinísticamente según el id antes de involucrar al LLM.
         """
-        request_id = request_id or str(uuid.uuid4())
-        start = time.monotonic()
-        if resolved_runtime is not None and (
-            whatsapp_connection is None or route_key is None or channel_route_id is None
+        if message.channel != "whatsapp":
+            raise ValueError("WhatsApp pipeline requires a WhatsApp envelope")
+        if (
+            whatsapp_connection.connection_id != message.route.channel_connection_id
+            or whatsapp_connection.route_key != message.route.route_key
         ):
-            raise ValueError("resolved WhatsApp runtime requires route context")
-        if resolved_runtime is None:
-            logger.error("legacy_whatsapp_pipeline_disabled_without_route")
-            if propagate_errors:
-                raise PipelineFinalizationFailed(
-                    "WhatsApp processing requires a persisted route"
-                )
-            return
+            raise ValueError("WhatsApp envelope does not match its resolved connection")
+        request_id = request_id or str(message.correlation_id)
+        phone = message.provider_sender_id
+        content = message.content
+        message_id = message.provider_message_id
+        input_type = message.content_type.value
+        audio_media_id = message.provider_media_id
+        interactive_id = message.interaction_id
+        quoted_id = (
+            message.reply_context.provider_message_id
+            if message.reply_context is not None
+            else None
+        )
+        route_key = message.route.route_key
+        channel_route_id = message.route.channel_route_id
+        start = time.monotonic()
 
         logger.info(
             "pipeline_started",
@@ -302,20 +308,16 @@ class PipelineService:
                     )
                     await db.commit()
 
-                    # -----------------------------------------------------------
-                    # 1. Governance — verificar autorización
-                    # -----------------------------------------------------------
-                    access = await governance_service.check_access(
-                        db,
-                        AccessCheckRequest(
+                    try:
+                        inbound_identity = await inbound_access_policy.resolve(
+                            db,
+                            profile=profile,
+                            conversation=controlled_conversation,
+                            sender_id=phone,
                             request_id=request_id,
-                            phone_number=phone,
                             channel="whatsapp",
-                            agent_id=profile.id,
-                        ),
-                    )
-
-                    if not access.allowed:
+                        )
+                    except InboundAccessDenied as exc:
                         await automation_guard()
                         rejection_msg = profile.unauthorized_message
                         logger.info(
@@ -323,7 +325,7 @@ class PipelineService:
                             extra={
                                 "request_id": request_id,
                                 "phone": phone,
-                                "reason": access.reason,
+                                "reason": str(exc),
                             },
                         )
                         await self._finalize_pipeline(
@@ -341,7 +343,7 @@ class PipelineService:
                             status="blocked",
                             persist_conversation=False,
                             error_code="access_denied",
-                            error_message=access.reason,
+                            error_message=str(exc),
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
@@ -349,11 +351,7 @@ class PipelineService:
                             raise_on_error=propagate_errors,
                         )
                         return
-
-                    # Fail-closed: contrato del schema dice que allowed=True implica user dict.
-                    # Si llega allowed=True con user=None, es una inconsistencia de
-                    # governance_service y NO debemos asumir nada permisivo.
-                    if access.user is None:
+                    except InboundAccessPolicyError:
                         logger.error(
                             "pipeline_access_check_inconsistent_failing_closed",
                             extra={"request_id": request_id, "phone": phone},
@@ -375,7 +373,7 @@ class PipelineService:
                             status="error",
                             persist_conversation=False,
                             error_code="access_user_missing",
-                            error_message="check_access devolvió allowed=True sin user",
+                            error_message="access policy returned an invalid identity",
                             resolved_runtime=resolved_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
@@ -383,13 +381,7 @@ class PipelineService:
                             raise_on_error=propagate_errors,
                         )
                         return
-
-                    # Identidad del usuario (ya verificada: exigimos user no nulo
-                    # cuando allowed=True). Sin permisos por tool: el agente es uno
-                    # para todos los usuarios autorizados.
-                    import uuid as _uuid
-
-                    user_id = _uuid.UUID(access.user["user_id"])
+                    user_id = inbound_identity.user_id
 
                     # Make the inbound visible to a human operator before any
                     # automation guard can stop this execution. A retry reuses
@@ -573,7 +565,7 @@ class PipelineService:
                     execution_context = ToolExecutionContext(
                         request_id=request_id,
                         channel="whatsapp",
-                        principal_id=str(user_id) if user_id else None,
+                        principal_id=str(inbound_identity.principal_id),
                         agent_id=str(profile.id),
                         external_subject=phone,
                         scopes={"tools:read", "tools:write"},
@@ -680,7 +672,7 @@ class PipelineService:
                         user_content=content,
                         assistant_content=response_text,
                         tools_used=list(agent_result.tools_used),
-                        display_name=access.user.get("name") if access.user else None,
+                        display_name=inbound_identity.display_name,
                         route_key=route_key,
                         channel_route_id=channel_route_id,
                         control_version=control_version,

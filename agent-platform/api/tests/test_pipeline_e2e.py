@@ -2,7 +2,7 @@
 Tests E2E focalizados del pipeline — sin dependencias externas reales.
 
 Cubre piezas que NO requieren PostgreSQL ni OpenAI ni Meta:
-  - `parse_inbound`: preserva interactive_id y maneja todos los tipos canónicos.
+  - El adaptador inbound preserva interactive_id y tipos canónicos.
   - Backpressure: `concurrency.get_semaphores_state()` reporta slots libres.
   - Schema de tools: `llm_summary` se excluye de la serialización pública.
   - Idempotencia: el webhook descarta duplicados por message_id.
@@ -16,6 +16,7 @@ Ejecutar:
 
 import asyncio
 import os
+from uuid import uuid4
 
 import pytest
 
@@ -29,9 +30,14 @@ os.environ.setdefault("FASTAPI_API_KEY", "test-key")
 os.environ.setdefault("POSTGRES_DSN", "postgresql+asyncpg://test:test@localhost/test")
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# parse_inbound — preserva interactive_id
-# ═════════════════════════════════════════════════════════════════════════════
+def _route_context():
+    from app.schemas.inbound import InboundRouteContext
+
+    return InboundRouteContext(
+        route_key="route-a",
+        channel_route_id=uuid4(),
+        channel_connection_id=uuid4(),
+    )
 
 
 class TestParseInboundInteractive:
@@ -65,11 +71,12 @@ class TestParseInboundInteractive:
                 }
             ]
         }
-        msg = whatsapp_service.parse_inbound(payload)
-        assert msg is not None
-        assert msg["interactive_id"] == "btn_menu"
-        assert "Ver opciones" in msg["content"]
-        assert msg["input_type"] == "text"
+        message = whatsapp_service.normalize_messages(payload, route=_route_context())[
+            0
+        ]
+        assert message.interaction_id == "btn_menu"
+        assert "Ver opciones" in message.content
+        assert message.content_type.value == "text"
 
     def test_list_reply_preserves_id(self):
         from app.services.whatsapp import whatsapp_service
@@ -102,9 +109,11 @@ class TestParseInboundInteractive:
                 }
             ]
         }
-        msg = whatsapp_service.parse_inbound(payload)
-        assert msg["interactive_id"] == "menu_tool_inventory_status"
-        assert msg["content"] == "Estado de inventario"
+        message = whatsapp_service.normalize_messages(payload, route=_route_context())[
+            0
+        ]
+        assert message.interaction_id == "menu_tool_inventory_status"
+        assert message.content == "Estado de inventario"
 
     def test_audio_extracts_media_id(self):
         from app.services.whatsapp import whatsapp_service
@@ -130,10 +139,12 @@ class TestParseInboundInteractive:
                 }
             ]
         }
-        msg = whatsapp_service.parse_inbound(payload)
-        assert msg["input_type"] == "audio"
-        assert msg["audio_media_id"] == "media-id-1234"
-        assert msg["interactive_id"] is None
+        message = whatsapp_service.normalize_messages(payload, route=_route_context())[
+            0
+        ]
+        assert message.content_type.value == "audio"
+        assert message.provider_media_id == "media-id-1234"
+        assert message.interaction_id is None
 
     def test_status_event_returns_none(self):
         """Status updates de Meta no son mensajes — deben ignorarse."""
@@ -152,7 +163,9 @@ class TestParseInboundInteractive:
                 }
             ]
         }
-        assert whatsapp_service.parse_inbound(payload) is None
+        assert (
+            whatsapp_service.normalize_messages(payload, route=_route_context()) == ()
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
