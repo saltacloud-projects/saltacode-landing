@@ -13,6 +13,8 @@ from app.models.admin_user import AdminUser
 from app.routers.admin.auth import require_agent_permission
 from app.schemas.commercial import (
     AuthoritativeQuoteVersionCreateRequest,
+    CommercialAutomationPolicyOut,
+    CommercialAutomationPolicyUpdateRequest,
     CommercialOperatorOut,
     ConversationLinkMutationOut,
     FollowUpCreateRequest,
@@ -66,6 +68,45 @@ router = APIRouter(
         Depends(require_agent_permission(AdminPermission.OPPORTUNITIES_READ))
     ],
 )
+
+
+@router.get("/automation-policy", response_model=CommercialAutomationPolicyOut)
+async def get_commercial_automation_policy(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> CommercialAutomationPolicyOut:
+    policy = await follow_up_service.get_policy(db, agent_id=agent_id)
+    return CommercialAutomationPolicyOut.model_validate(policy, from_attributes=True)
+
+
+@router.put("/automation-policy", response_model=CommercialAutomationPolicyOut)
+async def update_commercial_automation_policy(
+    agent_id: uuid.UUID,
+    payload: CommercialAutomationPolicyUpdateRequest,
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.OPPORTUNITIES_MANAGE)
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> CommercialAutomationPolicyOut:
+    try:
+        policy = await follow_up_service.configure_policy(
+            db,
+            agent_id=agent_id,
+            actor_admin_id=admin.id,
+            expected_version=payload.expected_version,
+            is_enabled=payload.is_enabled,
+            allowed_kinds=payload.allowed_kinds,
+            timezone=payload.timezone,
+            quiet_hours_start=payload.quiet_hours_start,
+            quiet_hours_end=payload.quiet_hours_end,
+            min_interval_seconds=payload.min_interval_seconds,
+            max_attempts=payload.max_attempts,
+            max_daily_tasks=payload.max_daily_tasks,
+            max_pending_tasks=payload.max_pending_tasks,
+        )
+    except Exception as exc:
+        _raise_commercial_error(exc)
+    return CommercialAutomationPolicyOut.model_validate(policy, from_attributes=True)
 
 
 @router.get("/", response_model=OpportunityPageOut)
@@ -388,6 +429,9 @@ async def create_follow_up(
             actor_agent_id=agent_id,
             actor_operator_id=admin.id,
             contact_point_id=payload.contact_point_id,
+            conversation_id=payload.conversation_id,
+            target_channel=payload.target_channel,
+            quote_version_id=payload.quote_version_id,
             kind=payload.kind,
             due_at=payload.due_at,
             note=payload.note,
@@ -413,6 +457,17 @@ async def transition_follow_up(
     opportunity_id: uuid.UUID,
     task_id: uuid.UUID,
     payload: FollowUpTransitionRequest,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=220,
+    ),
+    correlation_id: str | None = Header(
+        default=None,
+        alias="X-Correlation-ID",
+        max_length=120,
+    ),
     admin: AdminUser = Depends(
         require_agent_permission(AdminPermission.OPPORTUNITIES_MANAGE)
     ),
@@ -432,6 +487,13 @@ async def transition_follow_up(
             actor_operator_id=admin.id,
             target_status=payload.target_status,
             expected_version=payload.expected_version,
+            safe_code=payload.safe_code,
+            correlation_id=_correlation_id(correlation_id),
+            idempotency_key=(
+                idempotency_key
+                or f"follow-up-transition:{task_id}:{payload.expected_version}:"
+                f"{payload.target_status}"
+            ),
         )
     except Exception as exc:
         _raise_commercial_error(exc)

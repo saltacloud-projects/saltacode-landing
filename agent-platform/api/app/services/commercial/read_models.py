@@ -12,8 +12,8 @@ from sqlalchemy.orm import aliased
 from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
 from app.models.contact import Contact, ContactPoint
+from app.models.follow_up import FollowUpTask
 from app.models.opportunity import (
-    FollowUpTask,
     Opportunity,
     OpportunityConversation,
     OpportunityOwnershipEvent,
@@ -615,14 +615,29 @@ class CommercialReadService:
     def _follow_up_out(task: FollowUpTask) -> FollowUpTaskOut:
         return FollowUpTaskOut(
             id=task.id,
+            conversation_id=task.conversation_id,
+            target_channel=task.target_channel,
             contact_point_id=task.contact_point_id,
             consent_record_id=task.consent_record_id,
+            executed_consent_record_id=task.executed_consent_record_id,
             assigned_agent_id=task.assigned_agent_id,
             assigned_operator_id=task.assigned_operator_id,
             kind=task.kind,
             status=task.status,
             state_version=task.state_version,
+            scheduled_control_version=task.scheduled_control_version,
+            scheduled_automation_version=task.scheduled_automation_version,
+            scheduled_policy_version=task.scheduled_policy_version,
+            executed_policy_version=task.executed_policy_version,
             due_at=task.due_at,
+            available_at=task.available_at,
+            attempts=task.attempts,
+            max_attempts=task.max_attempts,
+            chat_message_id=task.chat_message_id,
+            outbound_message_id=task.outbound_message_id,
+            quote_version_id=task.quote_version_id,
+            last_safe_code=task.last_safe_code,
+            review_required_at=task.review_required_at,
             note=task.note,
             created_at=task.created_at,
             updated_at=task.updated_at,

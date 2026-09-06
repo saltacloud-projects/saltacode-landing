@@ -36,6 +36,8 @@ def test_commercial_contract_is_agent_scoped_authenticated_and_non_destructive()
         (f"{ROOT}/", "post"),
         (f"{ROOT}/candidates", "get"),
         (f"{ROOT}/operators", "get"),
+        (f"{ROOT}/automation-policy", "get"),
+        (f"{ROOT}/automation-policy", "put"),
         (f"{ROOT}/{{opportunity_id}}", "get"),
         (f"{ROOT}/{{opportunity_id}}/stage-transitions", "post"),
         (f"{ROOT}/{{opportunity_id}}/reassignments", "post"),
@@ -105,6 +107,9 @@ def test_commercial_commands_expose_idempotency_and_optimistic_versions() -> Non
     quote_version_schema = schema["components"]["schemas"][
         "AuthoritativeQuoteVersionCreateRequest"
     ]["properties"]
+    automation_policy_schema = schema["components"]["schemas"][
+        "CommercialAutomationPolicyUpdateRequest"
+    ]["properties"]
     assert all(
         "expected_version" in contract
         for contract in [
@@ -112,6 +117,7 @@ def test_commercial_commands_expose_idempotency_and_optimistic_versions() -> Non
             reassign_schema,
             follow_up_schema,
             quote_version_schema,
+            automation_policy_schema,
         ]
     )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,10 +12,15 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import AsyncSessionLocal, engine
+from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
+from app.models.commercial_automation_policy import CommercialAutomationPolicy
 from app.models.contact import ConsentRecord, Contact, ContactPoint
+from app.models.conversation_automation_assignment import (
+    ConversationAutomationAssignmentEvent,
+)
+from app.models.follow_up import FollowUpTask, FollowUpTaskEvent
 from app.models.opportunity import (
-    FollowUpTask,
     Opportunity,
     OpportunityConversation,
     OpportunityOwnershipEvent,
@@ -27,6 +32,9 @@ from app.services.commercial.follow_ups import (
     FollowUpConsentRequiredError,
     FollowUpKind,
     FollowUpService,
+    FollowUpStatus,
+    FollowUpVersionConflictError,
+    InvalidFollowUpCommandError,
 )
 from app.services.commercial.opportunities import (
     OpportunityNotFoundError,
@@ -34,6 +42,9 @@ from app.services.commercial.opportunities import (
     OpportunityStage,
 )
 from app.services.commercial.quotes import InvalidQuoteCommandError, QuoteService
+from app.services.conversation_automation_assignment import (
+    ConversationAutomationAssignmentService,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -96,7 +107,8 @@ async def commercial_dossier() -> CommercialDossierContext:
             ciphertext="gAAAAA" + ("x" * 80),
             lookup_hmac="a" * 64,
             masked_value="l***@example.com",
-            verification_status="unverified",
+            verification_status="verified",
+            verified_at=datetime.now(UTC),
             source_conversation_id=conversation.id,
             source_channel_identity_id=identity.id,
         )
@@ -116,6 +128,24 @@ async def commercial_dossier() -> CommercialDossierContext:
         yield context
     finally:
         async with AsyncSessionLocal() as db:
+            await db.execute(
+                delete(FollowUpTaskEvent).where(
+                    FollowUpTaskEvent.opportunity_id.in_(
+                        select(Opportunity.id).where(
+                            Opportunity.contact_id == context.contact_id
+                        )
+                    )
+                )
+            )
+            await db.execute(
+                delete(FollowUpTask).where(
+                    FollowUpTask.opportunity_id.in_(
+                        select(Opportunity.id).where(
+                            Opportunity.contact_id == context.contact_id
+                        )
+                    )
+                )
+            )
             await db.execute(
                 delete(QuoteVersion).where(
                     QuoteVersion.quote_request_id.in_(
@@ -138,11 +168,9 @@ async def commercial_dossier() -> CommercialDossierContext:
                 )
             )
             await db.execute(
-                delete(FollowUpTask).where(
-                    FollowUpTask.opportunity_id.in_(
-                        select(Opportunity.id).where(
-                            Opportunity.contact_id == context.contact_id
-                        )
+                delete(CommercialAutomationPolicy).where(
+                    CommercialAutomationPolicy.agent_id.in_(
+                        [context.intake_agent_id, context.opportunity_agent_id]
                     )
                 )
             )
@@ -161,6 +189,15 @@ async def commercial_dossier() -> CommercialDossierContext:
                     )
                 )
             await db.execute(
+                delete(ConversationAutomationAssignmentEvent).where(
+                    ConversationAutomationAssignmentEvent.opportunity_id.in_(
+                        select(Opportunity.id).where(
+                            Opportunity.contact_id == context.contact_id
+                        )
+                    )
+                )
+            )
+            await db.execute(
                 delete(Opportunity).where(Opportunity.contact_id == context.contact_id)
             )
             await db.execute(
@@ -172,6 +209,12 @@ async def commercial_dossier() -> CommercialDossierContext:
                 delete(ContactPoint).where(ContactPoint.id == context.contact_point_id)
             )
             await db.execute(delete(Contact).where(Contact.id == context.contact_id))
+            await db.execute(
+                delete(ConversationAutomationAssignmentEvent).where(
+                    ConversationAutomationAssignmentEvent.conversation_id
+                    == context.conversation_id
+                )
+            )
             await db.execute(
                 delete(ChatConversation).where(
                     ChatConversation.id == context.conversation_id
@@ -347,7 +390,40 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
             )
         ).opportunity
         opportunity_id = opportunity.id
+        await ConversationAutomationAssignmentService().assign(
+            db,
+            conversation_id=context.conversation_id,
+            routing_agent_id=context.intake_agent_id,
+            target_agent_id=context.opportunity_agent_id,
+            expected_automation_version=0,
+            actor_agent_id=context.intake_agent_id,
+            actor_admin_id=None,
+            trigger="commercial_test",
+            opportunity_id=opportunity_id,
+            correlation_id="commercial-assignment-2",
+            idempotency_key="commercial-assignment-2",
+        )
         await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        point = await db.get(ContactPoint, context.contact_point_id)
+        assert point is not None
+        point.verification_status = "unverified"
+        with pytest.raises(InvalidFollowUpCommandError):
+            await follow_ups.schedule(
+                db,
+                opportunity_id=opportunity_id,
+                actor_agent_id=context.opportunity_agent_id,
+                actor_operator_id=None,
+                contact_point_id=context.contact_point_id,
+                kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+                due_at=now + timedelta(days=2),
+                note=None,
+                correlation_id="follow-up-unverified-point",
+                idempotency_key="follow-up-unverified-point",
+                now=now,
+            )
+        await db.rollback()
 
     async with AsyncSessionLocal() as db:
         with pytest.raises(FollowUpConsentRequiredError):
@@ -403,6 +479,92 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
             now=now + timedelta(seconds=1),
         )
         assert scheduled.task.consent_record_id == consent.id
+        assert scheduled.task.conversation_id == context.conversation_id
+        assert scheduled.task.target_channel == "web"
+        assert scheduled.task.scheduled_control_version == 0
+        assert scheduled.task.scheduled_automation_version == 1
+        assert scheduled.task.scheduled_policy_version == 0
+        assert scheduled.task.executed_policy_version is None
+        assert scheduled.task.max_attempts == 3
+        policy = (
+            await db.execute(
+                select(CommercialAutomationPolicy).where(
+                    CommercialAutomationPolicy.agent_id == context.opportunity_agent_id
+                )
+            )
+        ).scalar_one()
+        assert policy.is_enabled is False
+        scheduled_events = list(
+            (
+                await db.execute(
+                    select(FollowUpTaskEvent).where(
+                        FollowUpTaskEvent.task_id == scheduled.task.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(scheduled_events) == 1
+        assert scheduled_events[0].to_status == FollowUpStatus.SCHEDULED
+        assert scheduled_events[0].scheduled_policy_version == 0
+        with pytest.raises(InvalidFollowUpCommandError):
+            await follow_ups.schedule(
+                db,
+                opportunity_id=opportunity_id,
+                actor_agent_id=context.opportunity_agent_id,
+                actor_operator_id=None,
+                contact_point_id=context.contact_point_id,
+                target_channel="email",
+                kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+                due_at=now + timedelta(days=2),
+                note=None,
+                correlation_id="follow-up-cross-channel",
+                idempotency_key="follow-up-cross-channel",
+                now=now + timedelta(seconds=1),
+            )
+        deferred = await follow_ups.defer_scheduled(
+            db,
+            task_id=scheduled.task.id,
+            worker_id="follow-up-test-worker",
+            available_at=now + timedelta(days=2, minutes=30),
+            expected_version=0,
+            correlation_id="follow-up-deferred",
+            idempotency_key="follow-up-deferred",
+            safe_code="quiet_hours",
+            occurred_at=now + timedelta(minutes=1),
+        )
+        assert deferred.status == FollowUpStatus.SCHEDULED
+        assert deferred.state_version == 1
+        assert deferred.attempts == 0
+        assert deferred.executed_policy_version == 0
+        deferred_event = (
+            await db.execute(
+                select(FollowUpTaskEvent).where(
+                    FollowUpTaskEvent.task_id == deferred.id,
+                    FollowUpTaskEvent.state_version == 1,
+                )
+            )
+        ).scalar_one()
+        assert deferred_event.event_type == "deferred"
+        assert deferred_event.from_status == FollowUpStatus.SCHEDULED
+        assert deferred_event.to_status == FollowUpStatus.SCHEDULED
+        assert deferred_event.actor_worker_id == "follow-up-test-worker"
+        assert deferred_event.executed_policy_version == 0
+        with pytest.raises(InvalidFollowUpCommandError):
+            await follow_ups.schedule(
+                db,
+                opportunity_id=opportunity_id,
+                actor_agent_id=context.opportunity_agent_id,
+                actor_operator_id=None,
+                contact_point_id=context.contact_point_id,
+                kind=FollowUpKind.PROPOSAL_REMINDER,
+                due_at=now + timedelta(days=3),
+                note="Remind the lead about the issued proposal.",
+                correlation_id="proposal-reminder-without-quote",
+                idempotency_key="proposal-reminder-without-quote",
+                now=now + timedelta(seconds=1),
+            )
         quote_request = await quotes.request(
             db,
             opportunity_id=opportunity_id,
@@ -471,6 +633,247 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
         assert repeated.version.id == issued.version.id
         assert issued.request.status == "issued"
         assert issued.request.state_version == 1
+        reminder = await follow_ups.schedule(
+            db,
+            opportunity_id=opportunity_id,
+            actor_agent_id=context.opportunity_agent_id,
+            actor_operator_id=None,
+            contact_point_id=context.contact_point_id,
+            kind=FollowUpKind.PROPOSAL_REMINDER,
+            due_at=now + timedelta(days=3),
+            note="Remind the lead about the issued proposal.",
+            correlation_id="proposal-reminder-issued",
+            idempotency_key="proposal-reminder-issued",
+            quote_version_id=issued.version.id,
+            now=now + timedelta(seconds=1),
+        )
+        assert reminder.task.quote_version_id == issued.version.id
+        review = await follow_ups.transition(
+            db,
+            task_id=reminder.task.id,
+            actor_agent_id=context.opportunity_agent_id,
+            actor_operator_id=None,
+            target_status=FollowUpStatus.REVIEW_REQUIRED,
+            expected_version=0,
+            correlation_id="proposal-reminder-review",
+            idempotency_key="proposal-reminder-review",
+            safe_code="operator_requested_review",
+            occurred_at=now + timedelta(minutes=2),
+        )
+        repeated_review = await follow_ups.transition(
+            db,
+            task_id=reminder.task.id,
+            actor_agent_id=context.opportunity_agent_id,
+            actor_operator_id=None,
+            target_status=FollowUpStatus.REVIEW_REQUIRED,
+            expected_version=0,
+            correlation_id="proposal-reminder-review-retry",
+            idempotency_key="proposal-reminder-review",
+            safe_code="operator_requested_review",
+            occurred_at=now + timedelta(minutes=3),
+        )
+        assert review.state_version == 1
+        assert repeated_review.state_version == 1
+        reminder_event_count = (
+            await db.execute(
+                select(func.count(FollowUpTaskEvent.id)).where(
+                    FollowUpTaskEvent.task_id == reminder.task.id
+                )
+            )
+        ).scalar_one()
+        assert reminder_event_count == 2
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_follow_up_fails_closed_for_acting_mismatch_and_ambiguous_links(
+    commercial_dossier: CommercialDossierContext,
+) -> None:
+    context = commercial_dossier
+    opportunities = OpportunityService()
+    follow_ups = FollowUpService()
+    now = datetime.now(UTC)
+
+    async with AsyncSessionLocal() as db:
+        opportunity = (
+            await opportunities.create(
+                db,
+                contact_id=context.contact_id,
+                source_conversation_id=context.conversation_id,
+                created_by_agent_id=context.intake_agent_id,
+                assigned_agent_id=context.opportunity_agent_id,
+                assigned_operator_id=None,
+                title="Ambiguous linked channels",
+                summary=None,
+                correlation_id="commercial-create-ambiguous",
+                idempotency_key="commercial-create-ambiguous",
+            )
+        ).opportunity
+        opportunity_id = opportunity.id
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(InvalidFollowUpCommandError, match="acting agent"):
+            await follow_ups.schedule(
+                db,
+                opportunity_id=opportunity_id,
+                actor_agent_id=context.opportunity_agent_id,
+                actor_operator_id=None,
+                contact_point_id=context.contact_point_id,
+                kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+                due_at=now + timedelta(days=1),
+                note=None,
+                correlation_id="acting-mismatch",
+                idempotency_key="acting-mismatch",
+                now=now,
+            )
+        await db.rollback()
+
+    second_conversation_id = uuid4()
+    async with AsyncSessionLocal() as db:
+        await ConversationAutomationAssignmentService().assign(
+            db,
+            conversation_id=context.conversation_id,
+            routing_agent_id=context.intake_agent_id,
+            target_agent_id=context.opportunity_agent_id,
+            expected_automation_version=0,
+            actor_agent_id=context.intake_agent_id,
+            actor_admin_id=None,
+            trigger="commercial_test",
+            opportunity_id=opportunity_id,
+            correlation_id="commercial-assignment-ambiguous",
+            idempotency_key="commercial-assignment-ambiguous",
+        )
+        second_conversation = ChatConversation(
+            id=second_conversation_id,
+            agent_id=context.intake_agent_id,
+            automation_agent_id=context.opportunity_agent_id,
+            automation_version=1,
+            principal_id=context.principal_id,
+            channel="web",
+            route_key=f"commercial-secondary-{uuid4().hex}",
+            external_thread_id=f"secondary-{uuid4().hex}",
+            transcript_consent=True,
+            consent_version="test-v1",
+        )
+        db.add(second_conversation)
+        await db.flush()
+        db.add(
+            OpportunityConversation(
+                opportunity_id=opportunity_id,
+                conversation_id=second_conversation.id,
+                linked_by_agent_id=context.opportunity_agent_id,
+                linked_by_operator_id=None,
+                correlation_id="second-conversation-link",
+                idempotency_key="second-conversation-link",
+                command_hash="c" * 64,
+            )
+        )
+        db.add(
+            ConsentRecord(
+                principal_id=context.principal_id,
+                contact_id=context.contact_id,
+                contact_point_id=context.contact_point_id,
+                agent_id=context.intake_agent_id,
+                purpose="commercial_follow_up",
+                action="grant",
+                policy_version="commercial-v1",
+                channel="web",
+                locale="es-AR",
+                source_conversation_id=context.conversation_id,
+                source_channel_identity_id=context.identity_id,
+                correlation_id="consent-ambiguous",
+                idempotency_key="consent-ambiguous",
+                command_hash="d" * 64,
+                occurred_at=now,
+            )
+        )
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(InvalidFollowUpCommandError, match="exactly one"):
+            await follow_ups.schedule(
+                db,
+                opportunity_id=opportunity_id,
+                actor_agent_id=context.opportunity_agent_id,
+                actor_operator_id=None,
+                contact_point_id=context.contact_point_id,
+                kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+                due_at=now + timedelta(days=1),
+                note=None,
+                correlation_id="ambiguous-link",
+                idempotency_key="ambiguous-link",
+                now=now,
+            )
+        await db.rollback()
+
+        explicit = await follow_ups.schedule(
+            db,
+            opportunity_id=opportunity_id,
+            actor_agent_id=context.opportunity_agent_id,
+            actor_operator_id=None,
+            contact_point_id=context.contact_point_id,
+            conversation_id=context.conversation_id,
+            kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+            due_at=now + timedelta(days=1),
+            note=None,
+            correlation_id="explicit-link",
+            idempotency_key="explicit-link",
+            now=now,
+        )
+        assert explicit.task.conversation_id == context.conversation_id
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_commercial_automation_policy_uses_cas_and_starts_disabled(
+    commercial_dossier: CommercialDossierContext,
+) -> None:
+    context = commercial_dossier
+    follow_ups = FollowUpService()
+
+    async with AsyncSessionLocal() as db:
+        default_policy = await follow_ups.get_policy(
+            db,
+            agent_id=context.opportunity_agent_id,
+        )
+        admin_id = (await db.execute(select(AdminUser.id).limit(1))).scalar_one()
+        assert default_policy.is_enabled is False
+        assert default_policy.version == 0
+
+        configured = await follow_ups.configure_policy(
+            db,
+            agent_id=context.opportunity_agent_id,
+            actor_admin_id=admin_id,
+            expected_version=0,
+            is_enabled=True,
+            allowed_kinds=[FollowUpKind.COMMERCIAL_FOLLOW_UP],
+            timezone="America/Argentina/Salta",
+            quiet_hours_start=time(21, 0),
+            quiet_hours_end=time(8, 0),
+            min_interval_seconds=7_200,
+            max_attempts=4,
+            max_daily_tasks=20,
+            max_pending_tasks=80,
+        )
+        assert configured.is_enabled is True
+        assert configured.version == 1
+        with pytest.raises(FollowUpVersionConflictError):
+            await follow_ups.configure_policy(
+                db,
+                agent_id=context.opportunity_agent_id,
+                actor_admin_id=admin_id,
+                expected_version=0,
+                is_enabled=False,
+                allowed_kinds=[],
+                timezone="UTC",
+                quiet_hours_start=None,
+                quiet_hours_end=None,
+                min_interval_seconds=3_600,
+                max_attempts=3,
+                max_daily_tasks=25,
+                max_pending_tasks=100,
+            )
         await db.commit()
 
 

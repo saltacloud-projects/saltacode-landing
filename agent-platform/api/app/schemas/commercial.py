@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Literal
 from uuid import UUID
 
@@ -27,6 +27,7 @@ FollowUpKindValue = Literal[
 ]
 FollowUpStatusValue = Literal[
     "scheduled",
+    "dispatch_queued",
     "in_progress",
     "completed",
     "cancelled",
@@ -112,6 +113,7 @@ class ConversationCandidateOut(BaseModel):
 class OpportunityConversationOut(BaseModel):
     id: UUID
     conversation_id: UUID | None
+    target_channel: str | None
     channel: str | None
     route_key: str | None
     status: str | None
@@ -142,14 +144,28 @@ class OpportunityOwnershipEventOut(BaseModel):
 
 class FollowUpTaskOut(BaseModel):
     id: UUID
+    conversation_id: UUID | None
     contact_point_id: UUID | None
     consent_record_id: UUID
+    executed_consent_record_id: UUID | None
     assigned_agent_id: UUID
     assigned_operator_id: UUID | None
     kind: FollowUpKindValue
     status: FollowUpStatusValue
     state_version: int
+    scheduled_control_version: int | None
+    scheduled_automation_version: int | None
+    scheduled_policy_version: int | None
+    executed_policy_version: int | None
     due_at: datetime
+    available_at: datetime
+    attempts: int
+    max_attempts: int
+    chat_message_id: UUID | None
+    outbound_message_id: UUID | None
+    quote_version_id: UUID | None
+    last_safe_code: str | None
+    review_required_at: datetime | None
     note: str | None
     created_at: datetime
     updated_at: datetime
@@ -216,6 +232,14 @@ class OpportunityConversationLinkRequest(BaseModel):
 
 class FollowUpCreateRequest(BaseModel):
     contact_point_id: UUID
+    conversation_id: UUID | None = None
+    target_channel: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=40,
+        pattern=r"^[a-z][a-z0-9_-]{0,39}$",
+    )
+    quote_version_id: UUID | None = None
     kind: FollowUpKindValue
     due_at: datetime
     note: str | None = Field(default=None, max_length=8_000)
@@ -224,6 +248,34 @@ class FollowUpCreateRequest(BaseModel):
 class FollowUpTransitionRequest(BaseModel):
     target_status: FollowUpStatusValue
     expected_version: int = Field(ge=0)
+    safe_code: str | None = Field(default=None, min_length=1, max_length=80)
+
+
+class CommercialAutomationPolicyOut(BaseModel):
+    agent_id: UUID
+    is_enabled: bool
+    allowed_kinds: list[FollowUpKindValue] = Field(default_factory=list)
+    timezone: str
+    quiet_hours_start: time | None
+    quiet_hours_end: time | None
+    min_interval_seconds: int
+    max_attempts: int
+    max_daily_tasks: int
+    max_pending_tasks: int
+    version: int
+
+
+class CommercialAutomationPolicyUpdateRequest(BaseModel):
+    expected_version: int = Field(ge=0)
+    is_enabled: bool
+    allowed_kinds: list[FollowUpKindValue] = Field(default_factory=list)
+    timezone: str = Field(min_length=1, max_length=64)
+    quiet_hours_start: time | None = None
+    quiet_hours_end: time | None = None
+    min_interval_seconds: int = Field(ge=0, le=2_678_400)
+    max_attempts: int = Field(ge=1, le=20)
+    max_daily_tasks: int = Field(ge=1, le=10_000)
+    max_pending_tasks: int = Field(ge=1, le=100_000)
 
 
 class QuoteRequestCreateRequest(BaseModel):

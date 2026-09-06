@@ -21,6 +21,7 @@ from app.models.platform import ChatConversation, Principal
 
 _REVISION = "f4c8d0e2f567"
 _DOWN_REVISION = "f3b7c9d1e456"
+_HEAD_REVISION = "f5d9e1f3a678"
 
 
 def _config() -> Config:
@@ -31,7 +32,7 @@ def _config() -> Config:
 def test_outbound_automation_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 

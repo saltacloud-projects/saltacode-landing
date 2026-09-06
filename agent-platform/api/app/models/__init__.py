@@ -25,6 +25,7 @@ from app.models.agent_runtime import (
 )
 from app.models.audit_log import AuditLog
 from app.models.authorized_user import AuthorizedUser
+from app.models.commercial_automation_policy import CommercialAutomationPolicy
 from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.conversation_automation_assignment import (
     ConversationAutomationAssignmentEvent,
@@ -32,12 +33,12 @@ from app.models.conversation_automation_assignment import (
 from app.models.conversation_control import ConversationControlEvent
 from app.models.conversation_event import ConversationEvent
 from app.models.conversation_message import ConversationMessage
+from app.models.follow_up import FollowUpTask, FollowUpTaskEvent
 from app.models.identity_link_claim import IdentityLinkClaim, IdentityLinkClaimEvent
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.message_status import MessageStatus
 from app.models.opportunity import (
-    FollowUpTask,
     Opportunity,
     OpportunityConversation,
     OpportunityOwnershipEvent,

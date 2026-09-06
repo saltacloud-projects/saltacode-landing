@@ -1,4 +1,4 @@
-"""Commercial opportunity ownership, history, links, and follow-up work."""
+"""Commercial opportunity ownership, history, and conversation links."""
 
 from __future__ import annotations
 
@@ -375,105 +375,6 @@ class OpportunityConversation(Base):
     )
 
 
-class FollowUpTask(TimestampedModel):
-    """Consent-gated commercial follow-up scheduled for one opportunity."""
-
-    __tablename__ = "follow_up_tasks"
-    __table_args__ = (
-        CheckConstraint(
-            "kind IN ('commercial_follow_up', 'meeting_coordination', "
-            "'proposal_reminder')",
-            name="ck_follow_up_task_kind",
-        ),
-        CheckConstraint(
-            "status IN ('scheduled', 'in_progress', 'completed', 'cancelled', "
-            "'review_required')",
-            name="ck_follow_up_task_status",
-        ),
-        CheckConstraint(
-            "state_version >= 0",
-            name="ck_follow_up_task_state_version",
-        ),
-        CheckConstraint(
-            "(status = 'completed') = (completed_at IS NOT NULL)",
-            name="ck_follow_up_task_completed_at",
-        ),
-        CheckConstraint(
-            "(status = 'cancelled') = (cancelled_at IS NOT NULL)",
-            name="ck_follow_up_task_cancelled_at",
-        ),
-        CheckConstraint(
-            f"command_hash ~ {_SHA256_HEX_SQL}",
-            name="ck_follow_up_task_command_hash",
-        ),
-        CheckConstraint(
-            "char_length(btrim(correlation_id)) > 0",
-            name="ck_follow_up_task_correlation",
-        ),
-        CheckConstraint(
-            "char_length(btrim(idempotency_key)) > 0",
-            name="ck_follow_up_task_idempotency",
-        ),
-        UniqueConstraint(
-            "opportunity_id",
-            "idempotency_key",
-            name="uq_follow_up_task_idempotency",
-        ),
-        Index("ix_follow_up_task_due", "assigned_agent_id", "status", "due_at"),
-    )
-
-    opportunity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("opportunities.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-    contact_point_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("contact_points.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    consent_record_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("consent_records.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-    assigned_agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("agent_profiles.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-    assigned_operator_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("admin_users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    kind: Mapped[str] = mapped_column(String(30), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(30),
-        default="scheduled",
-        server_default="scheduled",
-        nullable=False,
-    )
-    state_version: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        server_default="0",
-        nullable=False,
-    )
-    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    correlation_id: Mapped[str] = mapped_column(String(120), nullable=False)
-    idempotency_key: Mapped[str] = mapped_column(String(220), nullable=False)
-    command_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-    cancelled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+# Compatibility import for existing callers. New code imports the aggregate
+# from app.models.follow_up directly.
+from app.models.follow_up import FollowUpTask  # noqa: E402,F401

@@ -21,7 +21,7 @@ def _config() -> Config:
 def test_identity_link_claim_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["f4c8d0e2f567"]
+    assert scripts.get_heads() == ["f5d9e1f3a678"]
     assert scripts.get_revision("c9d3e5f7a012").down_revision == "b8c2d4e6f901"
 
 

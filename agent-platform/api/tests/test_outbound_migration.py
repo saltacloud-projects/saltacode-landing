@@ -21,7 +21,7 @@ def _config() -> Config:
 def test_outbound_migration_precedes_the_resumable_web_head():
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["f4c8d0e2f567"]
+    assert scripts.get_heads() == ["f5d9e1f3a678"]
     assert scripts.get_revision("7e702862958d").down_revision == "d7e8f9a0b1c2"
     assert scripts.get_revision("8f813973069e").down_revision == "7e702862958d"
 
