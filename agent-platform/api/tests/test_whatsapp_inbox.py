@@ -157,6 +157,12 @@ def test_pipeline_has_no_direct_outbound_provider_calls():
         assert f".{method}(" not in source
 
 
+def test_pipeline_provides_conversation_scope_to_tools():
+    source = inspect.getsource(PipelineService)
+
+    assert "conversation_id=str(controlled_conversation.id)" in source
+
+
 @pytest.mark.asyncio
 async def test_whatsapp_pipeline_rejects_another_channel() -> None:
     route = InboundRouteContext(

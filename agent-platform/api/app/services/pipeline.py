@@ -566,6 +566,7 @@ class PipelineService:
                         request_id=request_id,
                         channel="whatsapp",
                         principal_id=str(inbound_identity.principal_id),
+                        conversation_id=str(controlled_conversation.id),
                         agent_id=str(profile.id),
                         external_subject=phone,
                         scopes={"tools:read", "tools:write"},
