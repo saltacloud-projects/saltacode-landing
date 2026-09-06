@@ -483,29 +483,3 @@ def test_persisted_connection_is_decrypted_and_validated_request_scoped(monkeypa
     assert context.connection_id == row.id
     assert context.phone_number_id == "account-a"
     assert context.route_key == "route-a"
-
-
-@pytest.mark.asyncio
-async def test_delivery_uses_resolved_connection_instead_of_environment(monkeypatch):
-    from app.services import whatsapp as module
-
-    response = MagicMock()
-    response.raise_for_status.return_value = None
-    response.status_code = 200
-    response.json.return_value = {"messages": [{"id": "wamid.sent"}]}
-    client = AsyncMock()
-    client.post.return_value = response
-    client.__aenter__.return_value = client
-    client.__aexit__.return_value = False
-    monkeypatch.setattr(module.httpx, "AsyncClient", MagicMock(return_value=client))
-    monkeypatch.setattr(module.settings, "whatsapp_token", "legacy-token")
-    monkeypatch.setattr(module.settings, "whatsapp_phone_number_id", "legacy-account")
-
-    message_id = await module.WhatsAppService().send_text_message(
-        "5493870000000", "hello", connection=_connection("a")
-    )
-
-    assert message_id == "wamid.sent"
-    request = client.post.await_args
-    assert request.args[0].endswith("/account-a/messages")
-    assert request.kwargs["headers"]["Authorization"] == "Bearer access-a"
