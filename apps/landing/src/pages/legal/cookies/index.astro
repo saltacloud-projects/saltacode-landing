@@ -8,7 +8,7 @@ import BaseLayout from "../../../layouts/BaseLayout.astro";
 
 const title = "Política de cookies y almacenamiento | SaltaCode";
 const description = "Detalle del almacenamiento técnico, preferencia de tema y consentimiento del chat utilizados por SaltaCode.";
-const legalUpdatedAt = "1 de septiembre de 2026";
+const legalUpdatedAt = "6 de septiembre de 2026";
 const breadcrumbs = [
   { name: "Inicio", path: "/" },
   { name: "Cookies y almacenamiento", path: "/legal/cookies/" },
@@ -39,7 +39,10 @@ const breadcrumbs = [
             <div class="storage-table" role="region" aria-label="Detalle de la cookie del chat" tabindex="0">
               <table>
                 <thead><tr><th>Nombre</th><th>Finalidad</th><th>Duración</th><th>Alcance</th></tr></thead>
-                <tbody><tr><td><code>saltacode_chat_session</code></td><td>Vincular de forma segura la conversación con una sesión anónima.</td><td>Hasta 30 días</td><td>Cookie HttpOnly, SameSite=Lax, ruta <code>/api/v1/chat</code>.</td></tr></tbody>
+                <tbody>
+                  <tr><td><code>saltacode_chat_session_v2</code></td><td>Vincular de forma segura la conversación durable con una sesión anónima.</td><td>Hasta 30 días</td><td>Cookie HttpOnly, SameSite=Lax, ruta <code>/api/v2/chat</code>.</td></tr>
+                  <tr><td><code>saltacode_chat_session</code></td><td>Migrar una sesión anterior sin cambiar su identidad.</td><td>Hasta su vencimiento o eliminación.</td><td>Cookie HttpOnly heredada, limitada a <code>/api/v1/chat</code>.</td></tr>
+                </tbody>
               </table>
             </div>
             <p>La cookie se crea al enviar un mensaje aceptado al chat. Al ser HttpOnly, el código del navegador no puede leer su contenido.</p>
@@ -53,14 +56,14 @@ const breadcrumbs = [
                   <tr><td><code>saltacode-theme</code></td><td>Recordar modo claro u oscuro.</td><td>Hasta que elijas “sistema” o borres los datos locales.</td></tr>
                   <tr><td><code>saltacode-privacy-preferences</code></td><td>Registrar la versión de configuración necesaria que revisaste.</td><td>Hasta que la restablezcas o cambie la versión.</td></tr>
                   <tr><td><code>saltacode-chat-consent</code></td><td>Registrar la versión de privacidad del chat y la fecha aceptada; no guarda mensajes.</td><td>Hasta que la restablezcas o cambie la versión.</td></tr>
-                  <tr><td><code>saltacode-chat-transcript</code></td><td>Mostrar nuevamente en este dispositivo los mensajes del chat sin reenviarlos al servidor.</td><td>Hasta 30 días desde la última interacción, con un máximo local de 80 mensajes y 64 KiB.</td></tr>
+                  <tr><td><code>saltacode-chat-transcript</code></td><td>Mostrar rápidamente una copia acotada mientras el historial del servidor se carga como fuente de verdad. También conserva el identificador de un envío aún no confirmado para evitar duplicarlo.</td><td>Hasta 30 días desde la última interacción, con un máximo local de 100 mensajes, 8 envíos pendientes y 64 KiB.</td></tr>
                 </tbody>
               </table>
             </div>
           </section>
           <section>
             <h2>4. Consentimiento independiente del chat</h2>
-            <p>La aceptación general de la configuración necesaria no habilita el envío de conversaciones. El chat pide una aceptación específica antes del primer mensaje y el servidor valida la versión vigente. La copia local se crea sólo después de esa aceptación y restaurarla nunca reenvía mensajes ni inicia una solicitud automática.</p>
+            <p>La aceptación general de la configuración necesaria no habilita el envío de conversaciones. El chat pide una aceptación específica antes del primer mensaje y el servidor valida la versión vigente. La copia local se crea sólo después de esa aceptación, se reemplaza con el historial autorizado del servidor y, si un envío quedó sin confirmar, reutiliza el mismo identificador para que el servidor no cree otro mensaje.</p>
           </section>
           <section>
             <h2>5. Cómo controlar este almacenamiento</h2>

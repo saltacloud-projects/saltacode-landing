@@ -23,7 +23,7 @@ const indexBuffer = await readFile(resolve(dist, "index.html"));
 const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
-const chatSourcePaths = ["chat-preview.ts", "chat-stream.ts", "chat-template.ts", "chat-transcript.ts"];
+const chatSourcePaths = ["chat-preview.ts", "chat-api.ts", "chat-stream.ts", "chat-template.ts", "chat-transcript.ts"];
 const chatSources = await Promise.all(
   chatSourcePaths.map((path) => readFile(resolve(import.meta.dirname, `../src/scripts/${path}`), "utf8")),
 );
@@ -43,6 +43,7 @@ const BUILD_BUDGETS = Object.freeze({
   initialExecutableJavaScriptBytes: 5.5 * 1024,
   nonChatExecutableJavaScriptBytes: 7 * 1024,
   chatChunkBytes: 23 * 1024,
+  chatStylesheetBytes: 10 * 1024,
   privacyChunkBytes: 3 * 1024,
   privacyStylesheetBytes: 4 * 1024,
   socialImageBytes: 100 * 1024,
@@ -128,6 +129,9 @@ const allRouteCssPaths = new Set([...pages.values()].flatMap((markup) => [...sty
 const additionalCssPaths = new Set([...allRouteCssPaths].filter((path) => !homeCssPaths.has(path)));
 const chatChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)chat-preview\.[^/]+\.js$/.test(file.path));
 if (!chatChunk) throw new Error("The lazy chat chunk was not emitted.");
+const chatStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)chat-preview\.[^/]+\.css$/.test(file.path));
+if (!chatStylesheet) throw new Error("The deferred chat stylesheet was not emitted.");
+if (index.includes(`/${chatStylesheet.path}`)) throw new Error("The chat stylesheet must remain outside the initial page path.");
 const privacyChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)privacy-preferences\.[^/]+\.js$/.test(file.path));
 const privacyStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)privacy-preferences\.[^/]+\.css$/.test(file.path));
 if (!privacyChunk || !privacyStylesheet) throw new Error("The deferred privacy center assets were not emitted.");
@@ -139,6 +143,7 @@ const measuredBuild = Object.freeze({
   initialExecutableJavaScriptBytes: initialExternalBytes + inlineBytes,
   nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes - privacyChunk.bytes,
   chatChunkBytes: chatChunk.bytes,
+  chatStylesheetBytes: chatStylesheet.bytes,
   privacyChunkBytes: privacyChunk.bytes,
   privacyStylesheetBytes: privacyStylesheet.bytes,
   socialImageBytes: socialImage.bytes,
@@ -151,6 +156,7 @@ const budgetResults = [
   ["initial executable JavaScript", measuredBuild.initialExecutableJavaScriptBytes, BUILD_BUDGETS.initialExecutableJavaScriptBytes],
   ["non-chat executable JavaScript", measuredBuild.nonChatExecutableJavaScriptBytes, BUILD_BUDGETS.nonChatExecutableJavaScriptBytes],
   ["lazy chat chunk", measuredBuild.chatChunkBytes, BUILD_BUDGETS.chatChunkBytes],
+  ["deferred chat CSS", measuredBuild.chatStylesheetBytes, BUILD_BUDGETS.chatStylesheetBytes],
   ["deferred privacy JavaScript", measuredBuild.privacyChunkBytes, BUILD_BUDGETS.privacyChunkBytes],
   ["deferred privacy CSS", measuredBuild.privacyStylesheetBytes, BUILD_BUDGETS.privacyStylesheetBytes],
   ["social preview image", measuredBuild.socialImageBytes, BUILD_BUDGETS.socialImageBytes],
@@ -236,8 +242,9 @@ if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-0
 if (/transcript-consent|type="checkbox"/.test(combinedChatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
 if (!combinedChatSource.includes("Aceptar y enviar") || !combinedChatSource.includes("event.isComposing") || !combinedChatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");
 if (!combinedChatSource.includes("Continuar conversación") || !pageMotionSource.includes("initializeChatResume") || !pageMotionSource.includes("saltacode-chat-transcript")) throw new Error("The lazy chat resume affordance or reload bootstrap is missing.");
-if (!chatTranscriptSource.includes("CHAT_TRANSCRIPT_TTL_MS = 30 * 24 * 60 * 60 * 1_000") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_MESSAGES = 80") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_BYTES = 64 * 1_024")) throw new Error("Local transcript retention or bounds changed without review.");
-if (chatTranscriptSource.includes("fetch(") || !combinedChatSource.includes("No se reenvió automáticamente")) throw new Error("Transcript restoration must remain request-free and interrupted responses must not replay.");
+if (!chatTranscriptSource.includes("CHAT_TRANSCRIPT_TTL_MS = 30 * 24 * 60 * 60 * 1_000") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_MESSAGES = 100") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_PENDING = 8") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_BYTES = 64 * 1_024")) throw new Error("Local transcript retention or bounds changed without review.");
+if (chatTranscriptSource.includes("fetch(") || !combinedChatSource.includes("/api/v2/chat/history") || !combinedChatSource.includes("/api/v1/chat/session/upgrade")) throw new Error("The local cache must remain request-free and reconcile through the explicit v2 server-history flow.");
+if (!combinedChatSource.includes('headers["Last-Event-ID"]') || !combinedChatSource.includes("cursor_expired") || !combinedChatSource.includes("Nueva conversación")) throw new Error("Resumable events, cursor recovery, or explicit chat reset is missing.");
 if (!privacySource.includes("localStorage.removeItem(CHAT_TRANSCRIPT_KEY)") || !privacySource.includes("saltacode:privacy-reset")) throw new Error("Privacy reset must clear and notify the active chat transcript.");
 if (!combinedChatSource.includes("este chat no se transfiere") || !chatSource.includes("canonical.href")) throw new Error("The chat WhatsApp action must reuse the canonical destination and disclose the channel boundary.");
 if (!chatStylesSource.includes("max-width:none") || !chatStylesSource.includes("max-height:none") || !chatStylesSource.includes("resize:none") || !chatStylesSource.includes(".chat-send-label")) throw new Error("Mobile dialog, composer, or icon-only send safeguards are missing.");
@@ -277,7 +284,7 @@ if (totalAssetVariantBytes > ASSET_LIBRARY_BUDGETS.totalVariantBytes) throw new 
 
 if (!robots.includes("Allow: /") || !robots.includes("https://saltacode.com.ar/sitemap.xml")) throw new Error("robots.txt is invalid.");
 for (const route of routeFiles.keys()) if (!sitemap.includes(`<loc>https://saltacode.com.ar${route}</loc>`)) throw new Error(`sitemap.xml is missing ${route}.`);
-for (const legalRoute of ["/legal/privacidad/", "/legal/cookies/"]) if (!pages.get(legalRoute).includes("1 de septiembre de 2026")) throw new Error(`${legalRoute} has no current legal version date.`);
+for (const legalRoute of ["/legal/privacidad/", "/legal/cookies/"]) if (!pages.get(legalRoute).includes("6 de septiembre de 2026")) throw new Error(`${legalRoute} has no current legal version date.`);
 if (!pages.get("/legal/terminos/").includes("28 de agosto de 2026")) throw new Error("Terms have no legal version date.");
 if (!pages.get("/legal/privacidad/").includes("20-38213561-0") || !index.includes('"taxID":"20-38213561-0"')) throw new Error("The verified controller tax identifier is missing from legal or structured data output.");
 if (!pages.get("/legal/cookies/").includes("saltacode-chat-transcript") || !pages.get("/legal/cookies/").includes("64 KiB")) throw new Error("The bounded local chat transcript is missing from the storage disclosure.");
