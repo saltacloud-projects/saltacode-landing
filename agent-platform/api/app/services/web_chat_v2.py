@@ -91,7 +91,6 @@ class WebChatV2Service:
             "opportunity_id",
             "preferred_delivery_channel",
             "status",
-            "target_agent_id",
         }
     )
 

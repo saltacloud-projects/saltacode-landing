@@ -338,7 +338,6 @@ async def test_capture_is_atomic_idempotent_encrypted_and_publicly_safe(
                 "opportunity_id": first.json()["opportunity_id"],
                 "preferred_delivery_channel": "email",
                 "status": "accepted",
-                "target_agent_id": str(graph.target_agent_id),
             },
         }
     ]
@@ -410,7 +409,6 @@ async def test_capture_is_atomic_idempotent_encrypted_and_publicly_safe(
         "opportunity_id": first.json()["opportunity_id"],
         "preferred_delivery_channel": "email",
         "status": "accepted",
-        "target_agent_id": str(graph.target_agent_id),
     }
     serialized_event = str(events[0].payload_json)
     assert payload["contact_value"] not in serialized_event

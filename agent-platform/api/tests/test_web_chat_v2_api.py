@@ -20,6 +20,7 @@ from app.schemas.web_chat_v2 import (
 from app.services.web_chat_v2 import (
     WebChatRequestConflictError,
     WebChatSessionBlockedError,
+    WebChatV2Service,
 )
 
 
@@ -55,6 +56,23 @@ def _message_payload() -> dict:
         "locale": "es-AR",
         "consent": {"granted": True, "version": "privacy-v1"},
     }
+
+
+def test_public_event_projection_does_not_expose_target_agent_identity():
+    event = SimpleNamespace(
+        sequence=7,
+        event_type="commercial.opportunity.created",
+        created_at=datetime.now(timezone.utc),
+        payload_json={
+            "opportunity_id": str(uuid4()),
+            "status": "accepted",
+            "target_agent_id": str(uuid4()),
+        },
+    )
+
+    projected = WebChatV2Service._public_event(event)
+
+    assert projected.payload.keys() == {"opportunity_id", "status"}
 
 
 @pytest.mark.asyncio

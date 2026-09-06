@@ -168,7 +168,6 @@ class WebCommercialService:
                     "opportunity_id": str(handoff.opportunity.id),
                     "preferred_delivery_channel": (request.preferred_delivery_channel),
                     "status": "accepted",
-                    "target_agent_id": str(handoff.opportunity.assigned_agent_id),
                 },
             )
         return WebCommercialContactAccepted(
