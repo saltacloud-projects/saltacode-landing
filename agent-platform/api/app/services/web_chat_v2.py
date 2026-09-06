@@ -83,11 +83,15 @@ class WebChatV2Service:
     _public_event_fields = frozenset(
         {
             "client_message_id",
+            "client_request_id",
             "content",
             "error_code",
             "message_id",
             "mode",
+            "opportunity_id",
+            "preferred_delivery_channel",
             "status",
+            "target_agent_id",
         }
     )
 

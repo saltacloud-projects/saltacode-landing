@@ -46,6 +46,7 @@ from app.routers.executions import router as executions_router
 from app.routers.governance import router as governance_router
 from app.routers.tools import router as tools_router
 from app.routers.web_chat_v2 import router as web_chat_v2_router
+from app.routers.web_commercial import router as web_commercial_router
 from app.routers.webhooks import router as webhooks_router
 
 logger = logging.getLogger(__name__)
@@ -206,6 +207,7 @@ app.include_router(health.router)
 app.include_router(internal.router, prefix="/internal")
 app.include_router(executions_router)
 app.include_router(web_chat_v2_router)
+app.include_router(web_commercial_router)
 app.include_router(webhooks_router, prefix="/webhooks")
 app.include_router(
     webhooks_router, prefix="/webhook"

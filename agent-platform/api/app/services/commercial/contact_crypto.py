@@ -63,6 +63,14 @@ class ContactCrypto:
     def lookup(self, *, kind: str, value: str) -> str:
         return self._digest(self.normalize(kind=kind, value=value))
 
+    def fingerprint(self, *, namespace: str, payload: str) -> str:
+        """Produce a domain-separated keyed digest without persisting clear input."""
+        normalized_namespace = namespace.strip()
+        if not normalized_namespace or len(normalized_namespace) > 80:
+            raise ValueError("invalid fingerprint namespace")
+        material = f"{normalized_namespace}\0{payload}".encode("utf-8")
+        return hmac.new(self._lookup_key(), material, hashlib.sha256).hexdigest()
+
     @staticmethod
     def normalize(*, kind: str, value: str) -> str:
         candidate = value.strip()
@@ -91,6 +99,13 @@ class ContactCrypto:
             raise ContactCryptoUnavailable("contact encryption key is invalid") from exc
 
     def _digest(self, normalized: str) -> str:
+        return hmac.new(
+            self._lookup_key(),
+            normalized.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _lookup_key(self) -> bytes:
         key = self._read_key(
             settings.contact_lookup_hmac_key_file,
             label="contact lookup HMAC",
@@ -107,7 +122,7 @@ class ContactCrypto:
             raise ContactCryptoUnavailable(
                 "contact encryption and lookup HMAC keys must be distinct"
             )
-        return hmac.new(key, normalized.encode("utf-8"), hashlib.sha256).hexdigest()
+        return key
 
     @staticmethod
     def _read_key(path_value: str, *, label: str) -> bytes:
