@@ -19,6 +19,9 @@ from app.models.agent_handoff_route import AgentHandoffRoute
 from app.models.agent_profile import AgentProfile
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.contact import ConsentRecord, Contact, ContactPoint
+from app.models.conversation_automation_assignment import (
+    ConversationAutomationAssignmentEvent,
+)
 from app.models.conversation_event import ConversationEvent
 from app.models.opportunity import (
     FollowUpTask,
@@ -181,6 +184,13 @@ async def web_commercial_graph() -> WebCommercialGraph:
         async with AsyncSessionLocal() as db:
             opportunity_ids = select(Opportunity.id).where(
                 Opportunity.created_by_agent_id == graph.source_agent_id
+            )
+            await db.execute(
+                delete(ConversationAutomationAssignmentEvent).where(
+                    ConversationAutomationAssignmentEvent.opportunity_id.in_(
+                        opportunity_ids
+                    )
+                )
             )
             await db.execute(
                 delete(FollowUpTask).where(

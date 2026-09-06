@@ -42,6 +42,10 @@ from app.services.outbound_delivery import (
 )
 from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
+from app.services.web_execution_queue import (
+    WebExecutionAutomationBlockedError,
+    web_execution_queue_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +145,8 @@ class ChatApplicationService:
             route_key=route_scope,
             channel_route_id=channel_route_id,
         )
+        if conversation.automation_agent_id != profile.id:
+            raise AgentNotReady("conversation acting agent changed during execution")
         inbound = await self.record_whatsapp_inbound(
             db,
             conversation=conversation,
@@ -189,6 +195,8 @@ class ChatApplicationService:
                 output_message_id=outbound.id,
                 status="completed",
                 control_version=effective_control_version,
+                automation_agent_id=conversation.automation_agent_id,
+                automation_version=conversation.automation_version,
                 tools_used=list(tools_used),
             )
         )
@@ -426,10 +434,10 @@ class ChatApplicationService:
             except AgentRuntimeUnavailable as exc:
                 raise AgentNotReady(str(exc)) from exc
             runtime = resolved_route.runtime
-            resolved_profile = runtime.profile
+            routing_profile = runtime.profile
         else:
             logger.warning("legacy_web_execution_without_route_key")
-            resolved_profile = (
+            routing_profile = (
                 await db.execute(
                     select(AgentProfile).where(
                         AgentProfile.slug == settings.default_agent_slug,
@@ -438,13 +446,13 @@ class ChatApplicationService:
                     )
                 )
             ).scalar_one_or_none()
-            if resolved_profile is None:
+            if routing_profile is None:
                 raise AgentNotReady("the public agent profile is not active")
             try:
                 runtime = await agent_runtime_resolver.resolve_agent(
-                    db, resolved_profile.id, require_public=True
+                    db, routing_profile.id, require_public=True
                 )
-                resolved_profile = runtime.profile
+                routing_profile = runtime.profile
             except AgentRuntimeUnavailable:
                 logger.warning("legacy_default_agent_runtime_unavailable")
 
@@ -456,7 +464,7 @@ class ChatApplicationService:
             conversation = await db.get(ChatConversation, execution.conversation_id)
             if conversation is None:
                 raise AgentNotReady("the stored conversation is unavailable")
-            if conversation.agent_id != resolved_profile.id:
+            if conversation.agent_id != routing_profile.id:
                 raise AgentNotReady("request id was already used on another route")
             if request.route_key is not None and (
                 conversation.route_key != request.route_key
@@ -490,10 +498,18 @@ class ChatApplicationService:
             inbound.status = "accepted"
             existing_execution.status = "running"
             existing_execution.error_code = None
-            profile = resolved_profile
             conversation.transcript_consent = True
             conversation.consent_version = request.consent.version
             execution.control_version = conversation.control_version
+            execution.automation_agent_id = conversation.automation_agent_id
+            execution.automation_version = conversation.automation_version
+            runtime = await self._resolve_acting_runtime(
+                db,
+                conversation=conversation,
+                routing_profile=routing_profile,
+                routing_runtime=runtime,
+            )
+            profile = runtime.profile
             history = await self._history(
                 db,
                 conversation.id,
@@ -505,15 +521,13 @@ class ChatApplicationService:
             )
             await db.commit()
         else:
-            profile = resolved_profile
-
-            route_scope = request.route_key or profile.slug
+            route_scope = request.route_key or routing_profile.slug
             identity = await self._resolve_identity(
                 db, "web", route_scope, str(request.session_id)
             )
             conversation = await self._resolve_conversation(
                 db,
-                agent_id=profile.id,
+                agent_id=routing_profile.id,
                 principal_id=identity.principal_id,
                 channel="web",
                 external_thread_id=str(request.session_id),
@@ -521,6 +535,13 @@ class ChatApplicationService:
                 route_key=route_scope,
                 channel_route_id=resolved_route.route.id if resolved_route else None,
             )
+            runtime = await self._resolve_acting_runtime(
+                db,
+                conversation=conversation,
+                routing_profile=routing_profile,
+                routing_runtime=runtime,
+            )
+            profile = runtime.profile
             history = await self._history(
                 db,
                 conversation.id,
@@ -547,6 +568,8 @@ class ChatApplicationService:
                 inbound_message_id=inbound.id,
                 status="running",
                 control_version=conversation.control_version,
+                automation_agent_id=conversation.automation_agent_id,
+                automation_version=conversation.automation_version,
             )
             db.add(execution)
             await db.commit()
@@ -554,21 +577,30 @@ class ChatApplicationService:
         started = time.monotonic()
 
         async def automation_guard() -> None:
-            await conversation_control_service.assert_automation_allowed(
+            snapshot = await conversation_control_service.assert_automation_allowed(
                 db,
                 conversation_id=conversation.id,
-                agent_id=profile.id,
+                agent_id=conversation.agent_id,
                 expected_version=execution.control_version,
+            )
+            web_execution_queue_service.assert_execution_current(
+                snapshot,
+                execution,
             )
 
         try:
             await automation_guard()
-        except (AutomationBlockedError, ControlVersionConflictError) as exc:
+        except (
+            AutomationBlockedError,
+            ControlVersionConflictError,
+            WebExecutionAutomationBlockedError,
+        ) as exc:
             await self._mark_execution_control_blocked(
                 db,
                 inbound,
                 execution,
                 started=started,
+                safe_code=self._automation_safe_code(exc),
             )
             raise AgentNotReady("conversation automation is not active") from exc
 
@@ -620,19 +652,28 @@ class ChatApplicationService:
                 runtime=runtime,
                 automation_guard=automation_guard,
             )
-            await conversation_control_service.assert_automation_allowed(
+            snapshot = await conversation_control_service.assert_automation_allowed(
                 db,
                 conversation_id=conversation.id,
-                agent_id=profile.id,
+                agent_id=conversation.agent_id,
                 expected_version=execution.control_version,
                 for_update=True,
             )
-        except (AutomationBlockedError, ControlVersionConflictError) as exc:
+            web_execution_queue_service.assert_execution_current(
+                snapshot,
+                execution,
+            )
+        except (
+            AutomationBlockedError,
+            ControlVersionConflictError,
+            WebExecutionAutomationBlockedError,
+        ) as exc:
             await self._mark_execution_control_blocked(
                 db,
                 inbound,
                 execution,
                 started=started,
+                safe_code=self._automation_safe_code(exc),
             )
             raise AgentNotReady(
                 "conversation automation changed during execution"
@@ -686,12 +727,41 @@ class ChatApplicationService:
         execution: ChatExecution,
         *,
         started: float,
+        safe_code: str,
     ) -> None:
         inbound.status = "completed"
         execution.status = "blocked"
-        execution.error_code = "conversation_control_changed"
+        execution.error_code = safe_code
         execution.duration_ms = int((time.monotonic() - started) * 1000)
         await db.commit()
+
+    @staticmethod
+    def _automation_safe_code(exc: Exception) -> str:
+        if isinstance(exc, WebExecutionAutomationBlockedError):
+            return exc.safe_code
+        return "conversation_control_changed"
+
+    @staticmethod
+    async def _resolve_acting_runtime(
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        routing_profile: AgentProfile,
+        routing_runtime: ResolvedAgentRuntime | None,
+    ) -> ResolvedAgentRuntime:
+        if (
+            conversation.automation_agent_id == routing_profile.id
+            and routing_runtime is not None
+        ):
+            return routing_runtime
+        try:
+            return await agent_runtime_resolver.resolve_agent(
+                db,
+                conversation.automation_agent_id,
+                require_public=False,
+            )
+        except AgentRuntimeUnavailable as exc:
+            raise AgentNotReady(str(exc)) from exc
 
     async def _existing_outcome(
         self, db: AsyncSession, request_id: str

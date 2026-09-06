@@ -60,6 +60,7 @@ async def test_quote_handoff_uses_route_and_point_specific_consent() -> None:
     conversation = SimpleNamespace(
         id=conversation_id,
         agent_id=source_agent_id,
+        automation_version=0,
         principal_id=principal_id,
     )
     contact = SimpleNamespace(id=contact_id, principal_id=principal_id)
@@ -78,6 +79,7 @@ async def test_quote_handoff_uses_route_and_point_specific_consent() -> None:
             return_value=SimpleNamespace(opportunity=opportunity, created=True)
         )
     )
+    assignments = SimpleNamespace(assign=AsyncMock())
     session = _Session(
         route=route,
         records={
@@ -87,6 +89,7 @@ async def test_quote_handoff_uses_route_and_point_specific_consent() -> None:
         },
     )
     coordinator = CommercialHandoffCoordinator(
+        automation_assignments=assignments,
         consents=consents,
         opportunities=opportunities,
     )
@@ -125,6 +128,23 @@ async def test_quote_handoff_uses_route_and_point_specific_consent() -> None:
         correlation_id="handoff-correlation-1",
         idempotency_key="handoff-idempotency-1",
     )
+    assignments.assign.assert_awaited_once_with(
+        session,
+        conversation_id=conversation_id,
+        routing_agent_id=source_agent_id,
+        target_agent_id=target_agent_id,
+        expected_automation_version=0,
+        actor_agent_id=source_agent_id,
+        actor_admin_id=None,
+        trigger="quote_requested",
+        opportunity_id=opportunity.id,
+        correlation_id="handoff-correlation-1",
+        idempotency_key=coordinator._assignment_idempotency_key(
+            conversation_id=conversation_id,
+            handoff_key="handoff-idempotency-1",
+        ),
+        reason="quote requested commercial handoff",
+    )
 
 
 @pytest.mark.asyncio
@@ -162,6 +182,7 @@ async def test_quote_handoff_rejects_inconsistent_contact_evidence() -> None:
                 conversation_id,
             ): SimpleNamespace(
                 agent_id=source_agent_id,
+                automation_version=0,
                 principal_id=uuid4(),
             ),
             (Contact, contact_id): SimpleNamespace(id=contact_id, principal_id=uuid4()),
@@ -213,6 +234,7 @@ async def test_quote_handoff_requires_current_quote_delivery_consent() -> None:
                 conversation_id,
             ): SimpleNamespace(
                 agent_id=source_agent_id,
+                automation_version=0,
                 principal_id=principal_id,
             ),
             (Contact, contact_id): SimpleNamespace(

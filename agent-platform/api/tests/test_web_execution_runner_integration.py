@@ -27,7 +27,8 @@ pytestmark = pytest.mark.integration
 
 @dataclass(frozen=True)
 class _RunnerGraph:
-    agent: AgentProfile
+    routing_agent: AgentProfile
+    acting_agent: AgentProfile
     route: ChannelAgentRoute
     connection_id: UUID
     conversation_id: UUID
@@ -40,7 +41,7 @@ async def runner_graph():
     try:
         async with AsyncSessionLocal() as db:
             suffix = uuid4().hex
-            agent = AgentProfile(
+            routing_agent = AgentProfile(
                 name="Web execution runner agent",
                 slug=f"web-runner-agent-{suffix}",
                 version=1,
@@ -53,6 +54,19 @@ async def runner_graph():
                 unauthorized_message="unauthorized",
                 error_message="error",
             )
+            acting_agent = AgentProfile(
+                name="Private web specialist",
+                slug=f"web-specialist-{suffix}",
+                version=1,
+                is_active=True,
+                is_public=False,
+                retention_days=30,
+                prompt_identity="specialist identity",
+                prompt_domain="specialist domain",
+                prompt_guardrails="specialist guardrails",
+                unauthorized_message="unauthorized",
+                error_message="error",
+            )
             connection = ChannelConnection(
                 name="Web runner",
                 slug=f"web-runner-{suffix}",
@@ -61,19 +75,20 @@ async def runner_graph():
                 is_active=True,
             )
             principal = Principal(kind="anonymous", is_active=True)
-            db.add_all([agent, connection, principal])
+            db.add_all([routing_agent, acting_agent, connection, principal])
             await db.flush()
             route = ChannelAgentRoute(
                 channel="web",
                 route_key=f"web-runner-route-{suffix}",
                 channel_connection_id=connection.id,
-                agent_id=agent.id,
+                agent_id=routing_agent.id,
                 is_active=True,
             )
             db.add(route)
             await db.flush()
             conversation = ChatConversation(
-                agent_id=agent.id,
+                agent_id=routing_agent.id,
+                automation_agent_id=acting_agent.id,
                 principal_id=principal.id,
                 channel="web",
                 external_thread_id=str(uuid4()),
@@ -95,7 +110,8 @@ async def runner_graph():
             )
             await db.commit()
             graph = _RunnerGraph(
-                agent=agent,
+                routing_agent=routing_agent,
+                acting_agent=acting_agent,
                 route=route,
                 connection_id=connection.id,
                 conversation_id=conversation.id,
@@ -124,7 +140,11 @@ async def runner_graph():
                     )
                 )
                 await db.execute(
-                    delete(AgentProfile).where(AgentProfile.id == graph.agent.id)
+                    delete(AgentProfile).where(
+                        AgentProfile.id.in_(
+                            [graph.routing_agent.id, graph.acting_agent.id]
+                        )
+                    )
                 )
                 await db.commit()
         await engine.dispose()
@@ -134,16 +154,17 @@ class _RuntimeResolver:
     def __init__(self, graph: _RunnerGraph):
         self._graph = graph
 
-    async def resolve_route(self, _db, channel, route_key, *, require_public):
+    async def resolve_channel_route(self, _db, channel, route_key):
         assert channel == "web"
         assert route_key == self._graph.route.route_key
-        assert require_public is True
+        return SimpleNamespace(route=self._graph.route)
+
+    async def resolve_agent(self, _db, agent_id, *, require_public):
+        assert agent_id == self._graph.acting_agent.id
+        assert require_public is False
         return SimpleNamespace(
-            route=self._graph.route,
-            runtime=SimpleNamespace(
-                profile=self._graph.agent,
-                config=SimpleNamespace(history_message_limit=20),
-            ),
+            profile=self._graph.acting_agent,
+            config=SimpleNamespace(history_message_limit=20),
         )
 
 
@@ -170,7 +191,7 @@ async def _enqueue(graph, client_message_id):
         result = await WebExecutionQueueService().enqueue(
             db,
             conversation_id=graph.conversation_id,
-            agent_id=graph.agent.id,
+            agent_id=graph.routing_agent.id,
             client_message_id=client_message_id,
             content="Current request",
             locale="es-AR",
@@ -190,7 +211,7 @@ async def test_runner_executes_neutral_context_and_persists_public_completion(
         assert kwargs["conversation_history"] == [
             {"role": "assistant", "content": "Previous context"}
         ]
-        assert kwargs["execution_context"].agent_id == str(runner_graph.agent.id)
+        assert kwargs["execution_context"].agent_id == str(runner_graph.acting_agent.id)
         assert kwargs["execution_context"].conversation_id == str(
             runner_graph.conversation_id
         )
@@ -266,6 +287,65 @@ async def test_runner_discards_output_when_control_changes_during_execution(
     assert execution.status == "blocked"
     assert execution.error_code == "conversation_control_changed"
     assert output is None
+
+
+@pytest.mark.asyncio
+async def test_runner_discards_output_when_acting_agent_changes_during_execution(
+    runner_graph,
+):
+    execution_id, _ = await _enqueue(runner_graph, "runner-reassignment")
+
+    async def agent_loop(**kwargs):
+        await kwargs["automation_guard"]()
+        async with AsyncSessionLocal() as db:
+            conversation = await db.get(
+                ChatConversation,
+                runner_graph.conversation_id,
+                with_for_update=True,
+            )
+            conversation.automation_agent_id = runner_graph.routing_agent.id
+            conversation.automation_version += 1
+            await db.commit()
+        return AgentLoopResult(response_text="Must not publish", status="success")
+
+    assert await _runner(runner_graph, agent_loop).run_once() is True
+
+    async with AsyncSessionLocal() as db:
+        execution = await db.get(ChatExecution, execution_id)
+        output = (
+            await db.execute(
+                select(ChatMessage).where(
+                    ChatMessage.conversation_id == runner_graph.conversation_id,
+                    ChatMessage.content == "Must not publish",
+                )
+            )
+        ).scalar_one_or_none()
+
+    assert execution.status == "blocked"
+    assert execution.error_code == "conversation_automation_changed"
+    assert output is None
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_route_that_no_longer_owns_the_conversation(
+    runner_graph,
+):
+    execution_id, _ = await _enqueue(runner_graph, "runner-route-owner")
+    called = False
+
+    async def agent_loop(**_kwargs):
+        nonlocal called
+        called = True
+        return AgentLoopResult(response_text="Must not execute", status="success")
+
+    runner_graph.route.agent_id = runner_graph.acting_agent.id
+    assert await _runner(runner_graph, agent_loop).run_once() is True
+
+    async with AsyncSessionLocal() as db:
+        execution = await db.get(ChatExecution, execution_id)
+    assert execution.status == "failed"
+    assert execution.error_code == "agent_runtime_unavailable"
+    assert called is False
 
 
 @pytest.mark.asyncio

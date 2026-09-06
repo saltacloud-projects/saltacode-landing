@@ -37,6 +37,10 @@ class WebExecutionIdempotencyConflictError(WebExecutionQueueError):
 class WebExecutionAutomationBlockedError(WebExecutionQueueError):
     """Automation cannot accept work in the current ownership epoch."""
 
+    def __init__(self, message: str, *, safe_code: str) -> None:
+        super().__init__(message)
+        self.safe_code = safe_code
+
 
 class InvalidWebExecutionCommandError(WebExecutionQueueError):
     """The requested queue operation violates its public contract."""
@@ -84,6 +88,19 @@ class WebExecutionQueueService:
 
     def __init__(self, *, events: ConversationEventService | None = None) -> None:
         self._events = events or ConversationEventService()
+
+    def assert_execution_current(
+        self,
+        conversation: ChatConversation,
+        execution: ChatExecution,
+    ) -> None:
+        """Reject an execution whose control or acting-agent snapshot is stale."""
+        self._assert_automation(
+            conversation,
+            expected_control_version=execution.control_version,
+            expected_automation_agent_id=execution.automation_agent_id,
+            expected_automation_version=execution.automation_version,
+        )
 
     async def enqueue(
         self,
@@ -160,7 +177,12 @@ class WebExecutionQueueService:
                 duplicate=True,
             )
 
-        self._assert_automation(conversation, expected_version=None)
+        self._assert_automation(
+            conversation,
+            expected_control_version=None,
+            expected_automation_agent_id=None,
+            expected_automation_version=None,
+        )
         inbound_id = uuid.uuid4()
         execution_id = uuid.uuid4()
         accepted_event = await self._events.publish(
@@ -192,6 +214,8 @@ class WebExecutionQueueService:
             inbound_message_id=inbound.id,
             status="queued",
             control_version=conversation.control_version,
+            automation_agent_id=conversation.automation_agent_id,
+            automation_version=conversation.automation_version,
             client_message_id=normalized_client_id,
             input_hash=input_hash,
             queue_sequence=accepted_event.sequence,
@@ -247,11 +271,13 @@ class WebExecutionQueueService:
             try:
                 self._assert_automation(
                     conversation,
-                    expected_version=execution.control_version,
+                    expected_control_version=execution.control_version,
+                    expected_automation_agent_id=execution.automation_agent_id,
+                    expected_automation_version=execution.automation_version,
                 )
-            except WebExecutionAutomationBlockedError:
+            except WebExecutionAutomationBlockedError as exc:
                 execution.status = "cancelled"
-                execution.error_code = "conversation_control_changed"
+                execution.error_code = exc.safe_code
                 await self._events.publish(
                     db,
                     conversation_id=conversation.id,
@@ -259,6 +285,7 @@ class WebExecutionQueueService:
                     event_type="chat.execution.changed",
                     visibility=ConversationEventVisibility.PUBLIC,
                     payload={
+                        "error_code": exc.safe_code,
                         "execution_id": str(execution.id),
                         "status": "cancelled",
                     },
@@ -355,11 +382,13 @@ class WebExecutionQueueService:
         try:
             self._assert_automation(
                 conversation,
-                expected_version=execution.control_version,
+                expected_control_version=execution.control_version,
+                expected_automation_agent_id=execution.automation_agent_id,
+                expected_automation_version=execution.automation_version,
             )
-        except WebExecutionAutomationBlockedError:
+        except WebExecutionAutomationBlockedError as exc:
             execution.status = "blocked"
-            execution.error_code = "conversation_control_changed"
+            execution.error_code = exc.safe_code
             execution.lease_owner = None
             execution.lease_expires_at = None
             await self._publish_execution_status(
@@ -367,7 +396,7 @@ class WebExecutionQueueService:
                 conversation=conversation,
                 execution=execution,
                 status="blocked",
-                error_code="conversation_control_changed",
+                error_code=exc.safe_code,
             )
             await db.flush()
             return RecordedWebExecutionOutcome(
@@ -491,7 +520,9 @@ class WebExecutionQueueService:
             raise WebExecutionQueueError("execution conversation is unavailable")
         self._assert_automation(
             conversation,
-            expected_version=execution.control_version,
+            expected_control_version=execution.control_version,
+            expected_automation_agent_id=execution.automation_agent_id,
+            expected_automation_version=execution.automation_version,
         )
         inbound = await db.get(ChatMessage, execution.inbound_message_id)
         if inbound is None:
@@ -630,18 +661,32 @@ class WebExecutionQueueService:
     def _assert_automation(
         conversation: ChatConversation,
         *,
-        expected_version: int | None,
+        expected_control_version: int | None,
+        expected_automation_agent_id: uuid.UUID | None,
+        expected_automation_version: int | None,
     ) -> None:
         if (
-            expected_version is not None
-            and conversation.control_version != expected_version
+            conversation.status != "active"
+            or conversation.control_mode != "automated"
+            or (
+                expected_control_version is not None
+                and conversation.control_version != expected_control_version
+            )
         ):
             raise WebExecutionAutomationBlockedError(
-                "conversation control epoch changed"
+                "conversation control epoch changed",
+                safe_code="conversation_control_changed",
             )
-        if conversation.control_mode != "automated":
+        if (
+            expected_automation_agent_id is not None
+            and conversation.automation_agent_id != expected_automation_agent_id
+        ) or (
+            expected_automation_version is not None
+            and conversation.automation_version != expected_automation_version
+        ):
             raise WebExecutionAutomationBlockedError(
-                "conversation automation is not active"
+                "conversation automation epoch changed",
+                safe_code="conversation_automation_changed",
             )
 
     @staticmethod

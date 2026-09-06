@@ -25,7 +25,10 @@ def test_conversation_event_is_append_only_and_execution_metadata_is_durable():
     assert "updated_at" not in event_columns
     assert execution_columns.status.default.arg == "queued"
     assert execution_columns.attempt_count.default.arg == 0
+    assert execution_columns.automation_agent_id.nullable is False
+    assert execution_columns.automation_version.default.arg == 0
     assert execution_columns.available_at.nullable is False
+    assert "ck_chat_execution_automation_version" in execution_constraints
     assert "ck_chat_execution_status" in execution_constraints
     assert "ck_chat_execution_lease_pair" in execution_constraints
     assert "ck_chat_execution_lease_owner" in execution_constraints

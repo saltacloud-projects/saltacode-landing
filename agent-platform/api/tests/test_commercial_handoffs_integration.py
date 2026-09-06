@@ -15,6 +15,9 @@ from app.models.admin_user import AdminUser
 from app.models.agent_handoff_route import AgentHandoffRoute
 from app.models.agent_profile import AgentProfile
 from app.models.contact import ConsentRecord, Contact, ContactPoint
+from app.models.conversation_automation_assignment import (
+    ConversationAutomationAssignmentEvent,
+)
 from app.models.opportunity import (
     Opportunity,
     OpportunityConversation,
@@ -26,7 +29,11 @@ from app.services.commercial.handoffs import (
     CommercialHandoffConsentRequiredError,
     CommercialHandoffContactEvidenceError,
     CommercialHandoffCoordinator,
+    CommercialHandoffError,
     CommercialHandoffRouteRequiredError,
+)
+from app.services.conversation_automation_assignment import (
+    ConversationAutomationAssignmentService,
 )
 
 pytestmark = pytest.mark.integration
@@ -168,6 +175,12 @@ async def commercial_handoff_context() -> CommercialHandoffContext:
             opportunity_ids = select(Opportunity.id).where(
                 Opportunity.contact_id == context.contact_id
             )
+            await db.execute(
+                delete(ConversationAutomationAssignmentEvent).where(
+                    ConversationAutomationAssignmentEvent.conversation_id
+                    == context.conversation_id
+                )
+            )
             for model in (
                 OpportunityConversation,
                 OpportunityOwnershipEvent,
@@ -217,7 +230,7 @@ async def commercial_handoff_context() -> CommercialHandoffContext:
 
 
 @pytest.mark.asyncio
-async def test_quote_handoff_creates_one_target_owned_opportunity_without_moving_chat(
+async def test_quote_handoff_assigns_specialist_without_moving_route_owner(
     commercial_handoff_context: CommercialHandoffContext,
 ) -> None:
     context = commercial_handoff_context
@@ -239,9 +252,28 @@ async def test_quote_handoff_creates_one_target_owned_opportunity_without_moving
         assert created.opportunity.created_by_agent_id == context.source_agent_id
         assert created.opportunity.assigned_agent_id == context.target_agent_id
         opportunity_id = created.opportunity.id
+        conversation = await db.get(ChatConversation, context.conversation_id)
+        assert conversation is not None
+        assert conversation.agent_id == context.source_agent_id
+        assert conversation.automation_agent_id == context.target_agent_id
+        assert conversation.automation_version == 1
         await db.commit()
 
     async with AsyncSessionLocal() as db:
+        await ConversationAutomationAssignmentService().assign(
+            db,
+            conversation_id=context.conversation_id,
+            routing_agent_id=context.source_agent_id,
+            target_agent_id=context.source_agent_id,
+            expected_automation_version=1,
+            actor_agent_id=context.target_agent_id,
+            actor_admin_id=None,
+            trigger="manual_test_reassignment",
+            opportunity_id=None,
+            correlation_id="later-reassignment",
+            idempotency_key="later-reassignment",
+            reason="prove retry stability",
+        )
         route = await db.get(AgentHandoffRoute, context.route_id)
         assert route is not None
         route.is_active = False
@@ -259,7 +291,7 @@ async def test_quote_handoff_creates_one_target_owned_opportunity_without_moving
         )
         assert repeated.created is False
         assert repeated.opportunity.id == opportunity_id
-        await db.rollback()
+        await db.commit()
 
     async with AsyncSessionLocal() as db:
         conversation = await db.get(ChatConversation, context.conversation_id)
@@ -272,7 +304,47 @@ async def test_quote_handoff_creates_one_target_owned_opportunity_without_moving
         ).scalar_one()
         assert conversation is not None
         assert conversation.agent_id == context.source_agent_id
+        assert conversation.automation_agent_id == context.source_agent_id
+        assert conversation.automation_version == 2
         assert opportunity_count == 1
+
+
+@pytest.mark.asyncio
+async def test_quote_handoff_rolls_back_opportunity_when_assignment_fails(
+    commercial_handoff_context: CommercialHandoffContext,
+) -> None:
+    context = commercial_handoff_context
+
+    class _FailingAssignments:
+        async def assign(self, *_args, **_kwargs):
+            raise CommercialHandoffError("assignment failed")
+
+    coordinator = CommercialHandoffCoordinator(
+        automation_assignments=_FailingAssignments()
+    )
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(CommercialHandoffError, match="assignment failed"):
+            async with db.begin():
+                await _execute_handoff(
+                    coordinator,
+                    db,
+                    context,
+                    key="atomic-assignment-failure",
+                )
+
+    async with AsyncSessionLocal() as db:
+        opportunity_count = (
+            await db.execute(
+                select(func.count(Opportunity.id)).where(
+                    Opportunity.contact_id == context.contact_id
+                )
+            )
+        ).scalar_one()
+        conversation = await db.get(ChatConversation, context.conversation_id)
+        assert opportunity_count == 0
+        assert conversation is not None
+        assert conversation.automation_agent_id == context.source_agent_id
+        assert conversation.automation_version == 0
 
 
 @pytest.mark.asyncio

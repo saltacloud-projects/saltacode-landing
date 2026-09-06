@@ -116,6 +116,8 @@ def _web_runtime_fixture(*, control_mode: str, control_version: int):
     conversation = ChatConversation(
         id=uuid4(),
         agent_id=profile.id,
+        automation_agent_id=profile.id,
+        automation_version=0,
         principal_id=identity.principal_id,
         channel="web",
         external_thread_id=str(session_id),
@@ -123,6 +125,7 @@ def _web_runtime_fixture(*, control_mode: str, control_version: int):
         channel_route_id=route_id,
         transcript_consent=True,
         consent_version="test-v1",
+        status="active",
         control_mode=control_mode,
         control_version=control_version,
         assigned_admin_id=uuid4() if control_mode == "human" else None,
@@ -306,6 +309,8 @@ async def test_web_persists_inbound_but_skips_llm_when_automation_is_blocked(
     assert inbound.role == "user"
     assert inbound.status == "completed"
     assert execution.control_version == 7
+    assert execution.automation_agent_id == conversation.automation_agent_id
+    assert execution.automation_version == conversation.automation_version
     assert execution.status == "blocked"
     assert execution.error_code == "conversation_control_changed"
     assert not any(

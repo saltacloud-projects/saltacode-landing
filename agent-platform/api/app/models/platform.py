@@ -219,6 +219,10 @@ class ChatExecution(TimestampedModel):
             name="ck_chat_execution_control_version",
         ),
         CheckConstraint(
+            "automation_version >= 0",
+            name="ck_chat_execution_automation_version",
+        ),
+        CheckConstraint(
             "status IN ('accepted', 'queued', 'running', 'completed', 'failed', "
             "'blocked', 'cancelled')",
             name="ck_chat_execution_status",
@@ -282,6 +286,18 @@ class ChatExecution(TimestampedModel):
     )
     status: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)
     control_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    automation_agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_profiles.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    automation_version: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
     client_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     queue_sequence: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -177,6 +177,8 @@ async def test_enqueue_is_idempotent_and_rejects_changed_input(web_graph):
         assert duplicate.duplicate is True
         assert duplicate.execution.id == first.execution.id
         assert first.execution.queue_sequence == first.accepted_event.sequence
+        assert first.execution.automation_agent_id == web_graph.agent_id
+        assert first.execution.automation_version == 0
         assert duplicate.accepted_event.id == first.accepted_event.id
 
         with pytest.raises(WebExecutionIdempotencyConflictError):
@@ -391,6 +393,89 @@ async def test_stale_lease_is_blocked_without_automatic_retry(web_graph):
             .one()
         )
         assert event.visibility == "public"
+
+
+@pytest.mark.asyncio
+async def test_claim_cancels_a_stale_automation_epoch(web_graph):
+    service = WebExecutionQueueService()
+    conversation_id = web_graph.conversation_ids[0]
+
+    async with AsyncSessionLocal() as db:
+        queued = await service.enqueue(
+            db,
+            conversation_id=conversation_id,
+            agent_id=web_graph.agent_id,
+            client_message_id="stale-automation-claim",
+            content="Do not run with an obsolete specialist",
+            locale="es-AR",
+        )
+        await db.commit()
+        conversation = await db.get(ChatConversation, conversation_id)
+        assert conversation is not None
+        conversation.automation_version += 1
+        await db.commit()
+
+        claim = await service.claim_next(
+            db,
+            worker_id="automation-fence-worker",
+            lease_duration=timedelta(minutes=5),
+        )
+        assert claim is None
+        await db.refresh(queued.execution)
+        assert queued.execution.status == "cancelled"
+        assert queued.execution.error_code == "conversation_automation_changed"
+
+
+@pytest.mark.asyncio
+async def test_record_outcome_discards_a_stale_automation_result(web_graph):
+    service = WebExecutionQueueService()
+    conversation_id = web_graph.conversation_ids[0]
+
+    async with AsyncSessionLocal() as db:
+        queued = await service.enqueue(
+            db,
+            conversation_id=conversation_id,
+            agent_id=web_graph.agent_id,
+            client_message_id="stale-automation-outcome",
+            content="Do not publish with an obsolete specialist",
+            locale="es-AR",
+        )
+        await db.commit()
+        claim = await service.claim_next(
+            db,
+            worker_id="automation-outcome-worker",
+            lease_duration=timedelta(minutes=5),
+        )
+        assert claim is not None
+        await db.commit()
+
+    async with AsyncSessionLocal() as assignment_db:
+        conversation = await assignment_db.get(ChatConversation, conversation_id)
+        assert conversation is not None
+        conversation.automation_version += 1
+        await assignment_db.commit()
+
+    async with AsyncSessionLocal() as db:
+        blocked = await service.record_outcome(
+            db,
+            execution_id=queued.execution.id,
+            worker_id="automation-outcome-worker",
+            outcome=WebExecutionOutcome.COMPLETED,
+            output_content="Stale automatic answer",
+        )
+        await db.commit()
+        assert blocked.published is False
+        assert blocked.execution.status == "blocked"
+        assert blocked.execution.error_code == "conversation_automation_changed"
+        output = (
+            await db.execute(
+                select(ChatMessage.id).where(
+                    ChatMessage.conversation_id == conversation_id,
+                    ChatMessage.content == "Stale automatic answer",
+                )
+            )
+        ).scalar_one_or_none()
+        assert output is None
 
 
 @pytest.mark.asyncio

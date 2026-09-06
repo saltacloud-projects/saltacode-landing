@@ -25,6 +25,7 @@ from app.services.conversation_automation_assignment import (
 
 _REVISION = "f2a6b8c0d345"
 _DOWN_REVISION = "e1f5a7b9c234"
+_HEAD_REVISION = "f3b7c9d1e456"
 
 
 def _config() -> Config:
@@ -35,7 +36,7 @@ def _config() -> Config:
 def test_automation_assignment_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 
@@ -92,7 +93,7 @@ def test_migration_blocks_downgrade_that_would_discard_assignment_history() -> N
         )
         with pytest.raises(DBAPIError, match="assignment history must be preserved"):
             command.downgrade(config, _DOWN_REVISION)
-        asyncio.run(_assert_current_revision(_REVISION))
+        asyncio.run(_assert_current_revision(_HEAD_REVISION))
     finally:
         command.upgrade(config, "head")
         asyncio.run(

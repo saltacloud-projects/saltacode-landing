@@ -471,6 +471,9 @@ async def test_completed_replay_validates_route_before_returning_outcome(monkeyp
         conversation_id=conversation.id,
         inbound_message_id=inbound.id,
         status="completed",
+        control_version=conversation.control_version,
+        automation_agent_id=conversation.automation_agent_id,
+        automation_version=conversation.automation_version,
     )
 
     class ReplayDb:

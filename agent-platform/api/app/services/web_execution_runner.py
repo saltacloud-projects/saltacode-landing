@@ -24,11 +24,6 @@ from app.services.agent_runtime import (
     ResolvedAgentRuntime,
     agent_runtime_resolver,
 )
-from app.services.conversation_control import (
-    AutomationBlockedError,
-    ControlVersionConflictError,
-    conversation_control_service,
-)
 from app.services.tool_policy import ToolPolicyService, tool_policy_service
 from app.services.tools.registry import tool_registry
 from app.services.web_execution_queue import (
@@ -122,11 +117,11 @@ class WebExecutionRunner:
                 safe_code="stale_execution_lease",
                 started=started,
             )
-        except WebExecutionAutomationBlockedError:
+        except WebExecutionAutomationBlockedError as exc:
             return await self._record_terminal(
                 claim,
                 outcome=WebExecutionOutcome.BLOCKED,
-                safe_code="conversation_control_changed",
+                safe_code=exc.safe_code,
                 started=started,
             )
         except WebExecutionClaimOwnershipError:
@@ -144,15 +139,11 @@ class WebExecutionRunner:
                         duration_ms=self._duration_ms(started),
                     )
                     return self._run_result(recorded)
-            except (
-                AutomationBlockedError,
-                ControlVersionConflictError,
-                WebExecutionAutomationBlockedError,
-            ):
+            except WebExecutionAutomationBlockedError as exc:
                 return await self._record_terminal(
                     claim,
                     outcome=WebExecutionOutcome.BLOCKED,
-                    safe_code="conversation_control_changed",
+                    safe_code=exc.safe_code,
                     started=started,
                 )
             except AgentRuntimeUnavailable:
@@ -213,24 +204,25 @@ class WebExecutionRunner:
         )
         if conversation is None or conversation.channel_route_id is None:
             raise AgentRuntimeUnavailable("web conversation route is unavailable")
-        resolved = await self._runtime_resolver.resolve_route(
-            db,
-            "web",
-            conversation.route_key,
-            require_public=True,
+        resolved_route = await self._runtime_resolver.resolve_channel_route(
+            db, "web", conversation.route_key
         )
         if (
-            resolved.route.id != conversation.channel_route_id
-            or resolved.route.agent_id != conversation.agent_id
+            resolved_route.route.id != conversation.channel_route_id
+            or resolved_route.route.agent_id != conversation.agent_id
         ):
             raise AgentRuntimeUnavailable("web conversation route is unavailable")
-        runtime = resolved.runtime
+        runtime = await self._runtime_resolver.resolve_agent(
+            db,
+            claim.execution.automation_agent_id,
+            require_public=False,
+        )
         context = ToolExecutionContext(
             request_id=claim.execution.request_id,
             channel="web",
             principal_id=str(conversation.principal_id),
             conversation_id=str(conversation.id),
-            agent_id=str(conversation.agent_id),
+            agent_id=str(claim.execution.automation_agent_id),
             external_subject=conversation.external_thread_id,
             scopes=set(),
             allowed_source_ids=set(),
@@ -264,12 +256,7 @@ class WebExecutionRunner:
         prepared: _PreparedExecution,
     ) -> AgentLoopResult:
         async def automation_guard() -> None:
-            await conversation_control_service.assert_automation_allowed(
-                db,
-                conversation_id=prepared.conversation.id,
-                agent_id=prepared.conversation.agent_id,
-                expected_version=claim.execution.control_version,
-            )
+            await self._revalidate_claim(claim)
 
         await automation_guard()
         return await self._agent_loop(

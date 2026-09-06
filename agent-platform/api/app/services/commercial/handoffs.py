@@ -26,6 +26,9 @@ from app.services.commercial.opportunities import (
     OpportunityIdempotencyConflictError,
     OpportunityService,
 )
+from app.services.conversation_automation_assignment import (
+    ConversationAutomationAssignmentService,
+)
 
 _policy = CommercialCommandPolicy(
     validation_error=InvalidOpportunityCommandError,
@@ -63,9 +66,13 @@ class CommercialHandoffCoordinator:
     def __init__(
         self,
         *,
+        automation_assignments: ConversationAutomationAssignmentService | None = None,
         consents: ConsentService | None = None,
         opportunities: OpportunityService | None = None,
     ) -> None:
+        self._automation_assignments = (
+            automation_assignments or ConversationAutomationAssignmentService()
+        )
         self._consents = consents or ConsentService()
         self._opportunities = opportunities or OpportunityService()
 
@@ -118,6 +125,7 @@ class CommercialHandoffCoordinator:
             contact=contact,
             point=point,
         )
+        expected_automation_version = conversation.automation_version
         effective_at = self._aware_utc(at or datetime.now(UTC))
         try:
             effective = await self._consents.effective(
@@ -152,6 +160,23 @@ class CommercialHandoffCoordinator:
             summary=normalized_summary,
             correlation_id=correlation,
             idempotency_key=key,
+        )
+        await self._automation_assignments.assign(
+            db,
+            conversation_id=conversation_id,
+            routing_agent_id=source_agent_id,
+            target_agent_id=result.opportunity.assigned_agent_id,
+            expected_automation_version=expected_automation_version,
+            actor_agent_id=source_agent_id,
+            actor_admin_id=None,
+            trigger=AgentHandoffTrigger.QUOTE_REQUESTED,
+            opportunity_id=result.opportunity.id,
+            correlation_id=correlation,
+            idempotency_key=self._assignment_idempotency_key(
+                conversation_id=conversation_id,
+                handoff_key=key,
+            ),
+            reason="quote requested commercial handoff",
         )
         return CommercialHandoffResult(
             opportunity=result.opportunity,
@@ -253,6 +278,18 @@ class CommercialHandoffCoordinator:
                 "quote handoff timestamp must include a timezone"
             )
         return value.astimezone(UTC)
+
+    @staticmethod
+    def _assignment_idempotency_key(
+        *,
+        conversation_id: uuid.UUID,
+        handoff_key: str,
+    ) -> str:
+        receipt_id = uuid.uuid5(
+            conversation_id,
+            f"quote-requested:{handoff_key}",
+        )
+        return f"quote-requested:{receipt_id}"
 
 
 commercial_handoff_coordinator = CommercialHandoffCoordinator()
