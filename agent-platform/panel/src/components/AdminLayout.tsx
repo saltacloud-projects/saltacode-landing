@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   Bot,
   Brain,
   Cable,
@@ -93,6 +94,7 @@ const WORKSPACE_ITEMS: Omit<NavigationItem, "to">[] = [
   { label: "Acceso WhatsApp", icon: ShieldCheck, permission: PERMISSIONS.USERS_READ },
   { label: "Inbox", icon: Inbox, permission: PERMISSIONS.CONVERSATIONS_READ },
   { label: "Oportunidades", icon: Target, permission: PERMISSIONS.OPPORTUNITIES_READ },
+  { label: "Handoffs", icon: ArrowRightLeft, permission: PERMISSIONS.OPPORTUNITIES_MANAGE },
   { label: "Entregas", icon: Send, permission: PERMISSIONS.DELIVERIES_READ },
   { label: "Auditoría", icon: ClipboardList, permission: PERMISSIONS.AUDIT_READ },
   { label: "PromptLab", icon: FlaskConical, permission: PERMISSIONS.PROMPTLAB_USE },
@@ -110,6 +112,7 @@ const WORKSPACE_SEGMENTS: Record<string, string> = {
   "Acceso WhatsApp": "access",
   Inbox: "inbox",
   Oportunidades: "opportunities",
+  Handoffs: "handoffs",
   Entregas: "deliveries",
   Auditoría: "audit",
   PromptLab: "promptlab",
