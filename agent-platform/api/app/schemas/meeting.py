@@ -109,6 +109,7 @@ class MeetingEventOut(BaseModel):
 class MeetingSummaryOut(BaseModel):
     id: UUID
     opportunity_id: UUID
+    opportunity_control_version: int
     conversation_id: UUID | None
     status: MeetingStatusValue
     state_version: int

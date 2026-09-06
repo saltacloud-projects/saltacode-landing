@@ -55,25 +55,28 @@ class MeetingReadService:
                 )
             ).scalar_one()
         )
-        meetings = list(
+        meeting_rows = list(
             (
                 await db.execute(
-                    select(Meeting)
+                    select(Meeting, Opportunity.control_version)
                     .join(Opportunity, Opportunity.id == Meeting.opportunity_id)
                     .where(*filters)
                     .order_by(Meeting.updated_at.desc(), Meeting.id)
                     .offset(offset)
                     .limit(limit)
                 )
-            )
-            .scalars()
-            .all()
+            ).all()
         )
+        meetings = [meeting for meeting, _ in meeting_rows]
         selected_slots = await self._selected_slots(db, meetings)
         return MeetingPage(
             items=[
-                self._summary(meeting, selected_slots.get(meeting.selected_slot_id))
-                for meeting in meetings
+                self._summary(
+                    meeting,
+                    opportunity_control_version,
+                    selected_slots.get(meeting.selected_slot_id),
+                )
+                for meeting, opportunity_control_version in meeting_rows
             ],
             total=total,
         )
@@ -85,18 +88,19 @@ class MeetingReadService:
         agent_id: uuid.UUID,
         meeting_id: uuid.UUID,
     ) -> MeetingDetailOut:
-        meeting = (
+        meeting_row = (
             await db.execute(
-                select(Meeting)
+                select(Meeting, Opportunity.control_version)
                 .join(Opportunity, Opportunity.id == Meeting.opportunity_id)
                 .where(
                     Meeting.id == meeting_id,
                     Opportunity.assigned_agent_id == agent_id,
                 )
             )
-        ).scalar_one_or_none()
-        if meeting is None:
+        ).one_or_none()
+        if meeting_row is None:
             raise MeetingReadNotFoundError("meeting not found")
+        meeting, opportunity_control_version = meeting_row
         slots = list(
             (
                 await db.execute(
@@ -126,6 +130,7 @@ class MeetingReadService:
         return MeetingDetailOut(
             **self._summary(
                 meeting,
+                opportunity_control_version,
                 slot_by_id.get(meeting.selected_slot_id),
             ).model_dump(),
             slots=[self._slot(slot) for slot in slots],
@@ -178,11 +183,13 @@ class MeetingReadService:
     @staticmethod
     def _summary(
         meeting: Meeting,
+        opportunity_control_version: int,
         selected_slot: MeetingSlot | None,
     ) -> MeetingSummaryOut:
         return MeetingSummaryOut(
             id=meeting.id,
             opportunity_id=meeting.opportunity_id,
+            opportunity_control_version=opportunity_control_version,
             conversation_id=meeting.conversation_id,
             status=meeting.status,
             state_version=meeting.state_version,

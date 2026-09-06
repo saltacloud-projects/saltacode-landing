@@ -277,6 +277,17 @@ async def test_manual_meeting_flow_is_idempotent_versioned_and_audited(
         )
         assert cancelled.meeting.status == "cancelled"
         assert cancelled.opportunity.stage == "meeting_scheduled"
+        await OpportunityService().transition_stage(
+            db,
+            opportunity_id=context.opportunity_id,
+            actor_agent_id=context.agent_id,
+            actor_operator_id=context.admin_id,
+            target_stage="paused",
+            expected_version=1,
+            reason="Pause after meeting cancellation.",
+            correlation_id="meeting-opportunity-pause",
+            idempotency_key="meeting-opportunity-pause",
+        )
         await db.commit()
 
     async with AsyncSessionLocal() as db:
@@ -286,6 +297,7 @@ async def test_manual_meeting_flow_is_idempotent_versioned_and_audited(
             meeting_id=meeting_id,
         )
         assert detail.state_version == 5
+        assert detail.opportunity_control_version == 2
         assert [event.state_version for event in detail.events] == list(range(6))
         manual_event = next(
             event for event in detail.events if event.event_type == "scheduled_manual"
@@ -293,6 +305,7 @@ async def test_manual_meeting_flow_is_idempotent_versioned_and_audited(
         assert manual_event.actor_admin_id == context.admin_id
         assert manual_event.evidence_recorded is True
         assert not hasattr(manual_event, "evidence_reference")
+        assert detail.events[-1].opportunity_control_version == 1
         page = await MeetingReadService().list_meetings(
             db,
             agent_id=context.agent_id,
@@ -302,6 +315,7 @@ async def test_manual_meeting_flow_is_idempotent_versioned_and_audited(
             offset=0,
         )
         assert [item.id for item in page.items] == [meeting_id]
+        assert page.items[0].opportunity_control_version == 2
 
 
 @pytest.mark.asyncio

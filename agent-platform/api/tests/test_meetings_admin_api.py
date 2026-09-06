@@ -43,6 +43,8 @@ def test_meeting_contract_is_agent_scoped_authenticated_and_non_destructive() ->
         if "/meetings" in path
     )
     assert not any("calendar" in path for path in schema["paths"])
+    summary_schema = schema["components"]["schemas"]["MeetingSummaryOut"]
+    assert "opportunity_control_version" in summary_schema["required"]
 
 
 def test_meeting_commands_require_idempotency_and_state_cas() -> None:
