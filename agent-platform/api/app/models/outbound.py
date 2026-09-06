@@ -79,6 +79,7 @@ class OutboundMessage(TimestampedModel):
         ),
         CheckConstraint(
             "char_length(idempotency_key) > 0 "
+            "AND char_length(destination) > 0 "
             "AND char_length(correlation_id) > 0 "
             "AND char_length(payload_hash) = 64",
             name="ck_outbound_message_command_identity",
@@ -142,6 +143,7 @@ class OutboundMessage(TimestampedModel):
     )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     payload_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    destination: Mapped[str] = mapped_column(String(255), nullable=False)
     sender_type: Mapped[str] = mapped_column(String(20), nullable=False)
     sender_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

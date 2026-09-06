@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     # Runtime loop_timeout is capped at 900s; keep a recovery margin above it.
     whatsapp_inbox_stale_seconds: int = Field(default=1200, ge=960, le=86_400)
     whatsapp_inbox_max_attempts: int = Field(default=5, ge=1, le=20)
+    outbound_worker_id: str = Field(
+        default="outbound-worker-1", min_length=1, max_length=70
+    )
+    outbound_worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
+    outbound_worker_max_backoff_seconds: float = Field(default=30.0, ge=1, le=300)
+    outbound_dispatch_stale_seconds: int = Field(default=300, ge=60, le=86_400)
 
     # ---------------------------------------------------------------------------
     # OpenAI

@@ -21,6 +21,7 @@ from app.models.outbound import (
     OutboundMessage,
 )
 from app.models.platform import ChatConversation, ChatMessage, Principal
+from app.ports.outbound import Accepted, Rejected, Unknown
 from app.services.outbound_delivery import (
     DispatchOutcome,
     OutboundConversationNotFoundError,
@@ -30,6 +31,8 @@ from app.services.outbound_delivery import (
     OutboundKind,
     OutboundSenderType,
 )
+from app.services.outbound_dispatcher import OutboundDispatcher
+from app.workers.outbound import check_worker_health
 
 pytestmark = pytest.mark.integration
 
@@ -43,6 +46,26 @@ class _OutboundGraph:
     principal_ids: tuple[UUID, UUID]
     route_id: UUID
     connection_id: UUID
+
+
+class _RecordingAdapter:
+    channel = "whatsapp"
+
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+        self.claim_was_committed = False
+
+    async def deliver(self, *, message, route, connection):
+        async with AsyncSessionLocal() as observer:
+            persisted = await observer.get(OutboundMessage, message.id)
+            self.claim_was_committed = bool(
+                persisted is not None
+                and persisted.status == "dispatching"
+                and persisted.locked_by is not None
+            )
+        self.calls.append((message.id, route.id, connection.id))
+        return self.result
 
 
 @pytest.fixture
@@ -563,3 +586,140 @@ async def test_claim_is_fifo_parallel_and_stale_dispatch_blocks_only_its_convers
             .one()
         )
         assert recovery_event.safe_code == "stale_dispatch"
+
+
+async def _enqueue_dispatcher_text(
+    graph: _OutboundGraph,
+    *,
+    message_index: int,
+    idempotency_key: str,
+) -> UUID:
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            result = await OutboundDeliveryService().enqueue(
+                db,
+                conversation_id=graph.conversation_ids[0],
+                agent_id=graph.agent_id,
+                chat_message_id=graph.message_ids[message_index],
+                kind=OutboundKind.TEXT,
+                payload={"text": f"Dispatcher answer {message_index}"},
+                sender_type=OutboundSenderType.AUTOMATION,
+                control_version=0,
+                idempotency_key=idempotency_key,
+                correlation_id=f"correlation-{idempotency_key}",
+            )
+            return result.message.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("adapter_result", "expected_status", "expected_provider_id"),
+    [
+        (Accepted("wamid.accepted"), "accepted", "wamid.accepted"),
+        (Rejected("provider_http_400"), "failed", None),
+        (Unknown("provider_timeout"), "delivery_unknown", None),
+    ],
+)
+async def test_dispatcher_commits_claim_before_io_and_persists_typed_outcome(
+    outbound_graph,
+    adapter_result,
+    expected_status,
+    expected_provider_id,
+):
+    outbound_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=0,
+        idempotency_key=f"typed-{expected_status}",
+    )
+    adapter = _RecordingAdapter(adapter_result)
+    dispatcher = OutboundDispatcher(
+        worker_id=f"worker-{expected_status}",
+        stale_seconds=300,
+        adapters=[adapter],
+    )
+
+    assert await dispatcher.run_once() is True
+    assert adapter.claim_was_committed is True
+    assert len(adapter.calls) == 1
+    async with AsyncSessionLocal() as db:
+        message = await db.get(OutboundMessage, outbound_id)
+        assert message is not None
+        assert message.status == expected_status
+        assert message.provider_message_id == expected_provider_id
+        assert message.locked_by is None
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_revalidates_control_before_provider_call(outbound_graph):
+    outbound_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=0,
+        idempotency_key="fence-before-send",
+    )
+    adapter = _RecordingAdapter(Accepted("must-not-send"))
+    dispatcher = OutboundDispatcher(
+        worker_id="worker-fence",
+        stale_seconds=300,
+        adapters=[adapter],
+    )
+    claim = await dispatcher.claim_once()
+    assert claim is not None
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            conversation = await db.get(
+                ChatConversation,
+                outbound_graph.conversation_ids[0],
+            )
+            assert conversation is not None
+            conversation.control_mode = "human"
+            conversation.control_version = 1
+            conversation.assigned_admin_id = outbound_graph.admin_id
+
+    await dispatcher.dispatch_claim(claim)
+
+    assert adapter.calls == []
+    async with AsyncSessionLocal() as db:
+        message = await db.get(OutboundMessage, outbound_id)
+        assert message is not None
+        assert message.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_delivery_unknown_blocks_fifo_without_retry(outbound_graph):
+    first_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=0,
+        idempotency_key="unknown-head",
+    )
+    second_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=1,
+        idempotency_key="blocked-tail",
+    )
+    adapter = _RecordingAdapter(Unknown("provider_timeout"))
+    dispatcher = OutboundDispatcher(
+        worker_id="worker-unknown",
+        stale_seconds=300,
+        adapters=[adapter],
+    )
+
+    assert await dispatcher.run_once() is True
+    assert await dispatcher.run_once() is False
+    assert len(adapter.calls) == 1
+    async with AsyncSessionLocal() as db:
+        first = await db.get(OutboundMessage, first_id)
+        second = await db.get(OutboundMessage, second_id)
+        assert first is not None
+        assert second is not None
+        assert first.status == "delivery_unknown"
+        assert second.status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_outbound_worker_healthchecks_schema_and_storage(monkeypatch, tmp_path):
+    from app.workers import outbound as module
+
+    monkeypatch.setattr(module.settings, "document_storage_root", str(tmp_path))
+
+    await check_worker_health()

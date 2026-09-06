@@ -130,6 +130,9 @@ class OutboundDeliveryService:
             raise OutboundFenceViolationError(
                 "outbound delivery requires an explicit channel route"
             )
+        destination = conversation.external_thread_id.strip()
+        if not destination or len(destination) > 255:
+            raise InvalidOutboundCommandError("invalid outbound destination")
 
         if chat_message_id is not None:
             chat_message = await db.get(ChatMessage, chat_message_id)
@@ -138,6 +141,7 @@ class OutboundDeliveryService:
 
         command_hash = self._command_hash(
             conversation=conversation,
+            destination=destination,
             chat_message_id=chat_message_id,
             kind=kind,
             payload=normalized_payload,
@@ -175,6 +179,7 @@ class OutboundDeliveryService:
             chat_message_id=chat_message_id,
             kind=kind,
             payload_json=normalized_payload,
+            destination=destination,
             sender_type=sender_type,
             sender_admin_id=sender_admin_id,
             control_version=control_version,
@@ -325,6 +330,41 @@ class OutboundDeliveryService:
             await db.flush()
         return len(stale_messages)
 
+    async def revalidate_claim_for_dispatch(
+        self,
+        db: AsyncSession,
+        *,
+        outbound_message_id: uuid.UUID,
+        attempt_id: uuid.UUID,
+        worker_id: str,
+    ) -> OutboundMessage | None:
+        """Lock and fence a committed claim immediately before provider I/O."""
+        normalized_worker_id = self._normalize_worker_id(worker_id)
+        message, attempt = await self._lock_owned_dispatch(
+            db,
+            outbound_message_id=outbound_message_id,
+            attempt_id=attempt_id,
+            worker_id=normalized_worker_id,
+        )
+        conversation = await self._get_conversation(
+            db,
+            conversation_id=message.conversation_id,
+            agent_id=message.agent_id,
+            for_update=True,
+        )
+        try:
+            self._assert_sender_fence(
+                conversation,
+                sender_type=OutboundSenderType(message.sender_type),
+                sender_admin_id=message.sender_admin_id,
+                control_version=message.control_version,
+            )
+        except OutboundFenceViolationError:
+            self._cancel_stale_message(db, message=message, attempt=attempt)
+            await db.flush()
+            return None
+        return message
+
     async def record_dispatch_outcome(
         self,
         db: AsyncSession,
@@ -338,12 +378,10 @@ class OutboundDeliveryService:
         occurred_at: datetime | None = None,
     ) -> OutboundMessage:
         """Persist a safe provider outcome without storing response bodies."""
-        normalized_worker_id = worker_id.strip()
+        normalized_worker_id = self._normalize_worker_id(worker_id)
         normalized_provider_message_id = (
             provider_message_id.strip() if provider_message_id is not None else None
         )
-        if not normalized_worker_id or len(normalized_worker_id) > 120:
-            raise InvalidOutboundCommandError("invalid worker id")
         if safe_code is not None and not self._safe_code_pattern.fullmatch(safe_code):
             raise InvalidOutboundCommandError("invalid safe result code")
         if outcome == DispatchOutcome.ACCEPTED:
@@ -362,27 +400,12 @@ class OutboundDeliveryService:
             raise InvalidOutboundCommandError(
                 "failed or uncertain delivery requires a safe result code"
             )
-        message = (
-            (
-                await db.execute(
-                    select(OutboundMessage)
-                    .where(OutboundMessage.id == outbound_message_id)
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
+        message, attempt = await self._lock_owned_dispatch(
+            db,
+            outbound_message_id=outbound_message_id,
+            attempt_id=attempt_id,
+            worker_id=normalized_worker_id,
         )
-        attempt = await db.get(OutboundAttempt, attempt_id)
-        if (
-            message is None
-            or attempt is None
-            or attempt.outbound_message_id != outbound_message_id
-            or attempt.worker_id != normalized_worker_id
-            or message.locked_by != normalized_worker_id
-            or message.status != "dispatching"
-        ):
-            raise OutboundClaimOwnershipError("outbound claim ownership was lost")
 
         previous_status = message.status
         message.status = outcome
@@ -481,6 +504,7 @@ class OutboundDeliveryService:
     def _command_hash(
         *,
         conversation: ChatConversation,
+        destination: str,
         chat_message_id: uuid.UUID | None,
         kind: OutboundKind,
         payload: Mapping[str, Any],
@@ -494,6 +518,7 @@ class OutboundDeliveryService:
             "chat_message_id": str(chat_message_id) if chat_message_id else None,
             "control_version": control_version,
             "conversation_id": str(conversation.id),
+            "destination": destination,
             "kind": kind,
             "payload": payload,
             "sender_admin_id": str(sender_admin_id) if sender_admin_id else None,
@@ -699,11 +724,50 @@ class OutboundDeliveryService:
             )
         ).scalar_one_or_none()
 
+    async def _lock_owned_dispatch(
+        self,
+        db: AsyncSession,
+        *,
+        outbound_message_id: uuid.UUID,
+        attempt_id: uuid.UUID,
+        worker_id: str,
+    ) -> tuple[OutboundMessage, OutboundAttempt]:
+        message = (
+            (
+                await db.execute(
+                    select(OutboundMessage)
+                    .where(OutboundMessage.id == outbound_message_id)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        attempt = await db.get(OutboundAttempt, attempt_id)
+        if (
+            message is None
+            or attempt is None
+            or attempt.outbound_message_id != outbound_message_id
+            or attempt.worker_id != worker_id
+            or message.locked_by != worker_id
+            or message.status != "dispatching"
+        ):
+            raise OutboundClaimOwnershipError("outbound claim ownership was lost")
+        return message, attempt
+
+    @staticmethod
+    def _normalize_worker_id(worker_id: str) -> str:
+        normalized_worker_id = worker_id.strip()
+        if not normalized_worker_id or len(normalized_worker_id) > 120:
+            raise InvalidOutboundCommandError("invalid worker id")
+        return normalized_worker_id
+
     def _cancel_stale_message(
         self,
         db: AsyncSession,
         *,
         message: OutboundMessage,
+        attempt: OutboundAttempt | None = None,
     ) -> None:
         previous_status = message.status
         message.status = "cancelled"
@@ -712,6 +776,7 @@ class OutboundDeliveryService:
         self._add_event(
             db,
             message=message,
+            attempt=attempt,
             event_type="cancelled",
             from_status=previous_status,
             to_status="cancelled",

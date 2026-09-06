@@ -56,6 +56,7 @@ def test_outbound_metadata_enforces_queue_and_append_only_contracts():
     assert "ck_outbound_message_sender_actor" in message_constraints
     assert "ck_outbound_message_kind" in message_constraints
     assert "ck_outbound_message_payload_shape" in message_constraints
+    assert OutboundMessage.__table__.c.destination.nullable is False
     assert OutboundMessage.__table__.c.chat_message_id.nullable is True
     assert (
         next(iter(OutboundMessage.__table__.c.chat_message_id.foreign_keys)).ondelete
@@ -131,6 +132,7 @@ def test_payload_hash_is_deterministic_and_does_not_expose_payload_body():
     payload = {"text": "private message content"}
     first = service._command_hash(
         conversation=conversation,
+        destination=conversation.external_thread_id,
         chat_message_id=chat_message_id,
         kind=OutboundKind.TEXT,
         payload=payload,
@@ -140,6 +142,7 @@ def test_payload_hash_is_deterministic_and_does_not_expose_payload_body():
     )
     second = service._command_hash(
         conversation=conversation,
+        destination=conversation.external_thread_id,
         chat_message_id=chat_message_id,
         kind=OutboundKind.TEXT,
         payload=payload,
@@ -159,6 +162,7 @@ def test_payload_hash_changes_for_command_content_actor_and_control_epoch():
     chat_message_id = uuid4()
     base = {
         "conversation": conversation,
+        "destination": conversation.external_thread_id,
         "chat_message_id": chat_message_id,
         "kind": OutboundKind.TEXT,
         "payload": {"text": "Answer"},

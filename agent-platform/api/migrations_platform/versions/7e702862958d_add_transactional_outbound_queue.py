@@ -29,6 +29,7 @@ def upgrade() -> None:
             postgresql.JSONB(astext_type=sa.Text()),
             nullable=False,
         ),
+        sa.Column("destination", sa.String(length=255), nullable=False),
         sa.Column("sender_type", sa.String(length=20), nullable=False),
         sa.Column("sender_admin_id", sa.UUID(), nullable=True),
         sa.Column("control_version", sa.Integer(), nullable=False),
@@ -85,7 +86,7 @@ def upgrade() -> None:
             name="ck_outbound_message_counters",
         ),
         sa.CheckConstraint(
-            "char_length(idempotency_key) > 0 AND char_length(correlation_id) > 0 AND char_length(payload_hash) = 64",
+            "char_length(idempotency_key) > 0 AND char_length(destination) > 0 AND char_length(correlation_id) > 0 AND char_length(payload_hash) = 64",
             name="ck_outbound_message_command_identity",
         ),
         sa.CheckConstraint(

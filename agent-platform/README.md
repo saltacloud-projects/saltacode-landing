@@ -55,6 +55,20 @@ Stop the stack with:
 ./scripts/platform/down.sh
 ```
 
+The outbound dispatcher is defined as a separate `outbound` Compose profile.
+It remains disabled while existing producers still send directly. After those
+producers are migrated and their cutover is approved, it can be exercised with:
+
+```bash
+docker compose --env-file .env.platform.local --profile outbound up -d outbound-worker
+docker compose --env-file .env.platform.local --profile outbound exec outbound-worker \
+  python /usr/local/libexec/agent-entrypoint.py \
+  python -m app.workers.outbound --healthcheck
+```
+
+The healthcheck verifies only the local database schema and document volume; it
+does not contact Meta or decrypt/test provider credentials.
+
 ## Host release and rollback
 
 The agent platform has its own fail-closed host release boundary; it is never deployed or rolled back by the landing scripts.
