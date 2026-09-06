@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 from typing import TypeVar
@@ -59,20 +60,25 @@ class FollowUpDispatchAuthorizationService:
         task = await self._find_task(db, outbound_message_id=message.id)
         if task is None:
             return
-        graph = await self._load_graph(db, task=task)
+        graph = await self._load_graph(db, task=task, message=message)
         scope = self._scope(graph)
         await acquire_consent_scope_lock(db, scope=scope)
 
         task = await self._lock_task(db, task_id=task.id)
-        graph = await self._load_graph(db, task=task, for_update=True)
+        graph = await self._load_graph(
+            db,
+            task=task,
+            message=message,
+            for_update=True,
+        )
         self._assert_task_and_target(graph, message=message)
         effective = await self._consents.effective(
             db,
-            agent_id=graph.conversation.agent_id,
+            agent_id=graph.source_conversation.agent_id,
             principal_id=graph.contact.principal_id,
             purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
             contact_point_id=graph.point.id,
-            source_conversation_id=graph.conversation.id,
+            source_conversation_id=graph.source_conversation.id,
             target_channel=task.target_channel,
         )
         if not effective.granted or effective.record is None:
@@ -116,6 +122,7 @@ class FollowUpDispatchAuthorizationService:
         db: AsyncSession,
         *,
         task: FollowUpTask,
+        message: OutboundMessage,
         for_update: bool = False,
     ) -> _FollowUpGraph:
         opportunity = await self._load(
@@ -124,10 +131,16 @@ class FollowUpDispatchAuthorizationService:
             task.opportunity_id,
             for_update=for_update,
         )
-        conversation = await self._load(
+        source_conversation = await self._load(
             db,
             ChatConversation,
             task.conversation_id,
+            for_update=for_update,
+        )
+        delivery_conversation = await self._load(
+            db,
+            ChatConversation,
+            message.conversation_id,
             for_update=for_update,
         )
         contact = await self._load(
@@ -142,12 +155,19 @@ class FollowUpDispatchAuthorizationService:
             task.contact_point_id,
             for_update=for_update,
         )
-        if None in (opportunity, conversation, contact, point):
+        if None in (
+            opportunity,
+            source_conversation,
+            delivery_conversation,
+            contact,
+            point,
+        ):
             raise FollowUpDispatchBlocked("follow_up_authorization_changed")
         return _FollowUpGraph(
             task=task,
             opportunity=opportunity,
-            conversation=conversation,
+            source_conversation=source_conversation,
+            delivery_conversation=delivery_conversation,
             contact=contact,
             point=point,
         )
@@ -177,10 +197,10 @@ class FollowUpDispatchAuthorizationService:
         if task.target_channel is None:
             raise FollowUpDispatchBlocked("follow_up_authorization_changed")
         return ConsentScope(
-            routing_agent_id=graph.conversation.agent_id,
+            routing_agent_id=graph.source_conversation.agent_id,
             principal_id=graph.contact.principal_id,
             purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
-            source_conversation_id=graph.conversation.id,
+            source_conversation_id=graph.source_conversation.id,
             target_channel=task.target_channel,
             contact_point_id=graph.point.id,
         )
@@ -192,17 +212,26 @@ class FollowUpDispatchAuthorizationService:
         message: OutboundMessage,
     ) -> None:
         task = graph.task
+        source = graph.source_conversation
+        delivery = graph.delivery_conversation
         if (
             task.status not in _ACTIVE_TASK_STATUSES
             or task.outbound_message_id != message.id
-            or task.conversation_id != message.conversation_id
             or task.target_channel != message.channel
             or task.assigned_agent_id != message.automation_agent_id
-            or task.scheduled_control_version != message.control_version
-            or task.scheduled_automation_version != message.automation_version
+            or task.conversation_id != source.id
+            or message.conversation_id != delivery.id
+            or source.agent_id != message.agent_id
+            or delivery.agent_id != source.agent_id
+            or delivery.principal_id != source.principal_id
+            or source.status != "active"
+            or source.control_mode != "automated"
+            or source.control_version != task.scheduled_control_version
+            or source.automation_agent_id != task.assigned_agent_id
+            or source.automation_version != task.scheduled_automation_version
             or graph.opportunity.assigned_agent_id != task.assigned_agent_id
             or graph.opportunity.stage in _CLOSED_OPPORTUNITY_STAGES
-            or graph.contact.principal_id != graph.conversation.principal_id
+            or graph.contact.principal_id != source.principal_id
             or graph.point.contact_id != graph.contact.id
             or graph.point.verification_status != "verified"
         ):
@@ -231,7 +260,9 @@ class FollowUpDispatchAuthorizationService:
         if channel == "email":
             return target.casefold() == destination.strip().casefold()
         if channel == "whatsapp":
-            return target.removeprefix("+") == destination.strip().removeprefix("+")
+            target_digits = re.sub(r"\D", "", target)
+            destination_digits = re.sub(r"\D", "", destination)
+            return bool(target_digits) and target_digits == destination_digits
         return False
 
 
@@ -239,7 +270,8 @@ class FollowUpDispatchAuthorizationService:
 class _FollowUpGraph:
     task: FollowUpTask
     opportunity: Opportunity
-    conversation: ChatConversation
+    source_conversation: ChatConversation
+    delivery_conversation: ChatConversation
     contact: Contact
     point: ContactPoint
 

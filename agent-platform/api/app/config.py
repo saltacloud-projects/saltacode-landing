@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     outbound_worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
     outbound_worker_max_backoff_seconds: float = Field(default=30.0, ge=1, le=300)
     outbound_dispatch_stale_seconds: int = Field(default=300, ge=60, le=86_400)
+    follow_up_worker_id: str = Field(
+        default="follow-up-worker-1", min_length=1, max_length=70
+    )
+    follow_up_worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
+    follow_up_worker_max_backoff_seconds: float = Field(default=30.0, ge=1, le=300)
+    follow_up_execution_lease_seconds: int = Field(default=120, ge=30, le=3_600)
     web_execution_worker_id: str = Field(
         default="web-execution-worker-1", min_length=1, max_length=70
     )

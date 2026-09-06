@@ -9,7 +9,7 @@ from datetime import UTC, datetime, time
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -231,7 +231,27 @@ class FollowUpService:
         automation_policy = await _ensure_policy(
             db,
             agent_id=opportunity.assigned_agent_id,
+            for_update=True,
         )
+        pending_tasks = (
+            await db.execute(
+                select(func.count(FollowUpTask.id)).where(
+                    FollowUpTask.assigned_agent_id == opportunity.assigned_agent_id,
+                    FollowUpTask.status.in_(
+                        (
+                            FollowUpStatus.SCHEDULED,
+                            FollowUpStatus.DISPATCH_QUEUED,
+                            FollowUpStatus.IN_PROGRESS,
+                            FollowUpStatus.REVIEW_REQUIRED,
+                        )
+                    ),
+                )
+            )
+        ).scalar_one()
+        if pending_tasks >= automation_policy.max_pending_tasks:
+            raise InvalidFollowUpCommandError(
+                "commercial automation pending task limit reached"
+            )
 
         task = FollowUpTask(
             id=uuid.uuid5(opportunity.id, f"follow-up:{key}"),
