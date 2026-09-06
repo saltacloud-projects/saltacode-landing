@@ -38,6 +38,9 @@ def test_meeting_permissions_are_explicit_and_not_added_to_legacy_grants():
 
     assert AdminPermission.MEETINGS_READ in AGENT_SCOPED_PERMISSIONS
     assert AdminPermission.MEETINGS_MANAGE in AGENT_SCOPED_PERMISSIONS
+    assert AdminPermission.FOLLOW_UPS_READ in AGENT_SCOPED_PERMISSIONS
+    assert AdminPermission.FOLLOW_UPS_MANAGE in AGENT_SCOPED_PERMISSIONS
+    assert AdminPermission.FOLLOW_UPS_REVIEW in AGENT_SCOPED_PERMISSIONS
     assert not AdminAgentAccessService._allows(
         legacy_grant,
         AdminPermission.MEETINGS_READ,

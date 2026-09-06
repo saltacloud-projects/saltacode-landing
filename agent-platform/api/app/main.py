@@ -30,6 +30,7 @@ from app.routers.admin.conversation_control import (
 from app.routers.admin.conversations import router as admin_conversations_router
 from app.routers.admin.deliveries import router as admin_deliveries_router
 from app.routers.admin.documents import router as admin_documents_router
+from app.routers.admin.follow_ups import router as admin_follow_ups_router
 from app.routers.admin.identity_link_claims import (
     router as admin_identity_link_claims_router,
 )
@@ -255,6 +256,10 @@ app.include_router(
 app.include_router(
     admin_commercial_router,
     prefix="/api/admin/agents/{agent_id}/opportunities",
+)
+app.include_router(
+    admin_follow_ups_router,
+    prefix="/api/admin/agents/{agent_id}/follow-ups",
 )
 app.include_router(
     admin_meetings_router,

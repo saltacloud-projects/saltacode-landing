@@ -334,6 +334,7 @@ class FollowUpExecutionService:
             )
         previous_status = task.status
         task.outbound_message_id = queued.message.id
+        task.had_outbound_message_evidence = True
         task.status = "dispatch_queued"
         task.state_version += 1
         task.lease_owner = None
@@ -1004,6 +1005,13 @@ def _task_event(
         caused_by_consent_record_id=None,
         chat_message_id=task.chat_message_id,
         outbound_message_id=(task.outbound_message_id if include_outbound else None),
+        source_conversation_id=(task.source_conversation_id or task.conversation_id),
+        had_chat_message_evidence=(
+            task.had_chat_message_evidence or task.chat_message_id is not None
+        ),
+        had_outbound_message_evidence=(
+            task.had_outbound_message_evidence or task.outbound_message_id is not None
+        ),
         safe_code=safe_code,
         correlation_id=task.correlation_id,
         idempotency_key=idempotency_key,

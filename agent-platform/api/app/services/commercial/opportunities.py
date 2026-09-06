@@ -422,6 +422,17 @@ class OpportunityService:
                     caused_by_consent_record_id=None,
                     chat_message_id=task.chat_message_id,
                     outbound_message_id=task.outbound_message_id,
+                    source_conversation_id=(
+                        task.source_conversation_id or task.conversation_id
+                    ),
+                    had_chat_message_evidence=(
+                        task.had_chat_message_evidence
+                        or task.chat_message_id is not None
+                    ),
+                    had_outbound_message_evidence=(
+                        task.had_outbound_message_evidence
+                        or task.outbound_message_id is not None
+                    ),
                     safe_code=_OPPORTUNITY_REASSIGNED,
                     correlation_id=correlation,
                     idempotency_key=follow_up_event_key,

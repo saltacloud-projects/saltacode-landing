@@ -144,10 +144,9 @@ class OpportunityOwnershipEventOut(BaseModel):
 
 class FollowUpTaskOut(BaseModel):
     id: UUID
+    opportunity_id: UUID
     conversation_id: UUID | None
-    contact_point_id: UUID | None
-    consent_record_id: UUID
-    executed_consent_record_id: UUID | None
+    target_channel: str | None
     assigned_agent_id: UUID
     assigned_operator_id: UUID | None
     kind: FollowUpKindValue
@@ -161,12 +160,13 @@ class FollowUpTaskOut(BaseModel):
     available_at: datetime
     attempts: int
     max_attempts: int
-    chat_message_id: UUID | None
-    outbound_message_id: UUID | None
     quote_version_id: UUID | None
     last_safe_code: str | None
     review_required_at: datetime | None
-    note: str | None
+    has_consent_evidence: bool
+    has_executed_consent_evidence: bool
+    has_chat_message_evidence: bool
+    has_outbound_message_evidence: bool
     created_at: datetime
     updated_at: datetime
 

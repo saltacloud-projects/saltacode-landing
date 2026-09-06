@@ -14,7 +14,7 @@ def test_conversation_control_migration_precedes_the_outbound_head():
     config = Config(str(api_root / "alembic-platform.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["f10a4e6b8c12"]
+    assert scripts.get_heads() == ["f11b5f7c9d23"]
     assert scripts.get_revision("d7e8f9a0b1c2").down_revision == "c6d7e8f9a0b1"
     assert scripts.get_revision("7e702862958d").down_revision == "d7e8f9a0b1c2"
 

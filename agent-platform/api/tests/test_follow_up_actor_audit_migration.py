@@ -44,7 +44,7 @@ async def _actor_admin_delete_rule() -> str:
 def test_follow_up_actor_audit_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["f10a4e6b8c12"]
+    assert scripts.get_heads() == ["f11b5f7c9d23"]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 

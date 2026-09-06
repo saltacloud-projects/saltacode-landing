@@ -25,7 +25,7 @@ from app.services.conversation_automation_assignment import (
 
 _REVISION = "f2a6b8c0d345"
 _DOWN_REVISION = "e1f5a7b9c234"
-_HEAD_REVISION = "f10a4e6b8c12"
+_HEAD_REVISION = "f11b5f7c9d23"
 
 
 def _config() -> Config:

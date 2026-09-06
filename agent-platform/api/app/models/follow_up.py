@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -166,6 +167,11 @@ class FollowUpTask(TimestampedModel):
         nullable=True,
         index=True,
     )
+    source_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     fifo_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     target_channel: Mapped[str | None] = mapped_column(String(40), nullable=True)
     contact_point_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -210,6 +216,18 @@ class FollowUpTask(TimestampedModel):
         UUID(as_uuid=True),
         ForeignKey("outbound_messages.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    had_chat_message_evidence: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+    had_outbound_message_evidence: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
     )
     kind: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(
@@ -474,6 +492,23 @@ class FollowUpTaskEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("outbound_messages.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    source_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    had_chat_message_evidence: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+    had_outbound_message_evidence: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
     )
     safe_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     correlation_id: Mapped[str] = mapped_column(String(120), nullable=False)

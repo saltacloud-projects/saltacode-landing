@@ -13,12 +13,18 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.commercial_automation_policy import CommercialAutomationPolicy
 from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.follow_up import FollowUpTask, FollowUpTaskEvent
 from app.models.opportunity import Opportunity, OpportunityConversation
 from app.models.platform import ChatConversation
 from app.models.quote import QuoteRequest, QuoteVersion
+from app.services.channel_catalog import (
+    ChannelAdapterUnavailable,
+    ChannelCatalogError,
+    require_implemented_adapter,
+)
 from app.services.commercial._command_policy import CommercialCommandPolicy
 from app.services.commercial.consent_scope import (
     ConsentScope,
@@ -30,6 +36,7 @@ from app.services.commercial.consents import (
     ConsentResult,
     ConsentService,
 )
+from app.services.commercial.contact_crypto import ContactCryptoError, contact_crypto
 from app.services.commercial.opportunities import (
     CommercialOpportunityError,
     InvalidOpportunityCommandError,
@@ -257,6 +264,7 @@ class FollowUpService:
             id=uuid.uuid5(opportunity.id, f"follow-up:{key}"),
             opportunity_id=opportunity.id,
             conversation_id=conversation.id,
+            source_conversation_id=conversation.id,
             fifo_key=f"conversation:{conversation.id}",
             target_channel=normalized_target_channel,
             contact_point_id=point.id,
@@ -489,6 +497,8 @@ class FollowUpService:
         idempotency_key: str,
         safe_code: str | None = None,
         occurred_at: datetime | None = None,
+        allowed_source_statuses: frozenset[FollowUpStatus] | None = None,
+        require_delivery_readiness: bool = False,
     ) -> FollowUpTask:
         target = _policy.enum_value(
             FollowUpStatus,
@@ -552,6 +562,13 @@ class FollowUpService:
             raise FollowUpVersionConflictError("follow-up task version changed")
 
         current = FollowUpStatus(task.status)
+        if (
+            allowed_source_statuses is not None
+            and current not in allowed_source_statuses
+        ):
+            raise InvalidFollowUpCommandError(
+                "follow-up is not eligible for this operation"
+            )
         allowed = {
             FollowUpStatus.SCHEDULED: {
                 FollowUpStatus.CANCELLED,
@@ -623,6 +640,16 @@ class FollowUpService:
                 db,
                 agent_id=opportunity.assigned_agent_id,
             )
+            if require_delivery_readiness:
+                _assert_policy_allows_requeue(automation_policy, task)
+                await _assert_delivery_route_available(
+                    db,
+                    task=task,
+                    source_conversation=conversation,
+                    principal_id=contact.principal_id,
+                    point=point,
+                    acting_agent_id=opportunity.assigned_agent_id,
+                )
             task.assigned_agent_id = opportunity.assigned_agent_id
             task.assigned_operator_id = opportunity.assigned_operator_id
             task.scheduled_policy_version = automation_policy.version
@@ -661,6 +688,104 @@ class FollowUpService:
         db.add(event)
         await db.flush()
         return task
+
+    async def cancel(
+        self,
+        db: AsyncSession,
+        *,
+        task_id: uuid.UUID,
+        actor_agent_id: uuid.UUID,
+        actor_operator_id: uuid.UUID,
+        expected_version: int,
+        correlation_id: str,
+        idempotency_key: str,
+        occurred_at: datetime | None = None,
+    ) -> FollowUpTask:
+        """Cancel work that has not crossed the external-delivery boundary."""
+
+        return await self.transition(
+            db,
+            task_id=task_id,
+            actor_agent_id=actor_agent_id,
+            actor_operator_id=actor_operator_id,
+            target_status=FollowUpStatus.CANCELLED,
+            expected_version=expected_version,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            occurred_at=occurred_at,
+            allowed_source_statuses=frozenset(
+                {FollowUpStatus.SCHEDULED, FollowUpStatus.REVIEW_REQUIRED}
+            ),
+        )
+
+    async def requeue(
+        self,
+        db: AsyncSession,
+        *,
+        task_id: uuid.UUID,
+        actor_agent_id: uuid.UUID,
+        actor_operator_id: uuid.UUID,
+        expected_version: int,
+        correlation_id: str,
+        idempotency_key: str,
+        occurred_at: datetime | None = None,
+    ) -> FollowUpTask:
+        """Return reviewed work to the durable queue after every fence is valid."""
+
+        return await self.transition(
+            db,
+            task_id=task_id,
+            actor_agent_id=actor_agent_id,
+            actor_operator_id=actor_operator_id,
+            target_status=FollowUpStatus.SCHEDULED,
+            expected_version=expected_version,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            occurred_at=occurred_at,
+            allowed_source_statuses=frozenset({FollowUpStatus.REVIEW_REQUIRED}),
+            require_delivery_readiness=True,
+        )
+
+    async def resolve_review(
+        self,
+        db: AsyncSession,
+        *,
+        task_id: uuid.UUID,
+        actor_agent_id: uuid.UUID,
+        actor_operator_id: uuid.UUID,
+        expected_version: int,
+        resolution: str,
+        correlation_id: str,
+        idempotency_key: str,
+        occurred_at: datetime | None = None,
+    ) -> FollowUpTask:
+        """Resolve review work without exposing the internal state machine."""
+
+        if resolution == "requeue":
+            return await self.requeue(
+                db,
+                task_id=task_id,
+                actor_agent_id=actor_agent_id,
+                actor_operator_id=actor_operator_id,
+                expected_version=expected_version,
+                correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
+                occurred_at=occurred_at,
+            )
+        if resolution != "cancel":
+            raise InvalidFollowUpCommandError("unsupported review resolution")
+        return await self.transition(
+            db,
+            task_id=task_id,
+            actor_agent_id=actor_agent_id,
+            actor_operator_id=actor_operator_id,
+            target_status=FollowUpStatus.CANCELLED,
+            expected_version=expected_version,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            occurred_at=occurred_at,
+            allowed_source_statuses=frozenset({FollowUpStatus.REVIEW_REQUIRED}),
+        )
 
     async def defer_scheduled(
         self,
@@ -1150,6 +1275,13 @@ def _event(
         caused_by_consent_record_id=caused_by_consent_record_id,
         chat_message_id=task.chat_message_id,
         outbound_message_id=task.outbound_message_id,
+        source_conversation_id=(task.source_conversation_id or task.conversation_id),
+        had_chat_message_evidence=(
+            task.had_chat_message_evidence or task.chat_message_id is not None
+        ),
+        had_outbound_message_evidence=(
+            task.had_outbound_message_evidence or task.outbound_message_id is not None
+        ),
         safe_code=safe_code,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
@@ -1160,6 +1292,81 @@ def _event(
 def _assert_opportunity_open(opportunity: Opportunity) -> None:
     if opportunity.stage in _TERMINAL_STAGES:
         raise InvalidFollowUpCommandError("commercial opportunity is closed")
+
+
+def _assert_policy_allows_requeue(
+    policy: CommercialAutomationPolicy,
+    task: FollowUpTask,
+) -> None:
+    if not policy.is_enabled or task.kind not in policy.allowed_kinds:
+        raise InvalidFollowUpCommandError(
+            "commercial automation policy does not allow this follow-up"
+        )
+
+
+async def _assert_delivery_route_available(
+    db: AsyncSession,
+    *,
+    task: FollowUpTask,
+    source_conversation: ChatConversation,
+    principal_id: uuid.UUID,
+    point: ContactPoint,
+    acting_agent_id: uuid.UUID,
+) -> None:
+    if task.target_channel != "whatsapp":
+        raise InvalidFollowUpCommandError("follow-up target channel is not implemented")
+    try:
+        target_digits = re.sub(r"\D", "", contact_crypto.decrypt(point.ciphertext))
+    except ContactCryptoError as exc:
+        raise InvalidFollowUpCommandError(
+            "follow-up contact point is unavailable"
+        ) from exc
+    if not target_digits:
+        raise InvalidFollowUpCommandError("follow-up contact point is unavailable")
+    rows = (
+        await db.execute(
+            select(ChatConversation, ChannelAgentRoute, ChannelConnection)
+            .join(
+                ChannelAgentRoute,
+                ChannelAgentRoute.id == ChatConversation.channel_route_id,
+            )
+            .join(
+                ChannelConnection,
+                ChannelConnection.id == ChannelAgentRoute.channel_connection_id,
+            )
+            .where(
+                ChatConversation.agent_id == source_conversation.agent_id,
+                ChatConversation.principal_id == principal_id,
+                ChatConversation.channel == task.target_channel,
+                ChatConversation.status == "active",
+                ChatConversation.control_mode == "automated",
+                ChatConversation.automation_agent_id == acting_agent_id,
+                ChannelAgentRoute.agent_id == source_conversation.agent_id,
+                ChannelAgentRoute.channel == task.target_channel,
+                ChannelAgentRoute.is_active.is_(True),
+                ChannelConnection.channel == task.target_channel,
+                ChannelConnection.is_active.is_(True),
+            )
+            .with_for_update(of=ChatConversation)
+        )
+    ).all()
+    matches = [
+        (conversation, route, connection)
+        for conversation, route, connection in rows
+        if re.sub(r"\D", "", conversation.external_thread_id) == target_digits
+    ]
+    if len(matches) != 1:
+        raise InvalidFollowUpCommandError("follow-up delivery route is unavailable")
+    _conversation, route, connection = matches[0]
+    try:
+        require_implemented_adapter(
+            channel=route.channel,
+            adapter_key=connection.adapter_key,
+        )
+    except (ChannelAdapterUnavailable, ChannelCatalogError) as exc:
+        raise InvalidFollowUpCommandError(
+            "follow-up delivery route is unavailable"
+        ) from exc
 
 
 def _target_channel(value: str) -> str:

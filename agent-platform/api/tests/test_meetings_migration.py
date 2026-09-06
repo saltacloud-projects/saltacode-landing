@@ -23,6 +23,7 @@ from app.models.opportunity import Opportunity
 from app.models.platform import Principal
 
 _REVISION = "f10a4e6b8c12"
+_HEAD_REVISION = "f11b5f7c9d23"
 _DOWN_REVISION = "f9d3e5a7b012"
 
 
@@ -34,7 +35,7 @@ def _config() -> Config:
 def test_meeting_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 

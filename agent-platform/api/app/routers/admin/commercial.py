@@ -90,7 +90,7 @@ async def update_commercial_automation_policy(
     agent_id: uuid.UUID,
     payload: CommercialAutomationPolicyUpdateRequest,
     admin: AdminUser = Depends(
-        require_agent_permission(AdminPermission.OPPORTUNITIES_MANAGE)
+        require_agent_permission(AdminPermission.FOLLOW_UPS_MANAGE)
     ),
     db: AsyncSession = Depends(get_db),
 ) -> CommercialAutomationPolicyOut:
@@ -461,7 +461,7 @@ async def create_follow_up(
         max_length=120,
     ),
     admin: AdminUser = Depends(
-        require_agent_permission(AdminPermission.OPPORTUNITIES_MANAGE)
+        require_agent_permission(AdminPermission.FOLLOW_UPS_MANAGE)
     ),
     db: AsyncSession = Depends(get_db),
 ) -> FollowUpMutationOut:
@@ -517,10 +517,18 @@ async def transition_follow_up(
         max_length=120,
     ),
     admin: AdminUser = Depends(
-        require_agent_permission(AdminPermission.OPPORTUNITIES_MANAGE)
+        require_agent_permission(AdminPermission.FOLLOW_UPS_MANAGE)
     ),
     db: AsyncSession = Depends(get_db),
 ) -> FollowUpMutationOut:
+    if payload.target_status != "cancelled" or payload.safe_code is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Legacy follow-up transitions only support cancellation; "
+                "use the semantic follow-up operations API"
+            ),
+        )
     try:
         await commercial_read_service.assert_follow_up_owned(
             db,
@@ -528,19 +536,16 @@ async def transition_follow_up(
             opportunity_id=opportunity_id,
             task_id=task_id,
         )
-        task = await follow_up_service.transition(
+        task = await follow_up_service.cancel(
             db,
             task_id=task_id,
             actor_agent_id=agent_id,
             actor_operator_id=admin.id,
-            target_status=payload.target_status,
             expected_version=payload.expected_version,
-            safe_code=payload.safe_code,
             correlation_id=_correlation_id(correlation_id),
             idempotency_key=(
                 idempotency_key
-                or f"follow-up-transition:{task_id}:{payload.expected_version}:"
-                f"{payload.target_status}"
+                or f"follow-up-cancel:{task_id}:{payload.expected_version}"
             ),
         )
     except Exception as exc:
