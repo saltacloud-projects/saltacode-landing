@@ -1,4 +1,4 @@
-import { KeyRound, LoaderCircle, Pencil, Plus, ShieldCheck, X } from "lucide-react";
+import { Bot, KeyRound, LoaderCircle, Pencil, Plus, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../../api/client";
@@ -20,8 +20,57 @@ interface PanelRole {
   is_active: boolean;
 }
 
+interface AgentOption {
+  id: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
+}
+
+interface AgentGrant {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  agent_slug: string;
+  permissions: string[];
+  is_active: boolean;
+}
+
+interface AgentGrantCollection {
+  user_id: string;
+  available_permissions: string[];
+  agents: AgentOption[];
+  grants: AgentGrant[];
+}
+
 const INPUT =
   "w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none";
+
+const AGENT_PERMISSION_LABELS: Record<string, string> = {
+  "dashboard.read": "Ver resumen",
+  "profiles.read": "Ver identidad",
+  "knowledge.read": "Ver conocimiento",
+  "tools.read": "Ver herramientas",
+  "tools.manage": "Administrar herramientas",
+  "sources.read": "Ver fuentes",
+  "sources.manage": "Administrar fuentes",
+  "users.read": "Ver accesos de canales",
+  "conversations.read": "Ver conversaciones",
+  "conversations.manage": "Intervenir conversaciones",
+  "opportunities.read": "Ver oportunidades",
+  "opportunities.manage": "Administrar oportunidades",
+  "quotes.approve": "Aprobar presupuestos",
+  "deliveries.read": "Ver entregas",
+  "deliveries.review": "Revisar entregas inciertas",
+  "audit.read": "Ver auditoría",
+  "promptlab.use": "Usar PromptLab",
+  "documents.read": "Ver documentos",
+  "documents.manage": "Administrar documentos",
+  "documents.taxonomy": "Administrar categorías documentales",
+  "documents.settings": "Configurar documentos",
+  "runtime.read": "Ver runtime",
+  "runtime.manage": "Administrar runtime",
+};
 
 export default function PanelUsersPage() {
   const [users, setUsers] = useState<PanelUser[]>([]);
@@ -32,6 +81,10 @@ export default function PanelUsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<PanelUser | null>(null);
   const [resetting, setResetting] = useState<PanelUser | null>(null);
+  const [granting, setGranting] = useState<PanelUser | null>(null);
+  const [grantData, setGrantData] = useState<AgentGrantCollection | null>(null);
+  const [grantDrafts, setGrantDrafts] = useState<Record<string, string[]>>({});
+  const [grantBusyAgent, setGrantBusyAgent] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -113,6 +166,80 @@ export default function PanelUsersPage() {
     }
   };
 
+  const openAgentGrants = async (user: PanelUser) => {
+    setGranting(user);
+    setGrantData(null);
+    setGrantDrafts({});
+    setError("");
+    try {
+      const data = await api<AgentGrantCollection>(`/panel-users/${user.id}/agent-grants`);
+      setGrantData(data);
+      setGrantDrafts(
+        Object.fromEntries(
+          data.grants
+            .filter((grant) => grant.is_active)
+            .map((grant) => [grant.agent_id, grant.permissions]),
+        ),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron cargar los accesos por agente");
+      setGranting(null);
+    }
+  };
+
+  const setAgentEnabled = (agentId: string, enabled: boolean) => {
+    if (!grantData) return;
+    setGrantDrafts((current) => ({
+      ...current,
+      [agentId]: enabled
+        ? grantData.available_permissions.includes("*")
+          ? ["*"]
+          : grantData.available_permissions
+        : [],
+    }));
+  };
+
+  const setAgentPermission = (agentId: string, permission: string, enabled: boolean) => {
+    setGrantDrafts((current) => {
+      const existing = current[agentId] || [];
+      let permissions: string[];
+      if (permission === "*") {
+        permissions = enabled
+          ? ["*"]
+          : (grantData?.available_permissions.filter((value) => value !== "*") ?? []);
+      } else {
+        permissions = enabled
+          ? [...existing.filter((value) => value !== "*"), permission]
+          : existing.filter((value) => value !== permission);
+      }
+      return { ...current, [agentId]: [...new Set(permissions)] };
+    });
+  };
+
+  const saveAgentGrant = async (agentId: string) => {
+    if (!granting) return;
+    const permissions = grantDrafts[agentId] || [];
+    setGrantBusyAgent(agentId);
+    setError("");
+    try {
+      if (permissions.length === 0) {
+        await api(`/panel-users/${granting.id}/agent-grants/${agentId}`, {
+          method: "DELETE",
+        });
+      } else {
+        await api(`/panel-users/${granting.id}/agent-grants/${agentId}`, {
+          method: "PUT",
+          body: JSON.stringify({ permissions }),
+        });
+      }
+      await openAgentGrants(granting);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo actualizar el acceso al agente");
+    } finally {
+      setGrantBusyAgent(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -175,6 +302,14 @@ export default function PanelUsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
+                      <button
+                        type="button"
+                        title="Administrar agentes"
+                        className="rounded p-2 hover:bg-[var(--bg-hover)]"
+                        onClick={() => void openAgentGrants(user)}
+                      >
+                        <Bot size={15} />
+                      </button>
                       <button
                         type="button"
                         title="Editar"
@@ -360,6 +495,120 @@ export default function PanelUsersPage() {
                 Guardar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {granting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Agentes de {granting.name}</h3>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  El rol define el máximo permitido; cada grant limita ese acceso a un agente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGranting(null);
+                  setGrantData(null);
+                }}
+                aria-label="Cerrar accesos por agente"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {!grantData ? (
+              <p className="flex items-center gap-2 py-8 text-sm text-[var(--text-muted)]">
+                <LoaderCircle className="animate-spin" size={16} /> Cargando accesos…
+              </p>
+            ) : grantData.agents.length === 0 ? (
+              <p className="py-8 text-sm text-[var(--text-muted)]">No hay agentes configurados.</p>
+            ) : (
+              <div className="space-y-3">
+                {grantData.agents.map((agent) => {
+                  const permissions = grantDrafts[agent.id] || [];
+                  const enabled = permissions.length > 0;
+                  const hasWildcard = permissions.includes("*");
+                  return (
+                    <article
+                      key={agent.id}
+                      className="rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(event) => setAgentEnabled(agent.id, event.target.checked)}
+                          />
+                          <span className="truncate">{agent.name}</span>
+                          {!agent.is_active && (
+                            <span className="text-xs font-normal text-[var(--text-muted)]">
+                              Inactivo
+                            </span>
+                          )}
+                        </label>
+                        <button
+                          type="button"
+                          className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                          disabled={grantBusyAgent === agent.id}
+                          onClick={() => void saveAgentGrant(agent.id)}
+                        >
+                          {grantBusyAgent === agent.id ? "Guardando…" : "Guardar"}
+                        </button>
+                      </div>
+                      <code className="mt-1 block text-xs text-[var(--text-muted)]">
+                        {agent.slug}
+                      </code>
+                      {enabled && (
+                        <div className="mt-3 border-t border-[var(--border-color)] pt-3">
+                          {grantData.available_permissions.includes("*") && (
+                            <label className="flex items-center gap-2 text-xs font-medium">
+                              <input
+                                type="checkbox"
+                                checked={hasWildcard}
+                                onChange={(event) =>
+                                  setAgentPermission(agent.id, "*", event.target.checked)
+                                }
+                              />
+                              Acceso completo al agente
+                            </label>
+                          )}
+                          {!hasWildcard && (
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {grantData.available_permissions
+                                .filter((permission) => permission !== "*")
+                                .map((permission) => (
+                                  <label
+                                    key={permission}
+                                    className="flex items-center gap-2 text-xs text-[var(--text-secondary)]"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={permissions.includes(permission)}
+                                      onChange={(event) =>
+                                        setAgentPermission(
+                                          agent.id,
+                                          permission,
+                                          event.target.checked,
+                                        )
+                                      }
+                                    />
+                                    {AGENT_PERMISSION_LABELS[permission] || permission}
+                                  </label>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

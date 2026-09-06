@@ -17,6 +17,7 @@ import {
   type LucideIcon,
   Menu,
   ShieldCheck,
+  Target,
   Wrench,
   X,
 } from "lucide-react";
@@ -90,6 +91,7 @@ const WORKSPACE_ITEMS: Omit<NavigationItem, "to">[] = [
   { label: "Canales", icon: Globe2, permission: PERMISSIONS.RUNTIME_READ },
   { label: "Acceso WhatsApp", icon: ShieldCheck, permission: PERMISSIONS.USERS_READ },
   { label: "Inbox", icon: Inbox, permission: PERMISSIONS.CONVERSATIONS_READ },
+  { label: "Oportunidades", icon: Target, permission: PERMISSIONS.OPPORTUNITIES_READ },
   { label: "Auditoría", icon: ClipboardList, permission: PERMISSIONS.AUDIT_READ },
   { label: "PromptLab", icon: FlaskConical, permission: PERMISSIONS.PROMPTLAB_USE },
 ];
@@ -105,6 +107,7 @@ const WORKSPACE_SEGMENTS: Record<string, string> = {
   Canales: "channels",
   "Acceso WhatsApp": "access",
   Inbox: "inbox",
+  Oportunidades: "opportunities",
   Auditoría: "audit",
   PromptLab: "promptlab",
 };

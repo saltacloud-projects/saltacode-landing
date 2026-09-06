@@ -14,6 +14,7 @@ import DocumentsPage from "./pages/Documents";
 import InboxPage from "./pages/Inbox";
 import KnowledgePage from "./pages/KnowledgeBlocks";
 import LoginPage from "./pages/Login";
+import OpportunitiesPage from "./pages/Opportunities";
 import PanelUsersPage from "./pages/PanelUsers";
 import PromptLabPage from "./pages/PromptLab";
 import SourcesPage from "./pages/Sources";
@@ -305,6 +306,14 @@ export default function App() {
                 }
               />
               <Route path="conversations" element={<ConversationRedirect />} />
+              <Route
+                path="opportunities"
+                element={
+                  <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_READ}>
+                    <OpportunitiesPage />
+                  </PermissionRoute>
+                }
+              />
               <Route
                 path="audit"
                 element={

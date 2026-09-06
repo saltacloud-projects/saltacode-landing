@@ -21,7 +21,7 @@ def _config() -> Config:
 def test_commercial_opportunity_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["a6f1d2c3e4b5"]
+    assert scripts.get_heads() == ["b8c2d4e6f901"]
     assert scripts.get_revision("a6f1d2c3e4b5").down_revision == "4c91b2f7e6a0"
 
 

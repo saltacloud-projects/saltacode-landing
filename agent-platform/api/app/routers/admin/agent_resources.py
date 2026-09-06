@@ -12,7 +12,7 @@ from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.rag import OrganizationArea
 from app.models.tool_config import ToolConfig
-from app.routers.admin.auth import require_admin_role, require_permission
+from app.routers.admin.auth import require_agent_permission
 from app.schemas.admin import KnowledgeBlockOut, ToolConfigOut
 from app.schemas.governance import AgentUserAssignmentUpdate, AgentUserOut
 from app.schemas.integrations import IntegrationSourceOut
@@ -20,10 +20,7 @@ from app.schemas.rag import AreaOut
 from app.services.admin_rbac import AdminPermission
 from app.services.agent_resources import agent_resource_service
 
-router = APIRouter(
-    tags=["admin-agent-resources"],
-    dependencies=[Depends(require_permission(AdminPermission.PROFILES_READ))],
-)
+router = APIRouter(tags=["admin-agent-resources"])
 
 
 def _uuid_or_404(value: str, label: str) -> uuid.UUID:
@@ -52,7 +49,7 @@ async def _resource_or_404(
 @router.get(
     "/{agent_id}/sources",
     response_model=list[IntegrationSourceOut],
-    dependencies=[Depends(require_permission(AdminPermission.SOURCES_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.SOURCES_READ))],
 )
 async def list_agent_sources(agent_id: str, db: AsyncSession = Depends(get_db)):
     parsed_agent_id = await _agent_or_404(db, agent_id)
@@ -65,7 +62,7 @@ async def list_agent_sources(agent_id: str, db: AsyncSession = Depends(get_db)):
 @router.put(
     "/{agent_id}/sources/{source_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.SOURCES_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.SOURCES_MANAGE))],
 )
 async def assign_agent_source(
     agent_id: str, source_id: str, db: AsyncSession = Depends(get_db)
@@ -81,7 +78,7 @@ async def assign_agent_source(
 @router.delete(
     "/{agent_id}/sources/{source_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.SOURCES_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.SOURCES_MANAGE))],
 )
 async def unassign_agent_source(
     agent_id: str, source_id: str, db: AsyncSession = Depends(get_db)
@@ -97,7 +94,7 @@ async def unassign_agent_source(
 @router.get(
     "/{agent_id}/tools",
     response_model=list[ToolConfigOut],
-    dependencies=[Depends(require_permission(AdminPermission.TOOLS_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.TOOLS_READ))],
 )
 async def list_agent_tools(agent_id: str, db: AsyncSession = Depends(get_db)):
     parsed_agent_id = await _agent_or_404(db, agent_id)
@@ -110,7 +107,7 @@ async def list_agent_tools(agent_id: str, db: AsyncSession = Depends(get_db)):
 @router.put(
     "/{agent_id}/tools/{tool_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.TOOLS_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.TOOLS_MANAGE))],
 )
 async def assign_agent_tool(
     agent_id: str, tool_id: str, db: AsyncSession = Depends(get_db)
@@ -124,7 +121,7 @@ async def assign_agent_tool(
 @router.delete(
     "/{agent_id}/tools/{tool_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.TOOLS_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.TOOLS_MANAGE))],
 )
 async def unassign_agent_tool(
     agent_id: str, tool_id: str, db: AsyncSession = Depends(get_db)
@@ -138,7 +135,7 @@ async def unassign_agent_tool(
 @router.get(
     "/{agent_id}/knowledge-blocks",
     response_model=list[KnowledgeBlockOut],
-    dependencies=[Depends(require_permission(AdminPermission.KNOWLEDGE_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.KNOWLEDGE_READ))],
 )
 async def list_agent_knowledge_blocks(
     agent_id: str, db: AsyncSession = Depends(get_db)
@@ -155,7 +152,7 @@ async def list_agent_knowledge_blocks(
 @router.put(
     "/{agent_id}/knowledge-blocks/{block_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_agent_permission(AdminPermission.ALL))],
 )
 async def assign_agent_knowledge_block(
     agent_id: str, block_id: str, db: AsyncSession = Depends(get_db)
@@ -173,7 +170,7 @@ async def assign_agent_knowledge_block(
 @router.delete(
     "/{agent_id}/knowledge-blocks/{block_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_agent_permission(AdminPermission.ALL))],
 )
 async def unassign_agent_knowledge_block(
     agent_id: str, block_id: str, db: AsyncSession = Depends(get_db)
@@ -191,7 +188,7 @@ async def unassign_agent_knowledge_block(
 @router.get(
     "/{agent_id}/document-areas",
     response_model=list[AreaOut],
-    dependencies=[Depends(require_permission(AdminPermission.DOCUMENTS_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.DOCUMENTS_READ))],
 )
 async def list_agent_document_areas(agent_id: str, db: AsyncSession = Depends(get_db)):
     parsed_agent_id = await _agent_or_404(db, agent_id)
@@ -215,7 +212,9 @@ async def list_agent_document_areas(agent_id: str, db: AsyncSession = Depends(ge
 @router.put(
     "/{agent_id}/document-areas/{area_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.DOCUMENTS_TAXONOMY))],
+    dependencies=[
+        Depends(require_agent_permission(AdminPermission.DOCUMENTS_TAXONOMY))
+    ],
 )
 async def assign_agent_document_area(
     agent_id: str, area_id: str, db: AsyncSession = Depends(get_db)
@@ -233,7 +232,9 @@ async def assign_agent_document_area(
 @router.delete(
     "/{agent_id}/document-areas/{area_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.DOCUMENTS_TAXONOMY))],
+    dependencies=[
+        Depends(require_agent_permission(AdminPermission.DOCUMENTS_TAXONOMY))
+    ],
 )
 async def unassign_agent_document_area(
     agent_id: str, area_id: str, db: AsyncSession = Depends(get_db)
@@ -251,7 +252,7 @@ async def unassign_agent_document_area(
 @router.get(
     "/{agent_id}/authorized-users",
     response_model=list[AgentUserOut],
-    dependencies=[Depends(require_permission(AdminPermission.USERS_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.USERS_READ))],
 )
 async def list_agent_authorized_users(
     agent_id: str, db: AsyncSession = Depends(get_db)
@@ -268,7 +269,7 @@ async def list_agent_authorized_users(
 @router.put(
     "/{agent_id}/authorized-users/{user_id}",
     response_model=AgentUserOut,
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_agent_permission(AdminPermission.ALL))],
 )
 async def assign_agent_authorized_user(
     agent_id: str,
@@ -302,7 +303,7 @@ async def assign_agent_authorized_user(
 @router.delete(
     "/{agent_id}/authorized-users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_agent_permission(AdminPermission.ALL))],
 )
 async def unassign_agent_authorized_user(
     agent_id: str, user_id: str, db: AsyncSession = Depends(get_db)

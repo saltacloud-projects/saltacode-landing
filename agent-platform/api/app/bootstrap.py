@@ -20,6 +20,8 @@ from app.models.agent_runtime import (
 )
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.rag import OrganizationArea, RagSettings
+from app.services.admin_agent_access import admin_agent_access_service
+from app.services.admin_rbac import AdminPermission
 from app.services.agent_resources import agent_resource_service
 from app.services.credentials import credential_cipher
 
@@ -45,6 +47,21 @@ DEFAULT_BLOCKS = (
         40,
     ),
 )
+
+
+async def bootstrap_admin_agent_grant(
+    db,
+    admin: AdminUser,
+    profile: AgentProfile,
+) -> None:
+    """Grant only the configured bootstrap administrator the default agent."""
+    await admin_agent_access_service.ensure_grant(
+        db,
+        admin_user_id=admin.id,
+        agent_id=profile.id,
+        permissions=[AdminPermission.ALL],
+        created_by="bootstrap",
+    )
 
 
 async def bootstrap_operational_config(db, profile: AgentProfile) -> None:
@@ -222,16 +239,15 @@ async def bootstrap() -> None:
             )
         ).scalar_one_or_none()
         if admin is None:
-            db.add(
-                AdminUser(
-                    email=settings.admin_initial_email.lower(),
-                    hashed_password=hash_password(settings.admin_initial_password),
-                    name="Platform administrator",
-                    role="admin",
-                    is_active=True,
-                    must_change_password=True,
-                )
+            admin = AdminUser(
+                email=settings.admin_initial_email.lower(),
+                hashed_password=hash_password(settings.admin_initial_password),
+                name="Platform administrator",
+                role="admin",
+                is_active=True,
+                must_change_password=True,
             )
+            db.add(admin)
 
         profile = (
             await db.execute(
@@ -310,6 +326,7 @@ async def bootstrap() -> None:
             db.add(RagSettings(key="default", enabled=False))
 
         await db.flush()
+        await bootstrap_admin_agent_grant(db, admin, profile)
         for block, block_created in knowledge_blocks:
             if profile_created or block_created:
                 await agent_resource_service.assign_knowledge_block(

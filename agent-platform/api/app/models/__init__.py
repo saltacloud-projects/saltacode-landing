@@ -1,6 +1,7 @@
 """Modelos ORM del microservicio FastAPI."""
 
 # noqa: F401 — imports necesarios para que SQLAlchemy / Alembic detecte los modelos
+from app.models.admin_agent_grant import AdminAgentGrant
 from app.models.admin_role import AdminRole
 from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile

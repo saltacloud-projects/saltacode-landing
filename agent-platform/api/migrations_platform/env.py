@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings  # noqa: E402
 from app.core.database import Base  # noqa: E402
+from app.models.admin_agent_grant import AdminAgentGrant  # noqa: F401
 from app.models.admin_role import AdminRole  # noqa: F401
 from app.models.admin_user import AdminUser  # noqa: F401
 from app.models.agent_profile import AgentProfile  # noqa: F401

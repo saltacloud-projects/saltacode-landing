@@ -8,16 +8,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import hash_password
 from app.dependencies import get_db
+from app.models.admin_agent_grant import AdminAgentGrant
 from app.models.admin_role import AdminRole
 from app.models.admin_user import AdminUser
+from app.models.agent_profile import AgentProfile
 from app.routers.admin.auth import require_admin, require_permission
 from app.schemas.admin import (
+    AdminAgentGrantCollectionOut,
+    AdminAgentGrantOut,
+    AdminAgentGrantUpdate,
+    AdminAgentOptionOut,
     AdminRoleOut,
     AdminUserOut,
     PanelUserCreate,
     PanelUserPasswordReset,
     PanelUserUpdate,
 )
+from app.services.admin_agent_access import admin_agent_access_service
 from app.services.admin_rbac import AdminPermission, admin_rbac_service
 
 router = APIRouter(
@@ -50,6 +57,17 @@ async def _user_or_404(db: AsyncSession, user_id: str) -> AdminUser:
     return user
 
 
+async def _agent_or_404(db: AsyncSession, agent_id: str) -> AgentProfile:
+    try:
+        uid = uuid.UUID(agent_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Agente no encontrado") from exc
+    agent = await db.get(AgentProfile, uid)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agente no encontrado")
+    return agent
+
+
 async def _role_has_global_access(db: AsyncSession, key: str) -> bool:
     permissions = (
         await db.execute(select(AdminRole.permissions).where(AdminRole.key == key))
@@ -60,6 +78,19 @@ async def _role_has_global_access(db: AsyncSession, key: str) -> bool:
 async def _out(db: AsyncSession, user: AdminUser) -> AdminUserOut:
     permissions = await admin_rbac_service.permissions_for_role(db, user.role)
     return AdminUserOut.from_orm_model(user, list(permissions))
+
+
+def _grant_out(grant: AdminAgentGrant, agent: AgentProfile) -> AdminAgentGrantOut:
+    return AdminAgentGrantOut(
+        id=str(grant.id),
+        agent_id=str(agent.id),
+        agent_name=agent.name,
+        agent_slug=agent.slug,
+        permissions=list(grant.permissions),
+        is_active=grant.is_active,
+        created_at=grant.created_at,
+        updated_at=grant.updated_at,
+    )
 
 
 @router.get("/roles", response_model=list[AdminRoleOut])
@@ -88,6 +119,97 @@ async def list_panel_users(db: AsyncSession = Depends(get_db)):
         .all()
     )
     return [await _out(db, user) for user in users]
+
+
+@router.get(
+    "/{user_id}/agent-grants",
+    response_model=AdminAgentGrantCollectionOut,
+)
+async def list_panel_user_agent_grants(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _user_or_404(db, user_id)
+    agents = (
+        (
+            await db.execute(
+                select(AgentProfile).order_by(AgentProfile.name, AgentProfile.slug)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    grants = await admin_agent_access_service.list_grants(
+        db,
+        admin_user_id=user.id,
+    )
+    available_permissions = await admin_agent_access_service.grantable_permissions(
+        db,
+        role_key=user.role,
+    )
+    return AdminAgentGrantCollectionOut(
+        user_id=str(user.id),
+        available_permissions=available_permissions,
+        agents=[
+            AdminAgentOptionOut(
+                id=str(agent.id),
+                name=agent.name,
+                slug=agent.slug,
+                is_active=agent.is_active,
+            )
+            for agent in agents
+        ],
+        grants=[_grant_out(grant, agent) for grant, agent in grants],
+    )
+
+
+@router.put(
+    "/{user_id}/agent-grants/{agent_id}",
+    response_model=AdminAgentGrantOut,
+)
+async def set_panel_user_agent_grant(
+    user_id: str,
+    agent_id: str,
+    data: AdminAgentGrantUpdate,
+    current: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _user_or_404(db, user_id)
+    agent = await _agent_or_404(db, agent_id)
+    try:
+        grant = await admin_agent_access_service.set_grant(
+            db,
+            admin_user_id=user.id,
+            role_key=user.role,
+            agent_id=agent.id,
+            permissions=data.permissions,
+            created_by=str(current.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await db.refresh(grant)
+    return _grant_out(grant, agent)
+
+
+@router.delete(
+    "/{user_id}/agent-grants/{agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def revoke_panel_user_agent_grant(
+    user_id: str,
+    agent_id: str,
+    current: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _user_or_404(db, user_id)
+    agent = await _agent_or_404(db, agent_id)
+    await admin_agent_access_service.revoke_grant(
+        db,
+        admin_user_id=user.id,
+        agent_id=agent.id,
+        updated_by=str(current.id),
+    )
+    return None
 
 
 @router.post("/", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)

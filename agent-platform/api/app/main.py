@@ -19,6 +19,7 @@ from app.routers.admin.agent_resources import router as admin_agent_resources_ro
 from app.routers.admin.agent_runtime import router as admin_agent_runtime_router
 from app.routers.admin.audit import router as admin_audit_router
 from app.routers.admin.auth import router as admin_auth_router
+from app.routers.admin.commercial import router as admin_commercial_router
 from app.routers.admin.config import router as admin_config_router
 from app.routers.admin.conversation_control import (
     router as admin_conversation_control_router,
@@ -232,5 +233,9 @@ app.include_router(admin_sources_router, prefix="/api/admin/sources")
 app.include_router(admin_agent_resources_router, prefix="/api/admin/agents")
 app.include_router(
     admin_operator_inbox_router, prefix="/api/admin/agents/{agent_id}/inbox"
+)
+app.include_router(
+    admin_commercial_router,
+    prefix="/api/admin/agents/{agent_id}/opportunities",
 )
 app.include_router(admin_agent_runtime_router, prefix="/api/admin")

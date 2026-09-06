@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
 from app.models.admin_user import AdminUser
-from app.routers.admin.auth import require_permission
+from app.routers.admin.auth import require_agent_permission
 from app.schemas.conversation_control import (
     ConversationControlMode,
     ConversationControlSnapshotOut,
@@ -34,7 +34,9 @@ from app.services.operator_inbox import operator_inbox_service
 
 router = APIRouter(
     tags=["admin-operator-inbox"],
-    dependencies=[Depends(require_permission(AdminPermission.CONVERSATIONS_READ))],
+    dependencies=[
+        Depends(require_agent_permission(AdminPermission.CONVERSATIONS_READ))
+    ],
 )
 
 
@@ -42,7 +44,7 @@ router = APIRouter(
 async def list_inbox_operators(
     agent_id: uuid.UUID,
     _admin: AdminUser = Depends(
-        require_permission(AdminPermission.CONVERSATIONS_MANAGE)
+        require_agent_permission(AdminPermission.CONVERSATIONS_MANAGE)
     ),
     db: AsyncSession = Depends(get_db),
 ) -> list[InboxOperatorOut]:
@@ -127,7 +129,7 @@ async def transition_inbox_conversation(
     conversation_id: uuid.UUID,
     payload: ConversationControlTransitionRequest,
     admin: AdminUser = Depends(
-        require_permission(AdminPermission.CONVERSATIONS_MANAGE)
+        require_agent_permission(AdminPermission.CONVERSATIONS_MANAGE)
     ),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationControlSnapshotOut:
@@ -162,7 +164,7 @@ async def create_inbox_operator_message(
         max_length=220,
     ),
     admin: AdminUser = Depends(
-        require_permission(AdminPermission.CONVERSATIONS_MANAGE)
+        require_agent_permission(AdminPermission.CONVERSATIONS_MANAGE)
     ),
     db: AsyncSession = Depends(get_db),
 ) -> OperatorMessageOut:

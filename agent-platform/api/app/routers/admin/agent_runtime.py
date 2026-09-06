@@ -20,7 +20,7 @@ from app.models.agent_runtime import (
     ChannelConnection,
     ProviderConnection,
 )
-from app.routers.admin.auth import require_permission
+from app.routers.admin.auth import require_agent_permission, require_permission
 from app.schemas.agent_runtime import (
     AgentRouteCreate,
     AgentRouteOut,
@@ -273,7 +273,7 @@ async def _profile(db, agent_id: str):
 @router.get(
     "/profiles/{agent_id}/runtime",
     response_model=AgentRuntimeOut,
-    dependencies=[Depends(require_permission(AdminPermission.RUNTIME_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.RUNTIME_READ))],
 )
 async def get_runtime(agent_id: str, db: AsyncSession = Depends(get_db)):
     await _profile(db, agent_id)
@@ -303,7 +303,7 @@ async def get_runtime(agent_id: str, db: AsyncSession = Depends(get_db)):
 @router.patch(
     "/profiles/{agent_id}/runtime",
     response_model=AgentRuntimeOut,
-    dependencies=[Depends(require_permission(AdminPermission.RUNTIME_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.RUNTIME_MANAGE))],
 )
 async def patch_runtime(
     agent_id: str,
@@ -368,7 +368,7 @@ async def patch_runtime(
 @router.get(
     "/profiles/{agent_id}/routes",
     response_model=list[AgentRouteOut],
-    dependencies=[Depends(require_permission(AdminPermission.RUNTIME_READ))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.RUNTIME_READ))],
 )
 async def list_routes(agent_id: str, db: AsyncSession = Depends(get_db)):
     profile = await _profile(db, agent_id)
@@ -390,7 +390,7 @@ async def list_routes(agent_id: str, db: AsyncSession = Depends(get_db)):
     "/profiles/{agent_id}/routes",
     response_model=AgentRouteOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(AdminPermission.RUNTIME_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.RUNTIME_MANAGE))],
 )
 async def create_route(
     agent_id: str,
@@ -431,7 +431,7 @@ async def create_route(
 @router.patch(
     "/profiles/{agent_id}/routes/{route_id}",
     response_model=AgentRouteOut,
-    dependencies=[Depends(require_permission(AdminPermission.RUNTIME_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.RUNTIME_MANAGE))],
 )
 async def update_route(
     agent_id: str,
@@ -465,7 +465,7 @@ async def update_route(
 @router.post(
     "/profiles/{agent_id}/routes/{route_id}/deactivate",
     response_model=AgentRouteOut,
-    dependencies=[Depends(require_permission(AdminPermission.RUNTIME_MANAGE))],
+    dependencies=[Depends(require_agent_permission(AdminPermission.RUNTIME_MANAGE))],
 )
 async def deactivate_route(
     agent_id: str,

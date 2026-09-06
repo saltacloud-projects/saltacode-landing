@@ -28,6 +28,7 @@ from app.schemas.admin import (
     RefreshRequest,
     TokenResponse,
 )
+from app.services.admin_agent_access import admin_agent_access_service
 from app.services.admin_rbac import AdminPermission, admin_rbac_service
 
 router = APIRouter(tags=["admin-auth"])
@@ -123,6 +124,74 @@ def require_permission(permission: str | AdminPermission) -> Callable:
                 detail="No tiene permisos para realizar esta acción",
             )
         return admin
+
+    return dependency
+
+
+async def _require_scoped_permission(
+    *,
+    raw_agent_id: str | uuid.UUID,
+    permission: str | AdminPermission,
+    admin: AdminUser,
+    db: AsyncSession,
+) -> AdminUser:
+    try:
+        agent_id = (
+            raw_agent_id
+            if isinstance(raw_agent_id, uuid.UUID)
+            else uuid.UUID(raw_agent_id)
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agente no encontrado",
+        ) from exc
+    if not await admin_agent_access_service.has_permission(
+        db,
+        admin_user_id=admin.id,
+        role_key=admin.role,
+        agent_id=agent_id,
+        permission=permission,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene acceso a este agente",
+        )
+    return admin
+
+
+def require_agent_permission(permission: str | AdminPermission) -> Callable:
+    """Require role permission and an active grant for an agent path."""
+
+    async def dependency(
+        agent_id: str,
+        admin: AdminUser = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
+    ) -> AdminUser:
+        return await _require_scoped_permission(
+            raw_agent_id=agent_id,
+            permission=permission,
+            admin=admin,
+            db=db,
+        )
+
+    return dependency
+
+
+def require_profile_permission(permission: str | AdminPermission) -> Callable:
+    """Require role permission and an active grant for a profile path."""
+
+    async def dependency(
+        profile_id: str,
+        admin: AdminUser = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
+    ) -> AdminUser:
+        return await _require_scoped_permission(
+            raw_agent_id=profile_id,
+            permission=permission,
+            admin=admin,
+            db=db,
+        )
 
     return dependency
 

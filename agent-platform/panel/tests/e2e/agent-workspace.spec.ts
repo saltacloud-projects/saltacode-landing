@@ -34,7 +34,13 @@ async function json(route: Route, value: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
 }
 
-async function mockWorkspace(page: Page) {
+async function mockWorkspace(
+  page: Page,
+  accessibleProfiles = [
+    profile(AGENT_A, "Agent Alpha", "alpha", true),
+    profile(AGENT_B, "Agent Beta", "beta", true),
+  ],
+) {
   let assignedSourceIds = new Set([SOURCE_A]);
   await page.addInitScript(() => {
     localStorage.setItem("tokens", JSON.stringify({ access_token: "test", refresh_token: "test" }));
@@ -43,7 +49,7 @@ async function mockWorkspace(page: Page) {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path.endsWith("/auth/me")) return json(route, admin);
-    if (path.endsWith("/profiles/")) return json(route, [profile(AGENT_A, "Agent Alpha", "alpha", true), profile(AGENT_B, "Agent Beta", "beta", true)]);
+    if (path.endsWith("/profiles/")) return json(route, accessibleProfiles);
     if (path.endsWith(`/agents/${AGENT_A}/sources`) || path.endsWith(`/agents/${AGENT_B}/sources`)) {
       return json(route, [source(SOURCE_A, "CRM Alpha", "crm-alpha", true), source(SOURCE_B, "ERP Beta", "erp-beta")].filter((item) => assignedSourceIds.has(item.id)));
     }
@@ -74,6 +80,15 @@ test("agent selection is URL-owned and survives refresh", async ({ page }) => {
   await page.getByLabel("Agente de trabajo").selectOption(AGENT_B);
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_B}/overview$`));
   await expect(page.locator("#panel-content").getByRole("heading", { name: "Agent Beta", exact: true })).toBeVisible();
+});
+
+test("agent selection only exposes server-authorized profiles", async ({ page }) => {
+  await mockWorkspace(page, [profile(AGENT_A, "Agent Alpha", "alpha", true)]);
+  await page.goto(`/agents/${AGENT_B}/overview`);
+
+  await expect(page.getByRole("heading", { name: "Agente no encontrado" })).toBeVisible();
+  await expect(page.getByLabel("Agente de trabajo")).toHaveValue("");
+  await expect(page.getByLabel("Agente de trabajo").locator("option")).toHaveCount(2);
 });
 
 test("source library assignment uses the selected agent contract", async ({ page }) => {

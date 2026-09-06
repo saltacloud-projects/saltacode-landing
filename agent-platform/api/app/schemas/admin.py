@@ -91,6 +91,43 @@ class PanelUserPasswordReset(BaseModel):
     password: str = Field(min_length=8, max_length=200)
 
 
+class AdminAgentOptionOut(BaseModel):
+    id: str
+    name: str
+    slug: str
+    is_active: bool
+
+
+class AdminAgentGrantOut(BaseModel):
+    id: str
+    agent_id: str
+    agent_name: str
+    agent_slug: str
+    permissions: list[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminAgentGrantCollectionOut(BaseModel):
+    user_id: str
+    available_permissions: list[str]
+    agents: list[AdminAgentOptionOut]
+    grants: list[AdminAgentGrantOut]
+
+
+class AdminAgentGrantUpdate(BaseModel):
+    permissions: list[str] = Field(min_length=1, max_length=30)
+
+    @field_validator("permissions")
+    @classmethod
+    def normalize_permissions(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("permissions cannot contain blank values")
+        return list(dict.fromkeys(normalized))
+
+
 # ---------------------------------------------------------------------------
 # AgentProfile
 # ---------------------------------------------------------------------------

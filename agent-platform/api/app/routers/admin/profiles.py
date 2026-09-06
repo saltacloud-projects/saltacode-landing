@@ -7,28 +7,37 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
+from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
-from app.routers.admin.auth import require_admin_role, require_permission
+from app.routers.admin.auth import (
+    require_admin_role,
+    require_permission,
+    require_profile_permission,
+)
 from app.schemas.admin import ProfileCreate, ProfileOut, ProfileUpdate
+from app.services.admin_agent_access import admin_agent_access_service
 from app.services.admin_rbac import AdminPermission
 
-router = APIRouter(
-    tags=["admin-profiles"],
-    dependencies=[Depends(require_permission(AdminPermission.PROFILES_READ))],
-)
+router = APIRouter(tags=["admin-profiles"])
 
 
 @router.get("/", response_model=list[ProfileOut])
-async def list_profiles(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(AgentProfile).order_by(
-            AgentProfile.is_active.desc(), AgentProfile.updated_at.desc()
-        )
+async def list_profiles(
+    admin: AdminUser = Depends(require_permission(AdminPermission.PROFILES_READ)),
+    db: AsyncSession = Depends(get_db),
+):
+    profiles = await admin_agent_access_service.list_accessible_profiles(
+        db,
+        admin_user_id=admin.id,
     )
-    return [ProfileOut.from_orm_model(p) for p in result.scalars().all()]
+    return [ProfileOut.from_orm_model(profile) for profile in profiles]
 
 
-@router.get("/{profile_id}", response_model=ProfileOut)
+@router.get(
+    "/{profile_id}",
+    response_model=ProfileOut,
+    dependencies=[Depends(require_profile_permission(AdminPermission.PROFILES_READ))],
+)
 async def get_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
     profile = await _get_or_404(db, profile_id)
     return ProfileOut.from_orm_model(profile)
@@ -38,9 +47,12 @@ async def get_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
     "/",
     response_model=ProfileOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin_role)],
 )
-async def create_profile(data: ProfileCreate, db: AsyncSession = Depends(get_db)):
+async def create_profile(
+    data: ProfileCreate,
+    admin: AdminUser = Depends(require_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
     profile = AgentProfile(
         name=data.name,
         slug=data.slug,
@@ -57,6 +69,13 @@ async def create_profile(data: ProfileCreate, db: AsyncSession = Depends(get_db)
     )
     db.add(profile)
     await db.flush()
+    await admin_agent_access_service.ensure_grant(
+        db,
+        admin_user_id=admin.id,
+        agent_id=profile.id,
+        permissions=[AdminPermission.ALL],
+        created_by=str(admin.id),
+    )
     await db.refresh(profile)
     return ProfileOut.from_orm_model(profile)
 
@@ -64,7 +83,7 @@ async def create_profile(data: ProfileCreate, db: AsyncSession = Depends(get_db)
 @router.patch(
     "/{profile_id}",
     response_model=ProfileOut,
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_profile_permission(AdminPermission.ALL))],
 )
 async def update_profile(
     profile_id: str, data: ProfileUpdate, db: AsyncSession = Depends(get_db)
@@ -80,7 +99,7 @@ async def update_profile(
 @router.post(
     "/{profile_id}/activate",
     response_model=ProfileOut,
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_profile_permission(AdminPermission.ALL))],
 )
 async def activate_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
     """Activate one addressable profile without disabling other agents."""
