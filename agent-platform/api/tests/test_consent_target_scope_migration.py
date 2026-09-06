@@ -14,7 +14,7 @@ from app.core.database import engine
 
 _REVISION = "f6a0b2c4d789"
 _DOWN_REVISION = "f5d9e1f3a678"
-_HEAD_REVISION = "f7b1c3d5e890"
+_HEAD_REVISION = "f8c2d4e6a901"
 
 
 def _config() -> Config:

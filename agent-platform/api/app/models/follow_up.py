@@ -425,7 +425,7 @@ class FollowUpTaskEvent(Base):
     )
     actor_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        ForeignKey("admin_users.id", ondelete="RESTRICT"),
         nullable=True,
     )
     actor_worker_id: Mapped[str | None] = mapped_column(String(120), nullable=True)

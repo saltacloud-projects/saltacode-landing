@@ -16,6 +16,7 @@ from app.core.database import engine
 
 _REVISION = "f7b1c3d5e890"
 _DOWN_REVISION = "f6a0b2c4d789"
+_HEAD_REVISION = "f8c2d4e6a901"
 
 
 def _config() -> Config:
@@ -162,7 +163,7 @@ async def _delete_channel_rows(
 def test_channel_catalog_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 
@@ -201,7 +202,7 @@ def test_channel_catalog_migration_backfills_and_round_trips() -> None:
         )
         asyncio.run(engine.dispose())
         command.downgrade(config, _DOWN_REVISION)
-        command.upgrade(config, _REVISION)
+        command.upgrade(config, _HEAD_REVISION)
         command.check(config)
     finally:
         command.upgrade(config, "head")

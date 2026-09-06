@@ -21,7 +21,7 @@ def _config() -> Config:
 def test_agent_handoff_route_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["f7b1c3d5e890"]
+    assert scripts.get_heads() == ["f8c2d4e6a901"]
     assert scripts.get_revision("d0e4f6a8b123").down_revision == "c9d3e5f7a012"
 
 

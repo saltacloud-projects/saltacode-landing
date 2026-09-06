@@ -54,6 +54,7 @@ def test_follow_up_task_fences_dispatch_and_outputs() -> None:
 
 
 def test_follow_up_events_are_versioned_and_actor_exact() -> None:
+    columns = FollowUpTaskEvent.__table__.columns
     constraints = _constraint_names(FollowUpTaskEvent)
 
     assert "uq_follow_up_task_event_version" in constraints
@@ -65,6 +66,8 @@ def test_follow_up_events_are_versioned_and_actor_exact() -> None:
     assert "ck_follow_up_task_event_target_channel" in constraints
     assert "uq_follow_up_task_event_chat_message" in constraints
     assert "uq_follow_up_task_event_outbound_message" in constraints
+    actor_admin_foreign_key = next(iter(columns.actor_admin_id.foreign_keys))
+    assert actor_admin_foreign_key.ondelete == "RESTRICT"
 
 
 def test_commercial_automation_policy_defaults_disabled() -> None:
