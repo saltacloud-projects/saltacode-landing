@@ -2,7 +2,10 @@
 
 ## Browser and BFF
 
-The public browser talks to its application BFF. The BFF validates origin, rate limits requests, owns a signed HttpOnly session, records consent, and authenticates to `/internal/v1/executions`. No internal token or provider credential is sent to the browser.
+The public browser talks to its application BFF. The BFF validates origin,
+rate-limits requests, owns a signed HttpOnly session, records consent, and
+authenticates to the private web-chat v2 API. No internal token or provider
+credential is sent to the browser.
 
 ## Tool execution
 
@@ -19,7 +22,16 @@ The HTTP adapter disables redirects and ambient proxy environment settings to pr
 
 ## Credentials and logs
 
-Integration credentials are encrypted at rest with the source master key. Logs and audit metadata must not contain raw authorization headers, verification tokens, provider keys, session cookies, or full personal identifiers.
+Integration credentials are encrypted at rest with the source master key.
+Contact points use a separate Fernet key plus an independent lookup HMAC key;
+all three are file-mounted and installed mode `0400` for the unprivileged
+runtime. Logs and audit metadata must not contain raw authorization headers,
+verification tokens, provider keys, session cookies, or full personal
+identifiers.
+
+Only services that call external providers join the dedicated egress network.
+Durable workers publish no host ports; PostgreSQL, Redis, migration, bootstrap,
+tests, and the administration panel do not join that provider-egress boundary.
 
 ## WhatsApp
 
