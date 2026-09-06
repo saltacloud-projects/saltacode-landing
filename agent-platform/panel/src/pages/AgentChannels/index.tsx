@@ -1,14 +1,46 @@
-import { Cable, Globe2, LoaderCircle, MessageCircle, Plus, Save, X } from "lucide-react";
+import {
+  Cable,
+  Camera,
+  Globe2,
+  LoaderCircle,
+  Mail,
+  MessageCircle,
+  MessagesSquare,
+  Plus,
+  Save,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
-import { api } from "../../api/client";
+import { ApiError, api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
-import type { AgentRoute, ChannelConnection, ChannelKind } from "../../runtime/types";
+import { channelLabel, implementedAdapters, READINESS_LABELS } from "../../runtime/channels";
+import type {
+  AgentRoute,
+  ChannelCatalog,
+  ChannelConnection,
+  ChannelKind,
+} from "../../runtime/types";
 
 const INPUT =
   "w-full rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] disabled:opacity-60";
+
+function iconForChannel(channel: ChannelKind) {
+  switch (channel) {
+    case "web":
+      return Globe2;
+    case "whatsapp":
+      return MessageCircle;
+    case "email":
+      return Mail;
+    case "instagram_dm":
+      return Camera;
+    case "facebook_messenger":
+      return MessagesSquare;
+  }
+}
 
 export default function AgentChannelsPage() {
   const { selectedAgent } = useAgentWorkspace();
@@ -17,6 +49,7 @@ export default function AgentChannelsPage() {
   const canReadConnections = hasPermission(user, PERMISSIONS.CONNECTIONS_READ);
   const [routes, setRoutes] = useState<AgentRoute[]>([]);
   const [connections, setConnections] = useState<ChannelConnection[]>([]);
+  const [catalog, setCatalog] = useState<ChannelCatalog | null>(null);
   const [routeSelections, setRouteSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -35,21 +68,25 @@ export default function AgentChannelsPage() {
       setLoading(true);
       setError("");
       try {
-        const [routeRows, connectionRows] = await Promise.all([
+        const [routeRows, connectionRows, channelCatalog] = await Promise.all([
           api<AgentRoute[]>(`/profiles/${agentId}/routes`),
           canReadConnections
             ? api<ChannelConnection[]>("/channel-connections")
             : Promise.resolve([]),
+          canReadConnections ? api<ChannelCatalog>("/channel-catalog") : Promise.resolve(null),
         ]);
         setRoutes(routeRows);
         setConnections(connectionRows);
+        setCatalog(channelCatalog);
         setRouteSelections(
           Object.fromEntries(routeRows.map((route) => [route.id, route.channel_connection_id])),
         );
+        return true;
       } catch (value) {
         setError(
           value instanceof Error ? value.message : "No se pudieron cargar las rutas del agente.",
         );
+        return false;
       } finally {
         setLoading(false);
       }
@@ -64,8 +101,14 @@ export default function AgentChannelsPage() {
 
   const availableConnections = useMemo(
     () =>
-      connections.filter((connection) => connection.channel === channel && connection.is_active),
-    [channel, connections],
+      connections.filter(
+        (connection) =>
+          connection.channel === channel &&
+          connection.is_active &&
+          catalog?.connections.find((item) => item.connection_id === connection.id)
+            ?.adapter_implemented === true,
+      ),
+    [catalog, channel, connections],
   );
 
   useEffect(() => {
@@ -96,7 +139,25 @@ export default function AgentChannelsPage() {
   const connectionName = (id: string) =>
     connections.find((connection) => connection.id === id)?.name || id;
   const matchingConnections = (routeChannel: ChannelKind) =>
-    connections.filter((connection) => connection.channel === routeChannel && connection.is_active);
+    connections.filter(
+      (connection) =>
+        connection.channel === routeChannel &&
+        connection.is_active &&
+        catalog?.connections.find((item) => item.connection_id === connection.id)
+          ?.adapter_implemented === true,
+    );
+  const readinessLabelForConnection = (id: string) => {
+    const readiness = catalog?.connections.find((item) => item.connection_id === id);
+    return readiness ? READINESS_LABELS[readiness.readiness] : null;
+  };
+  const recoverFromConflict = async () => {
+    const recovered = await load(selectedAgent.id);
+    setError(
+      recovered
+        ? "La ruta cambió en otra sesión. Recargamos la versión actual; revisala antes de intentar nuevamente."
+        : "La ruta cambió en otra sesión y no pudimos recargarla. Actualizá la página antes de intentar nuevamente.",
+    );
+  };
 
   const createRoute = async () => {
     if (!routeKey.trim() || !connectionId)
@@ -135,11 +196,15 @@ export default function AgentChannelsPage() {
     try {
       await api(`/profiles/${selectedAgent.id}/routes/${route.id}`, {
         method: "PATCH",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, expected_version: route.version }),
       });
       setNotice("Ruta actualizada.");
       await load(selectedAgent.id);
     } catch (value) {
+      if (value instanceof ApiError && value.status === 409) {
+        await recoverFromConflict();
+        return;
+      }
       setError(value instanceof Error ? value.message : "No se pudo actualizar la ruta.");
     } finally {
       setBusyId(null);
@@ -151,10 +216,17 @@ export default function AgentChannelsPage() {
     setBusyId(route.id);
     setError("");
     try {
-      await api(`/profiles/${selectedAgent.id}/routes/${route.id}/deactivate`, { method: "POST" });
+      await api(`/profiles/${selectedAgent.id}/routes/${route.id}/deactivate`, {
+        method: "POST",
+        body: JSON.stringify({ expected_version: route.version }),
+      });
       setNotice("Ruta desactivada.");
       await load(selectedAgent.id);
     } catch (value) {
+      if (value instanceof ApiError && value.status === 409) {
+        await recoverFromConflict();
+        return;
+      }
       setError(value instanceof Error ? value.message : "No se pudo desactivar la ruta.");
     } finally {
       setBusyId(null);
@@ -171,16 +243,18 @@ export default function AgentChannelsPage() {
             Rutas server-side que conectan un canal y una cuenta compartida con este agente.
           </p>
         </div>
-        {canManage && canReadConnections && (
-          <button
-            type="button"
-            ref={createButton}
-            onClick={() => setShowCreate(true)}
-            className="ml-auto flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white"
-          >
-            <Plus size={16} /> Nueva ruta
-          </button>
-        )}
+        {canManage &&
+          canReadConnections &&
+          implementedAdapters(catalog?.adapters ?? []).length > 0 && (
+            <button
+              type="button"
+              ref={createButton}
+              onClick={() => setShowCreate(true)}
+              className="flex min-h-10 w-full items-center justify-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white sm:ml-auto sm:w-auto"
+            >
+              <Plus size={16} /> Nueva ruta
+            </button>
+          )}
       </header>
       <aside className="rounded border border-[var(--border-color)] bg-[var(--bg-card)] p-4 text-sm text-[var(--text-secondary)]">
         <strong className="text-[var(--text-primary)]">¿Qué es la route key?</strong> Es un
@@ -192,6 +266,27 @@ export default function AgentChannelsPage() {
         </Link>
         .
       </aside>
+      {canReadConnections && catalog && (
+        <section aria-labelledby="agent-channel-availability" className="space-y-2">
+          <h3 id="agent-channel-availability" className="text-sm font-semibold">
+            Disponibilidad por canal
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {catalog.adapters.map((adapter) => {
+              const routeCount = routes.filter((route) => route.channel === adapter.channel).length;
+              return (
+                <span
+                  key={adapter.adapter_key}
+                  className="rounded-full border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-1.5 text-xs"
+                >
+                  {channelLabel(adapter.channel)} ·{" "}
+                  {adapter.adapter_implemented ? `${routeCount} rutas` : "integración pendiente"}
+                </span>
+              );
+            })}
+          </div>
+        </section>
+      )}
       {!canReadConnections && (
         <p className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-300">
           Tenés permiso para ver rutas, pero no para leer las conexiones compartidas. Se muestran
@@ -221,8 +316,12 @@ export default function AgentChannelsPage() {
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {routes.map((route) => {
-            const Icon = route.channel === "web" ? Globe2 : MessageCircle;
+            const Icon = iconForChannel(route.channel);
             const selectedConnection = routeSelections[route.id] || route.channel_connection_id;
+            const routeConnectionReadiness = catalog?.connections.find(
+              (item) => item.connection_id === route.channel_connection_id,
+            );
+            const canActivateRoute = routeConnectionReadiness?.adapter_implemented === true;
             return (
               <article
                 key={route.id}
@@ -232,7 +331,7 @@ export default function AgentChannelsPage() {
                   <Icon className="mt-0.5 text-[var(--accent)]" size={19} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold capitalize">{route.channel}</h3>
+                      <h3 className="font-semibold">{channelLabel(route.channel)}</h3>
                       <span
                         className={`rounded px-2 py-0.5 text-xs ${route.is_active ? "bg-emerald-500/10 text-emerald-400" : "bg-[var(--bg-hover)] text-[var(--text-muted)]"}`}
                       >
@@ -262,7 +361,9 @@ export default function AgentChannelsPage() {
                         {matchingConnections(route.channel).map((connection) => (
                           <option key={connection.id} value={connection.id}>
                             {connection.name}
-                            {connection.has_credentials ? "" : " · sin secreto"}
+                            {readinessLabelForConnection(connection.id)
+                              ? ` · ${readinessLabelForConnection(connection.id)}`
+                              : ""}
                           </option>
                         ))}
                       </select>
@@ -299,7 +400,7 @@ export default function AgentChannelsPage() {
                       >
                         Desactivar
                       </button>
-                    ) : (
+                    ) : canReadConnections && canActivateRoute ? (
                       <button
                         type="button"
                         onClick={() => updateRoute(route, { is_active: true })}
@@ -308,6 +409,10 @@ export default function AgentChannelsPage() {
                       >
                         Reactivar
                       </button>
+                    ) : (
+                      <span className="text-xs text-[var(--text-muted)]">
+                        La ruta no puede activarse hasta que su adaptador esté disponible.
+                      </span>
                     )}
                   </div>
                 )}
@@ -356,8 +461,11 @@ export default function AgentChannelsPage() {
                   value={channel}
                   onChange={(event) => setChannel(event.target.value as ChannelKind)}
                 >
-                  <option value="web">Web</option>
-                  <option value="whatsapp">WhatsApp</option>
+                  {implementedAdapters(catalog?.adapters ?? []).map((adapter) => (
+                    <option key={adapter.adapter_key} value={adapter.channel}>
+                      {channelLabel(adapter.channel)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="text-xs">

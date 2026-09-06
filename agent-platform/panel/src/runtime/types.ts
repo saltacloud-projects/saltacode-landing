@@ -13,13 +13,64 @@ export interface ProviderConnection {
   updated_at: string;
 }
 
-export type ChannelKind = "web" | "whatsapp";
+export type ChannelKind = "web" | "whatsapp" | "email" | "instagram_dm" | "facebook_messenger";
+
+export type ChannelAdapterKey =
+  | "web_builtin"
+  | "meta_whatsapp_cloud"
+  | "email"
+  | "meta_instagram_graph"
+  | "meta_messenger_graph";
+
+export type ChannelReadiness =
+  | "disabled"
+  | "not_implemented"
+  | "configuration_required"
+  | "configured_unverified"
+  | "traffic_observed"
+  | "degraded";
+
+export interface ChannelAdapterCatalogEntry {
+  adapter_key: ChannelAdapterKey;
+  channel: ChannelKind;
+  implementation_status: "implemented" | "planned";
+  adapter_implemented: boolean;
+  capabilities: string[];
+  credentials_required: boolean;
+  blocking_codes: string[];
+}
+
+export interface ChannelConnectionReadiness {
+  connection_id: string;
+  name: string;
+  slug: string;
+  channel: ChannelKind;
+  adapter_key: ChannelAdapterKey;
+  version: number;
+  is_active: boolean;
+  readiness: ChannelReadiness;
+  adapter_implemented: boolean;
+  settings_valid: boolean;
+  credentials_state: "not_required" | "missing" | "stored_unverified";
+  routing_state: "not_configured" | "inactive" | "active" | "inconsistent";
+  active_route_count: number;
+  last_inbound_at: string | null;
+  last_outbound_at: string | null;
+  blocking_codes: string[];
+}
+
+export interface ChannelCatalog {
+  adapters: ChannelAdapterCatalogEntry[];
+  connections: ChannelConnectionReadiness[];
+}
 
 export interface ChannelConnection {
   id: string;
   name: string;
   slug: string;
   channel: ChannelKind;
+  adapter_key: ChannelAdapterKey;
+  version: number;
   external_account_id: string | null;
   settings: Record<string, unknown>;
   has_credentials: boolean;
@@ -60,6 +111,7 @@ export interface AgentRoute {
   id: string;
   agent_id: string;
   channel: ChannelKind;
+  version: number;
   route_key: string;
   channel_connection_id: string;
   is_active: boolean;

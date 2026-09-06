@@ -1,3 +1,5 @@
+import type { ChannelKind } from "../../runtime/types";
+
 export type DeliveryStatus =
   | "queued"
   | "dispatching"
@@ -11,7 +13,7 @@ export type DeliveryStatus =
 export interface DeliverySummary {
   id: string;
   conversation_id: string;
-  channel: string;
+  channel: ChannelKind;
   status: DeliveryStatus;
   kind: string;
   sender_type: string;
@@ -62,7 +64,7 @@ export interface DeliveryPage {
 }
 
 export interface DeliveryFilters {
-  channel: string;
+  channel: "" | ChannelKind;
   status: string;
   conversationId: string;
 }

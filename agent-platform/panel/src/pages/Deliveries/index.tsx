@@ -1,6 +1,8 @@
 import { AlertTriangle, ArrowLeft, RefreshCw, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
+import { CHANNEL_LABELS } from "../../runtime/channels";
+import type { ChannelKind } from "../../runtime/types";
 import { getDelivery, listDeliveries } from "./api";
 import type { DeliveryDetail, DeliveryFilters, DeliveryStatus, DeliverySummary } from "./types";
 
@@ -277,13 +279,19 @@ export default function DeliveriesPage() {
           <select
             value={filters.channel}
             onChange={(event) =>
-              setFilters((current) => ({ ...current, channel: event.target.value }))
+              setFilters((current) => ({
+                ...current,
+                channel: event.target.value as "" | ChannelKind,
+              }))
             }
             className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
           >
             <option value="">Todos</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="web">Web</option>
+            {(Object.entries(CHANNEL_LABELS) as [ChannelKind, string][]).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="text-xs text-[var(--text-muted)]">

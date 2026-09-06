@@ -12,10 +12,24 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../../api/client";
+import { ApiError, api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
-import type { ChannelConnection, ChannelKind, ProviderConnection } from "../../runtime/types";
+import {
+  blockingMessage,
+  channelLabel,
+  implementedAdapters,
+  READINESS_LABELS,
+  readinessTone,
+} from "../../runtime/channels";
+import type {
+  ChannelAdapterKey,
+  ChannelCatalog,
+  ChannelConnection,
+  ChannelConnectionReadiness,
+  ChannelKind,
+  ProviderConnection,
+} from "../../runtime/types";
 
 type ConnectionKind = "provider" | "channel";
 type Connection = ProviderConnection | ChannelConnection;
@@ -24,6 +38,7 @@ interface ConnectionForm {
   name: string;
   slug: string;
   channel: ChannelKind;
+  adapterKey: ChannelAdapterKey;
   baseUrl: string;
   externalAccountId: string;
   settings: string;
@@ -42,6 +57,7 @@ function emptyForm(): ConnectionForm {
     name: "",
     slug: "",
     channel: "web",
+    adapterKey: "web_builtin",
     baseUrl: "",
     externalAccountId: "",
     settings: "{}",
@@ -61,11 +77,75 @@ function formattedSettings(settings: Record<string, unknown>): string {
   return JSON.stringify(settings || {}, null, 2);
 }
 
+function ChannelCatalogOverview({ catalog }: { catalog: ChannelCatalog }) {
+  const connectionCount = (channel: ChannelKind) =>
+    catalog.connections.filter((connection) => connection.channel === channel).length;
+
+  return (
+    <section aria-labelledby="channel-catalog-title" className="space-y-3">
+      <div>
+        <h3 id="channel-catalog-title" className="text-sm font-semibold">
+          Canales disponibles
+        </h3>
+        <p className="text-xs text-[var(--text-muted)]">
+          Las capacidades pertenecen al código de cada adaptador; no son configuración editable.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {catalog.adapters.map((adapter) => (
+          <article
+            key={adapter.adapter_key}
+            className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <h4 className="text-sm font-semibold">{channelLabel(adapter.channel)}</h4>
+              <span
+                className={`rounded border px-2 py-0.5 text-[11px] ${
+                  adapter.adapter_implemented
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                    : "border-[var(--border-color)] bg-[var(--bg-hover)] text-[var(--text-muted)]"
+                }`}
+              >
+                {adapter.adapter_implemented ? "Disponible" : "Integración pendiente"}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-[var(--text-secondary)]">
+              {adapter.adapter_implemented
+                ? `${connectionCount(adapter.channel)} conexión${connectionCount(adapter.channel) === 1 ? "" : "es"}`
+                : blockingMessage(adapter.blocking_codes[0] ?? "adapter_not_implemented")}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConnectionReadinessDetails({ readiness }: { readiness: ChannelConnectionReadiness }) {
+  return (
+    <div className="mt-4 space-y-2 border-t border-[var(--border-color)] pt-3">
+      <span
+        className={`inline-flex rounded border px-2 py-1 text-xs ${readinessTone(readiness.readiness)}`}
+      >
+        {READINESS_LABELS[readiness.readiness]}
+      </span>
+      {readiness.blocking_codes.length > 0 && (
+        <ul className="space-y-1 text-xs text-[var(--text-secondary)]">
+          {readiness.blocking_codes.map((code) => (
+            <li key={code}>• {blockingMessage(code)}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
   const { user } = useAuth();
   const canManage = hasPermission(user, PERMISSIONS.CONNECTIONS_MANAGE);
   const endpoint = kind === "provider" ? "/provider-connections" : "/channel-connections";
   const [rows, setRows] = useState<Connection[]>([]);
+  const [catalog, setCatalog] = useState<ChannelCatalog | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -82,13 +162,37 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
     setLoading(true);
     setError("");
     try {
-      setRows(await api<Connection[]>(endpoint));
+      if (kind === "channel") {
+        const [connectionRows, channelCatalog] = await Promise.all([
+          api<ChannelConnection[]>(endpoint),
+          api<ChannelCatalog>("/channel-catalog"),
+        ]);
+        setRows(connectionRows);
+        setCatalog(channelCatalog);
+      } else {
+        setRows(await api<ProviderConnection[]>(endpoint));
+        setCatalog(null);
+      }
+      return true;
     } catch (value) {
       setError(value instanceof Error ? value.message : "No se pudieron cargar las conexiones.");
+      return false;
     } finally {
       setLoading(false);
     }
-  }, [endpoint]);
+  }, [endpoint, kind]);
+
+  const recoverFromConflict = useCallback(async () => {
+    setShowForm(false);
+    setEditing(null);
+    setForm(emptyForm());
+    const recovered = await load();
+    setError(
+      recovered
+        ? "La conexión cambió en otra sesión. Recargamos la versión actual; revisala antes de intentar nuevamente."
+        : "La conexión cambió en otra sesión y no pudimos recargarla. Actualizá la página antes de intentar nuevamente.",
+    );
+  }, [load]);
 
   const closeForm = useCallback(() => {
     if (saving) return;
@@ -120,7 +224,14 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
   const openCreate = () => {
     rememberFocus();
     setEditing(null);
-    setForm(emptyForm());
+    const firstAdapter = implementedAdapters(catalog?.adapters ?? [])[0];
+    setForm({
+      ...emptyForm(),
+      ...(firstAdapter && {
+        channel: firstAdapter.channel,
+        adapterKey: firstAdapter.adapter_key,
+      }),
+    });
     setError("");
     setShowForm(true);
   };
@@ -133,6 +244,7 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
       name: connection.name,
       slug: connection.slug,
       channel: isChannel(connection) ? connection.channel : "web",
+      adapterKey: isChannel(connection) ? connection.adapter_key : "web_builtin",
       baseUrl: !isChannel(connection) ? connection.base_url || "" : "",
       externalAccountId: isChannel(connection) ? connection.external_account_id || "" : "",
       settings: formattedSettings(connection.settings),
@@ -196,7 +308,11 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
         const body =
           kind === "provider"
             ? { ...common, base_url: form.baseUrl.trim() || null }
-            : { ...common, external_account_id: form.externalAccountId.trim() || null };
+            : {
+                ...common,
+                expected_version: isChannel(editing) ? editing.version : 0,
+                external_account_id: form.externalAccountId.trim() || null,
+              };
         await api(`${endpoint}/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
         const body =
@@ -211,6 +327,7 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
                 ...common,
                 slug: form.slug.trim(),
                 channel: form.channel,
+                adapter_key: form.adapterKey,
                 external_account_id: form.externalAccountId.trim() || null,
               };
         await api(endpoint, { method: "POST", body: JSON.stringify(body) });
@@ -228,6 +345,10 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
       await load();
       requestAnimationFrame(() => returnFocus.current?.focus());
     } catch (value) {
+      if (kind === "channel" && value instanceof ApiError && value.status === 409) {
+        await recoverFromConflict();
+        return;
+      }
       setError(value instanceof Error ? value.message : "No se pudo guardar la conexión.");
     } finally {
       setSaving(false);
@@ -264,11 +385,18 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
     try {
       await api(`${endpoint}/${connection.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ clear_credentials: true }),
+        body: JSON.stringify({
+          clear_credentials: true,
+          ...(isChannel(connection) && { expected_version: connection.version }),
+        }),
       });
       setNotice("Secreto eliminado. La conexión no podrá autenticar hasta que cargues uno nuevo.");
       await load();
     } catch (value) {
+      if (isChannel(connection) && value instanceof ApiError && value.status === 409) {
+        await recoverFromConflict();
+        return;
+      }
       setError(value instanceof Error ? value.message : "No se pudo eliminar el secreto.");
     } finally {
       setBusyId(null);
@@ -281,10 +409,19 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
     setNotice("");
     setError("");
     try {
-      await api(`${endpoint}/${connection.id}/deactivate`, { method: "POST" });
+      await api(`${endpoint}/${connection.id}/deactivate`, {
+        method: "POST",
+        ...(isChannel(connection) && {
+          body: JSON.stringify({ expected_version: connection.version }),
+        }),
+      });
       setNotice("Conexión desactivada. Las dependencias existentes pueden quedar sin servicio.");
       await load();
     } catch (value) {
+      if (isChannel(connection) && value instanceof ApiError && value.status === 409) {
+        await recoverFromConflict();
+        return;
+      }
       setError(value instanceof Error ? value.message : "No se pudo desactivar la conexión.");
     } finally {
       setBusyId(null);
@@ -295,8 +432,12 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
   const description =
     kind === "provider"
       ? "Proveedores compartidos para los runtimes. Las API keys son write-only."
-      : "Cuentas web y WhatsApp compartidas que pueden vincularse a rutas de agentes.";
+      : "Catálogo multicanal compartido. La disponibilidad se calcula desde implementación, configuración, rutas y tráfico real.";
   const Icon = kind === "provider" ? CloudCog : Cable;
+  const readinessByConnection = new Map(
+    (catalog?.connections ?? []).map((readiness) => [readiness.connection_id, readiness]),
+  );
+  const canCreate = kind === "provider" || implementedAdapters(catalog?.adapters ?? []).length > 0;
 
   return (
     <div className="max-w-7xl space-y-5">
@@ -306,16 +447,17 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
           <h2 className="text-xl font-semibold">{title}</h2>
           <p className="text-sm text-[var(--text-muted)]">{description}</p>
         </div>
-        {canManage && (
+        {canManage && canCreate && (
           <button
             type="button"
             onClick={openCreate}
-            className="ml-auto flex items-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white"
+            className="flex min-h-10 w-full items-center justify-center gap-2 rounded bg-[var(--accent)] px-3 py-2 text-sm text-white sm:ml-auto sm:w-auto"
           >
             <Plus size={16} /> Nueva conexión
           </button>
         )}
       </header>
+      {kind === "channel" && catalog && <ChannelCatalogOverview catalog={catalog} />}
       {error && !showForm && (
         <p
           className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
@@ -338,122 +480,136 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
         </p>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {rows.map((connection) => (
-            <article
-              key={connection.id}
-              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4"
-            >
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold">{connection.name}</h3>
-                    <code className="text-xs text-[var(--text-muted)]">{connection.slug}</code>
+          {rows.map((connection) => {
+            const readiness = isChannel(connection)
+              ? readinessByConnection.get(connection.id)
+              : undefined;
+            const canEdit = !isChannel(connection) || readiness?.adapter_implemented === true;
+            return (
+              <article
+                key={connection.id}
+                className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{connection.name}</h3>
+                      <code className="text-xs text-[var(--text-muted)]">{connection.slug}</code>
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {isChannel(connection)
+                        ? `${channelLabel(connection.channel)} · ${connection.adapter_key}`
+                        : connection.provider_type}
+                    </p>
                   </div>
-                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                    {isChannel(connection) ? connection.channel : connection.provider_type}
-                  </p>
-                </div>
-                <span
-                  className={`rounded px-2 py-1 text-xs ${connection.is_active ? "bg-emerald-500/10 text-emerald-400" : "bg-[var(--bg-hover)] text-[var(--text-muted)]"}`}
-                >
-                  {connection.is_active ? "Activa" : "Inactiva"}
-                </span>
-              </div>
-              <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
-                <div>
-                  <dt className="text-[var(--text-muted)]">Credencial</dt>
-                  <dd className="mt-1 flex items-center gap-1">
-                    {isChannel(connection) && connection.channel === "web" ? (
-                      <>
-                        <CheckCircle2 size={13} className="text-[var(--text-muted)]" />
-                        No aplica al canal web
-                      </>
-                    ) : (
-                      <>
-                        {connection.has_credentials ? (
-                          <CheckCircle2 size={13} className="text-emerald-400" />
-                        ) : (
-                          <KeyRound size={13} className="text-amber-400" />
-                        )}
-                        {connection.has_credentials ? "Configurada (write-only)" : "Sin configurar"}
-                      </>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--text-muted)]">Cuenta o endpoint</dt>
-                  <dd
-                    className="mt-1 truncate"
-                    title={
-                      isChannel(connection)
-                        ? connection.external_account_id || undefined
-                        : connection.base_url || undefined
-                    }
+                  <span
+                    className={`rounded px-2 py-1 text-xs ${connection.is_active ? "bg-emerald-500/10 text-emerald-400" : "bg-[var(--bg-hover)] text-[var(--text-muted)]"}`}
                   >
-                    {isChannel(connection)
-                      ? connection.external_account_id || "No informado"
-                      : connection.base_url || "Predeterminado del proveedor"}
-                  </dd>
+                    {connection.is_active ? "Activa" : "Inactiva"}
+                  </span>
                 </div>
-                <div>
-                  <dt className="text-[var(--text-muted)]">Configuración</dt>
-                  <dd className="mt-1">
-                    {Object.keys(connection.settings || {}).length} propiedades
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--text-muted)]">Actualizada por</dt>
-                  <dd className="mt-1 truncate">{connection.updated_by || "Sistema"}</dd>
-                </div>
-              </dl>
-              {canManage && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(connection)}
-                    className="flex items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"
-                  >
-                    <Pencil size={14} /> Editar o rotar
-                  </button>
-                  {kind === "provider" && (
-                    <button
-                      type="button"
-                      onClick={() => testProvider(connection)}
-                      disabled={testingId === connection.id}
-                      className="flex items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"
+                <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="text-[var(--text-muted)]">Credencial</dt>
+                    <dd className="mt-1 flex items-center gap-1">
+                      {isChannel(connection) && connection.channel === "web" ? (
+                        <>
+                          <CheckCircle2 size={13} className="text-[var(--text-muted)]" />
+                          No aplica al canal web
+                        </>
+                      ) : (
+                        <>
+                          {connection.has_credentials ? (
+                            <CheckCircle2 size={13} className="text-emerald-400" />
+                          ) : (
+                            <KeyRound size={13} className="text-amber-400" />
+                          )}
+                          {connection.has_credentials
+                            ? "Configurada (write-only)"
+                            : "Sin configurar"}
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[var(--text-muted)]">Cuenta o endpoint</dt>
+                    <dd
+                      className="mt-1 truncate"
+                      title={
+                        isChannel(connection)
+                          ? connection.external_account_id || undefined
+                          : connection.base_url || undefined
+                      }
                     >
-                      <RotateCw
-                        className={testingId === connection.id ? "animate-spin" : ""}
-                        size={14}
-                      />{" "}
-                      Probar conexión
-                    </button>
-                  )}
-                  {connection.has_credentials &&
-                    !(isChannel(connection) && connection.channel === "web") && (
+                      {isChannel(connection)
+                        ? connection.external_account_id || "No informado"
+                        : connection.base_url || "Predeterminado del proveedor"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[var(--text-muted)]">Configuración</dt>
+                    <dd className="mt-1">
+                      {Object.keys(connection.settings || {}).length} propiedades
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[var(--text-muted)]">Actualizada por</dt>
+                    <dd className="mt-1 truncate">{connection.updated_by || "Sistema"}</dd>
+                  </div>
+                </dl>
+                {readiness && <ConnectionReadinessDetails readiness={readiness} />}
+                {canManage && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {canEdit && (
                       <button
                         type="button"
-                        onClick={() => clearCredentials(connection)}
-                        disabled={busyId === connection.id}
-                        className="flex items-center gap-1 rounded border border-amber-500/40 px-2 py-1.5 text-xs text-amber-300"
+                        onClick={() => openEdit(connection)}
+                        className="flex min-h-9 items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"
                       >
-                        <Trash2 size={14} /> Eliminar secreto
+                        <Pencil size={14} /> Editar o rotar
                       </button>
                     )}
-                  {connection.is_active && (
-                    <button
-                      type="button"
-                      onClick={() => deactivate(connection)}
-                      disabled={busyId === connection.id}
-                      className="flex items-center gap-1 rounded border border-red-500/40 px-2 py-1.5 text-xs text-red-400"
-                    >
-                      <PowerOff size={14} /> Desactivar
-                    </button>
-                  )}
-                </div>
-              )}
-            </article>
-          ))}
+                    {kind === "provider" && (
+                      <button
+                        type="button"
+                        onClick={() => testProvider(connection)}
+                        disabled={testingId === connection.id}
+                        className="flex items-center gap-1 rounded border border-[var(--border-color)] px-2 py-1.5 text-xs"
+                      >
+                        <RotateCw
+                          className={testingId === connection.id ? "animate-spin" : ""}
+                          size={14}
+                        />{" "}
+                        Probar conexión
+                      </button>
+                    )}
+                    {canEdit &&
+                      connection.has_credentials &&
+                      !(isChannel(connection) && connection.channel === "web") && (
+                        <button
+                          type="button"
+                          onClick={() => clearCredentials(connection)}
+                          disabled={busyId === connection.id}
+                          className="flex items-center gap-1 rounded border border-amber-500/40 px-2 py-1.5 text-xs text-amber-300"
+                        >
+                          <Trash2 size={14} /> Eliminar secreto
+                        </button>
+                      )}
+                    {connection.is_active && (
+                      <button
+                        type="button"
+                        onClick={() => deactivate(connection)}
+                        disabled={busyId === connection.id}
+                        className="flex items-center gap-1 rounded border border-red-500/40 px-2 py-1.5 text-xs text-red-400"
+                      >
+                        <PowerOff size={14} /> Desactivar
+                      </button>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
           {rows.length === 0 && (
             <p className="text-sm text-[var(--text-muted)]">
               Todavía no hay conexiones configuradas.
@@ -524,13 +680,25 @@ function ConnectionLibraryPage({ kind }: { kind: ConnectionKind }) {
                     <select
                       disabled={Boolean(editing)}
                       className={`${INPUT} mt-1 disabled:opacity-60`}
-                      value={form.channel}
-                      onChange={(event) =>
-                        setForm({ ...form, channel: event.target.value as ChannelKind })
-                      }
+                      value={form.adapterKey}
+                      onChange={(event) => {
+                        const adapter = catalog?.adapters.find(
+                          (candidate) => candidate.adapter_key === event.target.value,
+                        );
+                        if (adapter?.adapter_implemented) {
+                          setForm({
+                            ...form,
+                            channel: adapter.channel,
+                            adapterKey: adapter.adapter_key,
+                          });
+                        }
+                      }}
                     >
-                      <option value="web">Web</option>
-                      <option value="whatsapp">WhatsApp</option>
+                      {implementedAdapters(catalog?.adapters ?? []).map((adapter) => (
+                        <option key={adapter.adapter_key} value={adapter.adapter_key}>
+                          {channelLabel(adapter.channel)}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="text-xs">
