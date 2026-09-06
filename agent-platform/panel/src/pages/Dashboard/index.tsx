@@ -3,6 +3,7 @@ import {
   Brain,
   Cable,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
   CircleOff,
   ClipboardList,
@@ -64,6 +65,13 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
         segment: "opportunities",
         icon: Target,
         permission: PERMISSIONS.OPPORTUNITIES_READ,
+      },
+      {
+        label: "Reuniones",
+        description: "Coordiná horarios y confirmaciones con evidencia auditable.",
+        segment: "meetings",
+        icon: CalendarDays,
+        permission: PERMISSIONS.MEETINGS_READ,
       },
       {
         label: "Entregas",

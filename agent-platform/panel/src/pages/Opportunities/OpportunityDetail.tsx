@@ -1,5 +1,9 @@
-import { ArrowLeft, LoaderCircle } from "lucide-react";
+import { ArrowLeft, CalendarPlus, LoaderCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import type { AgentProfile } from "../../agents/types";
+import { useAuth } from "../../auth/AuthContext";
+import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 import { FollowUpsPanel } from "./FollowUpsPanel";
 import { OpportunityActions } from "./OpportunityActions";
 import { contactName, formatDate, STAGE_LABELS, stageTone } from "./presentation";
@@ -66,6 +70,10 @@ export function OpportunityDetail({
   onRequestQuote,
   onRegisterQuoteVersion,
 }: Props) {
+  const { selectedAgent } = useAgentWorkspace();
+  const { user } = useAuth();
+  const canCreateMeeting = hasPermission(user, PERMISSIONS.MEETINGS_MANAGE);
+
   return (
     <section
       aria-label="Detalle de oportunidad"
@@ -104,6 +112,14 @@ export function OpportunityDetail({
           )}
 
           <ContactCard opportunity={opportunity} />
+          {canCreateMeeting && selectedAgent && (
+            <Link
+              to={`/agents/${selectedAgent.id}/meetings?opportunity_id=${encodeURIComponent(opportunity.id)}`}
+              className="inline-flex items-center gap-2 rounded border border-[var(--accent)]/50 px-3 py-2 text-sm font-medium text-[var(--accent-hover)]"
+            >
+              <CalendarPlus size={16} aria-hidden="true" /> Coordinar reunión
+            </Link>
+          )}
           <OpportunityActions
             key={`${opportunity.id}:${opportunity.control_version}`}
             opportunity={opportunity}

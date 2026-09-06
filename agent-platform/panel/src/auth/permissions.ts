@@ -14,6 +14,8 @@ export const PERMISSIONS = {
   CONVERSATIONS_MANAGE: "conversations.manage",
   OPPORTUNITIES_READ: "opportunities.read",
   OPPORTUNITIES_MANAGE: "opportunities.manage",
+  MEETINGS_READ: "meetings.read",
+  MEETINGS_MANAGE: "meetings.manage",
   QUOTES_APPROVE: "quotes.approve",
   DELIVERIES_READ: "deliveries.read",
   DELIVERIES_REVIEW: "deliveries.review",

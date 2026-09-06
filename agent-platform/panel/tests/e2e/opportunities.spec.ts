@@ -224,6 +224,10 @@ test("operator manages stage and records an honest blocked quote request", async
 
   await page.goto(`/agents/${AGENT_ID}/opportunities`);
   await page.getByRole("button", { name: /Nuevo sistema comercial/ }).click();
+  await expect(page.getByRole("link", { name: "Coordinar reunión" })).toHaveAttribute(
+    "href",
+    `/agents/${AGENT_ID}/meetings?opportunity_id=${OPPORTUNITY_ID}`,
+  );
   await expect(page.getByText("sin consentimiento vigente", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Bloqueado: no hay un punto de contacto", { exact: false })).toBeVisible();
 

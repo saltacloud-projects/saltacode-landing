@@ -17,6 +17,7 @@ import HandoffsPage from "./pages/Handoffs";
 import InboxPage from "./pages/Inbox";
 import KnowledgePage from "./pages/KnowledgeBlocks";
 import LoginPage from "./pages/Login";
+import MeetingsPage from "./pages/Meetings";
 import OpportunitiesPage from "./pages/Opportunities";
 import PanelUsersPage from "./pages/PanelUsers";
 import PromptLabPage from "./pages/PromptLab";
@@ -314,6 +315,14 @@ export default function App() {
                 element={
                   <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_READ}>
                     <OpportunitiesPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="meetings"
+                element={
+                  <PermissionRoute permission={PERMISSIONS.MEETINGS_READ}>
+                    <MeetingsPage />
                   </PermissionRoute>
                 }
               />

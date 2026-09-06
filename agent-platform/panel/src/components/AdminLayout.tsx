@@ -4,6 +4,7 @@ import {
   Brain,
   Cable,
   CalendarClock,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -150,6 +151,12 @@ const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
         label: "Oportunidades",
         icon: Target,
         permission: PERMISSIONS.OPPORTUNITIES_READ,
+      },
+      {
+        segment: "meetings",
+        label: "Reuniones",
+        icon: CalendarDays,
+        permission: PERMISSIONS.MEETINGS_READ,
       },
       {
         segment: "deliveries",
