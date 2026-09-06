@@ -46,6 +46,10 @@ class WebExecutionClaimOwnershipError(WebExecutionQueueError):
     """The worker no longer owns the running execution lease."""
 
 
+class WebExecutionLeaseExpiredError(WebExecutionClaimOwnershipError):
+    """The worker still owns the row, but its execution lease expired."""
+
+
 class WebExecutionOutcome(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
@@ -433,6 +437,66 @@ class WebExecutionQueueService:
             )
         await db.flush()
         return RecordedWebExecutionOutcome(execution=execution, published=True)
+
+    async def revalidate_claim(
+        self,
+        db: AsyncSession,
+        *,
+        execution_id: uuid.UUID,
+        worker_id: str,
+        now: datetime | None = None,
+    ) -> ClaimedWebExecution:
+        """Fence one committed claim before any model or tool side effect."""
+        normalized_worker = worker_id.strip()
+        if not normalized_worker or len(normalized_worker) > 120:
+            raise InvalidWebExecutionCommandError("invalid worker id")
+        execution = (
+            (
+                await db.execute(
+                    select(ChatExecution)
+                    .where(ChatExecution.id == execution_id)
+                    .execution_options(populate_existing=True)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if (
+            execution is None
+            or execution.status != "running"
+            or execution.lease_owner != normalized_worker
+        ):
+            raise WebExecutionClaimOwnershipError(
+                "web execution claim ownership was lost"
+            )
+        checked_at = now or datetime.now(timezone.utc)
+        if (
+            execution.lease_expires_at is None
+            or execution.lease_expires_at <= checked_at
+        ):
+            raise WebExecutionLeaseExpiredError("web execution lease expired")
+        conversation = (
+            (
+                await db.execute(
+                    select(ChatConversation)
+                    .where(ChatConversation.id == execution.conversation_id)
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if conversation is None:
+            raise WebExecutionQueueError("execution conversation is unavailable")
+        self._assert_automation(
+            conversation,
+            expected_version=execution.control_version,
+        )
+        inbound = await db.get(ChatMessage, execution.inbound_message_id)
+        if inbound is None:
+            raise WebExecutionQueueError("claimed execution has no inbound message")
+        return ClaimedWebExecution(execution=execution, inbound_message=inbound)
 
     async def recover_stale_leases(
         self,
