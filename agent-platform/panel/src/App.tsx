@@ -1,29 +1,40 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AgentWorkspaceProvider, useAgentWorkspace } from "./agents/AgentWorkspaceContext";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { defaultPanelPath, hasPermission, PERMISSIONS } from "./auth/permissions";
 import AdminLayout from "./components/AdminLayout";
-import AgentAccessPage from "./pages/AgentAccess";
-import AgentChannelsPage from "./pages/AgentChannels";
-import ProfilesPage, { AgentIdentityPage } from "./pages/AgentProfile";
-import AgentRuntimePage from "./pages/AgentRuntime";
-import AuditPage from "./pages/Audit";
-import CommercialAutomationPolicyPage from "./pages/CommercialAutomationPolicy";
-import { ChannelConnectionsPage, ProviderConnectionsPage } from "./pages/Connections";
-import DashboardPage from "./pages/Dashboard";
-import DeliveriesPage from "./pages/Deliveries";
-import DocumentsPage from "./pages/Documents";
-import FollowUpsPage from "./pages/FollowUps";
-import HandoffsPage from "./pages/Handoffs";
-import InboxPage from "./pages/Inbox";
-import KnowledgePage from "./pages/KnowledgeBlocks";
-import LoginPage from "./pages/Login";
-import MeetingsPage from "./pages/Meetings";
-import OpportunitiesPage from "./pages/Opportunities";
-import PanelUsersPage from "./pages/PanelUsers";
-import PromptLabPage from "./pages/PromptLab";
-import SourcesPage from "./pages/Sources";
-import ToolsPage from "./pages/Tools";
+import RouteLoading from "./components/RouteLoading";
+
+const AgentAccessPage = lazy(() => import("./pages/AgentAccess"));
+const AgentChannelsPage = lazy(() => import("./pages/AgentChannels"));
+const ProfilesPage = lazy(() => import("./pages/AgentProfile"));
+const AgentIdentityPage = lazy(() =>
+  import("./pages/AgentProfile").then((module) => ({ default: module.AgentIdentityPage })),
+);
+const AgentRuntimePage = lazy(() => import("./pages/AgentRuntime"));
+const AuditPage = lazy(() => import("./pages/Audit"));
+const CommercialAutomationPolicyPage = lazy(() => import("./pages/CommercialAutomationPolicy"));
+const ChannelConnectionsPage = lazy(() =>
+  import("./pages/Connections").then((module) => ({ default: module.ChannelConnectionsPage })),
+);
+const ProviderConnectionsPage = lazy(() =>
+  import("./pages/Connections").then((module) => ({ default: module.ProviderConnectionsPage })),
+);
+const DashboardPage = lazy(() => import("./pages/Dashboard"));
+const DeliveriesPage = lazy(() => import("./pages/Deliveries"));
+const DocumentsPage = lazy(() => import("./pages/Documents"));
+const FollowUpsPage = lazy(() => import("./pages/FollowUps"));
+const HandoffsPage = lazy(() => import("./pages/Handoffs"));
+const InboxPage = lazy(() => import("./pages/Inbox"));
+const KnowledgePage = lazy(() => import("./pages/KnowledgeBlocks"));
+const LoginPage = lazy(() => import("./pages/Login"));
+const MeetingsPage = lazy(() => import("./pages/Meetings"));
+const OpportunitiesPage = lazy(() => import("./pages/Opportunities"));
+const PanelUsersPage = lazy(() => import("./pages/PanelUsers"));
+const PromptLabPage = lazy(() => import("./pages/PromptLab"));
+const SourcesPage = lazy(() => import("./pages/Sources"));
+const ToolsPage = lazy(() => import("./pages/Tools"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -148,7 +159,9 @@ export default function App() {
             path="/login"
             element={
               <PublicRoute>
-                <LoginPage />
+                <Suspense fallback={<RouteLoading />}>
+                  <LoginPage />
+                </Suspense>
               </PublicRoute>
             }
           />

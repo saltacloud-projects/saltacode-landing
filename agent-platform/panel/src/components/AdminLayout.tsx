@@ -26,11 +26,12 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAgentWorkspace } from "../agents/AgentWorkspaceContext";
 import { useAuth } from "../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../auth/permissions";
+import RouteLoading from "./RouteLoading";
 
 interface NavigationItem {
   to: string;
@@ -518,7 +519,9 @@ export default function AdminLayout() {
         className="min-w-0 flex-1 overflow-x-hidden px-4 pb-6 pt-16 text-[var(--text-primary)] md:p-6"
         tabIndex={-1}
       >
-        <Outlet />
+        <Suspense fallback={<RouteLoading />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );
