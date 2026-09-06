@@ -21,6 +21,10 @@ from app.core.database import Base  # noqa: E402
 from app.models.admin_agent_grant import AdminAgentGrant  # noqa: F401
 from app.models.admin_role import AdminRole  # noqa: F401
 from app.models.admin_user import AdminUser  # noqa: F401
+from app.models.agent_handoff_route import (  # noqa: F401
+    AgentHandoffRoute,
+    AgentHandoffRouteReceipt,
+)
 from app.models.agent_profile import AgentProfile  # noqa: F401
 from app.models.agent_resource_binding import (  # noqa: F401
     AgentKnowledgeBlockBinding,

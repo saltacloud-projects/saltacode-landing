@@ -15,6 +15,9 @@ from app.core.logging import setup_logging
 
 # Routers
 from app.routers import health, internal
+from app.routers.admin.agent_handoff_routes import (
+    router as admin_agent_handoff_routes_router,
+)
 from app.routers.admin.agent_resources import router as admin_agent_resources_router
 from app.routers.admin.agent_runtime import router as admin_agent_runtime_router
 from app.routers.admin.audit import router as admin_audit_router
@@ -235,6 +238,10 @@ app.include_router(admin_documents_router, prefix="/api/admin/documents")
 app.include_router(admin_panel_users_router, prefix="/api/admin/panel-users")
 app.include_router(admin_sources_router, prefix="/api/admin/sources")
 app.include_router(admin_agent_resources_router, prefix="/api/admin/agents")
+app.include_router(
+    admin_agent_handoff_routes_router,
+    prefix="/api/admin/agents/{agent_id}/handoff-routes",
+)
 app.include_router(
     admin_operator_inbox_router, prefix="/api/admin/agents/{agent_id}/inbox"
 )
