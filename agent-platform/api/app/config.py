@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     # Dynamic source credentials live encrypted in PostgreSQL. Only the root
     # encryption key remains outside the database and admin panel.
     credential_encryption_key_file: str = "/run/agent-secrets/source_master.key"
+    contact_encryption_key_file: str = "/run/agent-secrets/contact_data.key"
+    contact_lookup_hmac_key_file: str = "/run/agent-secrets/contact_lookup_hmac.key"
     default_agent_slug: str = "saltacode"
     agent_web_route_key: str = "saltacode-landing"
     agent_web_external_account_id: str = ""

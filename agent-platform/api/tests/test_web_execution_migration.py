@@ -21,7 +21,7 @@ def _config() -> Config:
 def test_resumable_web_execution_migration_is_the_single_head():
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["8f813973069e"]
+    assert scripts.get_heads() == ["4c91b2f7e6a0"]
     assert scripts.get_revision("8f813973069e").down_revision == "7e702862958d"
 
 
