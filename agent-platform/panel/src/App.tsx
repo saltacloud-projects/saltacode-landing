@@ -10,6 +10,7 @@ import AgentRuntimePage from "./pages/AgentRuntime";
 import AuditPage from "./pages/Audit";
 import { ChannelConnectionsPage, ProviderConnectionsPage } from "./pages/Connections";
 import DashboardPage from "./pages/Dashboard";
+import DeliveriesPage from "./pages/Deliveries";
 import DocumentsPage from "./pages/Documents";
 import InboxPage from "./pages/Inbox";
 import KnowledgePage from "./pages/KnowledgeBlocks";
@@ -311,6 +312,14 @@ export default function App() {
                 element={
                   <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_READ}>
                     <OpportunitiesPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="deliveries"
+                element={
+                  <PermissionRoute permission={PERMISSIONS.DELIVERIES_READ}>
+                    <DeliveriesPage />
                   </PermissionRoute>
                 }
               />

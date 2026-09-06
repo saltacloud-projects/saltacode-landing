@@ -25,6 +25,7 @@ from app.routers.admin.conversation_control import (
     router as admin_conversation_control_router,
 )
 from app.routers.admin.conversations import router as admin_conversations_router
+from app.routers.admin.deliveries import router as admin_deliveries_router
 from app.routers.admin.documents import router as admin_documents_router
 from app.routers.admin.identity_link_claims import (
     router as admin_identity_link_claims_router,
@@ -244,5 +245,9 @@ app.include_router(
 app.include_router(
     admin_identity_link_claims_router,
     prefix="/api/admin/agents/{agent_id}/identity-link-claims",
+)
+app.include_router(
+    admin_deliveries_router,
+    prefix="/api/admin/agents/{agent_id}/deliveries",
 )
 app.include_router(admin_agent_runtime_router, prefix="/api/admin")
