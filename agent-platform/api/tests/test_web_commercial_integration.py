@@ -410,6 +410,9 @@ async def test_capture_is_atomic_idempotent_encrypted_and_publicly_safe(
         "quote_delivery",
         "commercial_follow_up",
     }
+    assert {record.target_channel for record in consents} == {"email"}
+    assert {record.channel for record in consents} == {"web"}
+    assert all(record.actor_admin_id is None for record in consents)
     assert len(opportunities) == 1
     assert len(events) == 1
     assert len(receipts) == 1

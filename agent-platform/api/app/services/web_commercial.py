@@ -122,11 +122,14 @@ class WebCommercialService:
             action=ConsentAction.GRANT,
             policy_version=request.policy_version,
             channel="web",
+            target_channel=request.preferred_delivery_channel,
             locale=request.locale,
             source_conversation_id=scope.conversation.id,
             source_channel_identity_id=scope.identity.id,
             correlation_id=correlation_id,
-            idempotency_key=f"{key_prefix}:quote-delivery",
+            idempotency_key=(
+                f"{key_prefix}:quote-delivery:{request.preferred_delivery_channel}"
+            ),
         )
         handoff = await self._handoffs.quote_requested(
             db,
@@ -139,7 +142,7 @@ class WebCommercialService:
             correlation_id=correlation_id,
             idempotency_key=f"{key_prefix}:opportunity",
         )
-        if handoff.created and request.commercial_follow_up_consent:
+        if request.commercial_follow_up_consent:
             await self._consents.record(
                 db,
                 agent_id=scope.agent_id,
@@ -150,11 +153,15 @@ class WebCommercialService:
                 action=ConsentAction.GRANT,
                 policy_version=request.policy_version,
                 channel="web",
+                target_channel=request.preferred_delivery_channel,
                 locale=request.locale,
                 source_conversation_id=scope.conversation.id,
                 source_channel_identity_id=scope.identity.id,
                 correlation_id=correlation_id,
-                idempotency_key=f"{key_prefix}:commercial-follow-up",
+                idempotency_key=(
+                    f"{key_prefix}:commercial-follow-up:"
+                    f"{request.preferred_delivery_channel}"
+                ),
             )
         if handoff.created:
             await self._events.publish(

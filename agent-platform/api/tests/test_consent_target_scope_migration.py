@@ -1,4 +1,4 @@
-"""Revision and rollback coverage for durable identity-link claims."""
+"""Migration coverage for target-scoped commercial consent."""
 
 from __future__ import annotations
 
@@ -12,26 +12,30 @@ from alembic.script import ScriptDirectory
 
 from app.core.database import engine
 
+_REVISION = "f6a0b2c4d789"
+_DOWN_REVISION = "f5d9e1f3a678"
+
 
 def _config() -> Config:
     api_root = Path(__file__).resolve().parents[1]
     return Config(str(api_root / "alembic-platform.ini"))
 
 
-def test_identity_link_claim_migration_is_the_single_head() -> None:
+def test_target_scoped_consent_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["f6a0b2c4d789"]
-    assert scripts.get_revision("c9d3e5f7a012").down_revision == "b8c2d4e6f901"
+    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 
 @pytest.mark.integration
-def test_identity_link_claim_migration_downgrades_and_upgrades_cleanly() -> None:
+def test_target_scoped_consent_migration_round_trips_without_evidence() -> None:
     config = _config()
     asyncio.run(engine.dispose())
     try:
-        command.downgrade(config, "b8c2d4e6f901")
+        command.downgrade(config, _DOWN_REVISION)
+        command.upgrade(config, _REVISION)
+        command.check(config)
     finally:
         command.upgrade(config, "head")
-    command.check(config)
-    asyncio.run(engine.dispose())
+        asyncio.run(engine.dispose())

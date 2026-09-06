@@ -161,6 +161,10 @@ class ConsentRecord(Base):
             name="ck_consent_record_channel",
         ),
         CheckConstraint(
+            "target_channel IS NULL OR target_channel ~ '^[a-z][a-z0-9_-]{0,39}$'",
+            name="ck_consent_record_target_channel",
+        ),
+        CheckConstraint(
             "char_length(btrim(locale)) > 0",
             name="ck_consent_record_locale",
         ),
@@ -201,6 +205,16 @@ class ConsentRecord(Base):
             "contact_point_id",
             "occurred_at",
         ),
+        Index(
+            "ix_consent_record_target_effective",
+            "agent_id",
+            "principal_id",
+            "purpose",
+            "source_conversation_id",
+            "target_channel",
+            "contact_point_id",
+            "occurred_at",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -236,6 +250,7 @@ class ConsentRecord(Base):
     action: Mapped[str] = mapped_column(String(10), nullable=False)
     policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
     channel: Mapped[str] = mapped_column(String(30), nullable=False)
+    target_channel: Mapped[str | None] = mapped_column(String(40), nullable=True)
     locale: Mapped[str] = mapped_column(String(20), nullable=False)
     source_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -246,6 +261,12 @@ class ConsentRecord(Base):
     source_channel_identity_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("channel_identities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    actor_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

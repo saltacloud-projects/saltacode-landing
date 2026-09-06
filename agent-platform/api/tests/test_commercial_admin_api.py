@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from app.routers.admin.commercial import (
     create_quote_request,
@@ -36,6 +37,7 @@ def test_commercial_contract_is_agent_scoped_authenticated_and_non_destructive()
         (f"{ROOT}/", "post"),
         (f"{ROOT}/candidates", "get"),
         (f"{ROOT}/operators", "get"),
+        (f"{ROOT}/consent-revocations", "post"),
         (f"{ROOT}/automation-policy", "get"),
         (f"{ROOT}/automation-policy", "put"),
         (f"{ROOT}/{{opportunity_id}}", "get"),
@@ -82,6 +84,7 @@ def test_commercial_commands_expose_idempotency_and_optimistic_versions() -> Non
         f"{ROOT}/{{opportunity_id}}/reassignments",
         f"{ROOT}/{{opportunity_id}}/conversation-links",
         f"{ROOT}/{{opportunity_id}}/follow-ups",
+        f"{ROOT}/consent-revocations",
         f"{ROOT}/{{opportunity_id}}/quote-requests",
         f"{ROOT}/{{opportunity_id}}/quote-requests/"
         "{quote_request_id}/authoritative-versions",
@@ -120,6 +123,24 @@ def test_commercial_commands_expose_idempotency_and_optimistic_versions() -> Non
             automation_policy_schema,
         ]
     )
+
+
+def test_consent_revocation_rejects_unauthenticated_callers() -> None:
+    app = FastAPI()
+    app.include_router(router, prefix=ROOT)
+
+    response = TestClient(app).post(
+        f"/api/admin/agents/{uuid4()}/opportunities/consent-revocations",
+        headers={"Idempotency-Key": "unauthenticated-revocation"},
+        json={
+            "source_conversation_id": str(uuid4()),
+            "contact_point_id": str(uuid4()),
+            "target_channel": "email",
+            "policy_version": "commercial-v1",
+        },
+    )
+
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

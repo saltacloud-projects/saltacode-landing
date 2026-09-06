@@ -9,18 +9,27 @@ from datetime import UTC, datetime, time
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.commercial_automation_policy import CommercialAutomationPolicy
-from app.models.contact import Contact, ContactPoint
+from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.follow_up import FollowUpTask, FollowUpTaskEvent
 from app.models.opportunity import Opportunity, OpportunityConversation
 from app.models.platform import ChatConversation
 from app.models.quote import QuoteRequest, QuoteVersion
 from app.services.commercial._command_policy import CommercialCommandPolicy
-from app.services.commercial.consents import ConsentPurpose, ConsentService
+from app.services.commercial.consent_scope import (
+    ConsentScope,
+    acquire_consent_scope_lock,
+)
+from app.services.commercial.consents import (
+    ConsentAction,
+    ConsentPurpose,
+    ConsentResult,
+    ConsentService,
+)
 from app.services.commercial.opportunities import (
     CommercialOpportunityError,
     InvalidOpportunityCommandError,
@@ -31,6 +40,9 @@ from app.services.commercial.opportunities import (
 
 _TERMINAL_STAGES = {"won", "lost"}
 _LEGACY_CONTEXT_UNKNOWN = "legacy_follow_up_context_unknown"
+_CONSENT_REVOKED = "commercial_consent_revoked"
+_CONSENT_DELIVERY_UNCERTAIN = "commercial_consent_revoked_delivery_uncertain"
+_CONSENT_SCOPE_AMBIGUOUS = "commercial_consent_scope_ambiguous"
 
 
 class FollowUpKind(StrEnum):
@@ -72,6 +84,13 @@ class FollowUpNotFoundError(CommercialOpportunityError):
 class FollowUpResult:
     task: FollowUpTask
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FollowUpConsentRevocationResult:
+    consent: ConsentResult
+    cancelled_tasks: int
+    review_required_tasks: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,10 +198,6 @@ class FollowUpService:
         normalized_target_channel = _target_channel(
             target_channel or conversation.channel
         )
-        if normalized_target_channel != conversation.channel:
-            raise InvalidFollowUpCommandError(
-                "cross-channel follow-up requires target-scoped consent"
-            )
         authoritative_quote = await _resolve_quote_version(
             db,
             opportunity_id=opportunity.id,
@@ -195,12 +210,18 @@ class FollowUpService:
             contact=contact,
             contact_point_id=contact_point_id,
         )
+        _assert_contact_point_matches_target(
+            point,
+            target_channel=normalized_target_channel,
+        )
         effective = await self._consents.effective(
             db,
             agent_id=conversation.agent_id,
             principal_id=contact.principal_id,
             purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
             contact_point_id=point.id,
+            source_conversation_id=conversation.id,
+            target_channel=normalized_target_channel,
             at=effective_at,
         )
         if not effective.granted or effective.record is None:
@@ -255,6 +276,186 @@ class FollowUpService:
         await db.flush()
         return FollowUpResult(task=task, created=True)
 
+    async def revoke_commercial_follow_up_consent(
+        self,
+        db: AsyncSession,
+        *,
+        routing_agent_id: uuid.UUID,
+        actor_admin_id: uuid.UUID,
+        source_conversation_id: uuid.UUID,
+        contact_point_id: uuid.UUID,
+        target_channel: str,
+        policy_version: str,
+        correlation_id: str,
+        idempotency_key: str,
+        occurred_at: datetime | None = None,
+    ) -> FollowUpConsentRevocationResult:
+        """Append one revocation and fail closed all pending scoped work."""
+
+        event_time = _policy.aware_utc(
+            occurred_at or datetime.now(UTC),
+            "occurred_at",
+        )
+        normalized_target = _target_channel(target_channel)
+        correlation = _policy.required_text(correlation_id, "correlation_id", 120)
+        key = _policy.required_text(idempotency_key, "idempotency_key", 220)
+        conversation = await db.get(ChatConversation, source_conversation_id)
+        if conversation is None or conversation.agent_id != routing_agent_id:
+            raise FollowUpNotFoundError("consent scope was not found")
+        contact, point = await _principal_contact_point(
+            db,
+            principal_id=conversation.principal_id,
+            contact_point_id=contact_point_id,
+        )
+        _assert_contact_point_matches_target(point, target_channel=normalized_target)
+        current = await self._consents.effective(
+            db,
+            agent_id=routing_agent_id,
+            principal_id=conversation.principal_id,
+            purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            contact_point_id=point.id,
+            source_conversation_id=conversation.id,
+            target_channel=normalized_target,
+            at=event_time,
+        )
+        if current.record is None:
+            raise FollowUpNotFoundError("consent scope was not found")
+        revocation = await self._consents.record(
+            db,
+            agent_id=routing_agent_id,
+            principal_id=conversation.principal_id,
+            contact_id=contact.id,
+            contact_point_id=point.id,
+            purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            action=ConsentAction.REVOKE,
+            policy_version=policy_version,
+            channel=current.record.channel,
+            target_channel=normalized_target,
+            locale=current.record.locale,
+            source_conversation_id=conversation.id,
+            source_channel_identity_id=current.record.source_channel_identity_id,
+            actor_admin_id=actor_admin_id,
+            correlation_id=correlation,
+            idempotency_key=key,
+            occurred_at=event_time,
+        )
+        cancelled, review_required = await self._quarantine_revoked_scope(
+            db,
+            routing_agent_id=routing_agent_id,
+            principal_id=conversation.principal_id,
+            source_conversation_id=conversation.id,
+            contact_point_id=point.id,
+            target_channel=normalized_target,
+            actor_admin_id=actor_admin_id,
+            revocation_record_id=revocation.record.id,
+            correlation_id=correlation,
+            occurred_at=event_time,
+        )
+        await db.flush()
+        return FollowUpConsentRevocationResult(
+            consent=revocation,
+            cancelled_tasks=cancelled,
+            review_required_tasks=review_required,
+        )
+
+    async def _quarantine_revoked_scope(
+        self,
+        db: AsyncSession,
+        *,
+        routing_agent_id: uuid.UUID,
+        principal_id: uuid.UUID,
+        source_conversation_id: uuid.UUID,
+        contact_point_id: uuid.UUID,
+        target_channel: str,
+        actor_admin_id: uuid.UUID,
+        revocation_record_id: uuid.UUID,
+        correlation_id: str,
+        occurred_at: datetime,
+    ) -> tuple[int, int]:
+        rows = (
+            await db.execute(
+                select(FollowUpTask, ConsentRecord)
+                .join(
+                    ConsentRecord,
+                    ConsentRecord.id == FollowUpTask.consent_record_id,
+                )
+                .where(
+                    ConsentRecord.agent_id == routing_agent_id,
+                    ConsentRecord.principal_id == principal_id,
+                    ConsentRecord.purpose == ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+                    ConsentRecord.source_conversation_id == source_conversation_id,
+                    ConsentRecord.contact_point_id == contact_point_id,
+                    or_(
+                        ConsentRecord.target_channel == target_channel,
+                        ConsentRecord.target_channel.is_(None),
+                    ),
+                    FollowUpTask.status.in_(
+                        (
+                            FollowUpStatus.SCHEDULED,
+                            FollowUpStatus.DISPATCH_QUEUED,
+                            FollowUpStatus.IN_PROGRESS,
+                        )
+                    ),
+                )
+                .order_by(FollowUpTask.id)
+                .with_for_update()
+            )
+        ).all()
+        cancelled = 0
+        review_required = 0
+        for task, scheduled_consent in rows:
+            from_status = FollowUpStatus(task.status)
+            exact_scope = (
+                task.conversation_id == source_conversation_id
+                and task.contact_point_id == contact_point_id
+                and task.target_channel == target_channel
+                and scheduled_consent.target_channel == target_channel
+            )
+            if exact_scope and from_status is FollowUpStatus.SCHEDULED:
+                to_status = FollowUpStatus.CANCELLED
+                safe_code = _CONSENT_REVOKED
+                task.cancelled_at = occurred_at
+                cancelled += 1
+            else:
+                to_status = FollowUpStatus.REVIEW_REQUIRED
+                safe_code = (
+                    _CONSENT_DELIVERY_UNCERTAIN
+                    if exact_scope
+                    else _CONSENT_SCOPE_AMBIGUOUS
+                )
+                task.review_required_at = occurred_at
+                review_required += 1
+            task.status = to_status.value
+            task.state_version += 1
+            task.lease_owner = None
+            task.lease_expires_at = None
+            task.last_safe_code = safe_code
+            event_key = f"consent-revocation:{revocation_record_id}:{task.id}"
+            event = _event(
+                task=task,
+                event_type="transitioned",
+                from_status=from_status,
+                to_status=to_status,
+                actor_agent_id=None,
+                actor_operator_id=actor_admin_id,
+                actor_worker_id=None,
+                routing_agent_id=routing_agent_id,
+                correlation_id=correlation_id,
+                idempotency_key=event_key,
+                command_hash=_policy.command_hash(
+                    {
+                        "revocation_record_id": str(revocation_record_id),
+                        "safe_code": safe_code,
+                        "task_id": str(task.id),
+                        "to_status": to_status.value,
+                    }
+                ),
+                safe_code=safe_code,
+                caused_by_consent_record_id=revocation_record_id,
+            )
+            db.add(event)
+        return cancelled, review_required
+
     async def transition(
         self,
         db: AsyncSession,
@@ -289,6 +490,13 @@ class FollowUpService:
                 "task_id": str(task_id),
             }
         )
+        if target is FollowUpStatus.SCHEDULED:
+            scope = await _consent_scope_for_task(db, task_id=task_id)
+            if scope is None:
+                raise InvalidFollowUpCommandError(
+                    "legacy follow-up requires an explicit replacement task"
+                )
+            await acquire_consent_scope_lock(db, scope=scope)
         task = (
             await db.execute(
                 select(FollowUpTask).where(FollowUpTask.id == task_id).with_for_update()
@@ -362,12 +570,18 @@ class FollowUpService:
                 contact=contact,
                 contact_point_id=task.contact_point_id,
             )
+            _assert_contact_point_matches_target(
+                point,
+                target_channel=task.target_channel,
+            )
             effective = await self._consents.effective(
                 db,
                 agent_id=conversation.agent_id,
                 principal_id=contact.principal_id,
                 purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
                 contact_point_id=point.id,
+                source_conversation_id=conversation.id,
+                target_channel=task.target_channel,
                 at=event_time,
             )
             if not effective.granted or effective.record is None:
@@ -648,6 +862,42 @@ async def _task_conversation(
     ).scalar_one_or_none()
 
 
+async def _consent_scope_for_task(
+    db: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+) -> ConsentScope | None:
+    row = (
+        await db.execute(
+            select(FollowUpTask, Opportunity, Contact, ChatConversation)
+            .join(Opportunity, Opportunity.id == FollowUpTask.opportunity_id)
+            .join(Contact, Contact.id == Opportunity.contact_id)
+            .outerjoin(
+                ChatConversation,
+                ChatConversation.id == FollowUpTask.conversation_id,
+            )
+            .where(FollowUpTask.id == task_id)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    task, _opportunity, contact, conversation = row
+    if (
+        conversation is None
+        or task.contact_point_id is None
+        or task.target_channel is None
+    ):
+        return None
+    return ConsentScope(
+        routing_agent_id=conversation.agent_id,
+        principal_id=contact.principal_id,
+        purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+        source_conversation_id=conversation.id,
+        target_channel=task.target_channel,
+        contact_point_id=task.contact_point_id,
+    )
+
+
 def _assert_dispatchable_conversation(
     conversation: ChatConversation,
     opportunity: Opportunity,
@@ -736,6 +986,39 @@ async def _load_contact_point(
     return point
 
 
+async def _principal_contact_point(
+    db: AsyncSession,
+    *,
+    principal_id: uuid.UUID,
+    contact_point_id: uuid.UUID,
+) -> tuple[Contact, ContactPoint]:
+    row = (
+        await db.execute(
+            select(Contact, ContactPoint)
+            .join(ContactPoint, ContactPoint.contact_id == Contact.id)
+            .where(
+                Contact.principal_id == principal_id,
+                ContactPoint.id == contact_point_id,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise FollowUpNotFoundError("consent scope was not found")
+    return row
+
+
+def _assert_contact_point_matches_target(
+    point: ContactPoint,
+    *,
+    target_channel: str,
+) -> None:
+    expected_kind = {"email": "email", "whatsapp": "phone"}.get(target_channel)
+    if expected_kind is None or point.kind != expected_kind:
+        raise InvalidFollowUpCommandError(
+            "follow-up contact point does not match target channel"
+        )
+
+
 async def _ensure_policy(
     db: AsyncSession,
     *,
@@ -804,6 +1087,7 @@ def _event(
     idempotency_key: str,
     command_hash: str,
     safe_code: str | None = None,
+    caused_by_consent_record_id: uuid.UUID | None = None,
 ) -> FollowUpTaskEvent:
     return FollowUpTaskEvent(
         id=uuid.uuid5(task.id, f"follow-up-event:{idempotency_key}"),
@@ -834,6 +1118,7 @@ def _event(
         executed_policy_version=task.executed_policy_version,
         consent_record_id=task.consent_record_id,
         executed_consent_record_id=task.executed_consent_record_id,
+        caused_by_consent_record_id=caused_by_consent_record_id,
         chat_message_id=task.chat_message_id,
         outbound_message_id=task.outbound_message_id,
         safe_code=safe_code,

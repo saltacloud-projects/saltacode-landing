@@ -13,6 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.contact import ConsentRecord, Contact, ContactPoint
+from app.models.platform import ChatConversation
+from app.services.commercial.consent_scope import (
+    ConsentScope,
+    acquire_consent_scope_lock,
+)
 from app.services.commercial.contacts import (
     ContactSourceMismatchError,
     assert_agent_principal_scope,
@@ -74,13 +79,15 @@ class ConsentService:
         action: ConsentAction | str,
         policy_version: str,
         channel: str,
+        target_channel: str | None = None,
         locale: str,
         source_conversation_id: uuid.UUID,
-        source_channel_identity_id: uuid.UUID,
+        source_channel_identity_id: uuid.UUID | None,
         correlation_id: str,
         idempotency_key: str,
         contact_id: uuid.UUID | None = None,
         contact_point_id: uuid.UUID | None = None,
+        actor_admin_id: uuid.UUID | None = None,
         expires_at: datetime | None = None,
         occurred_at: datetime | None = None,
     ) -> ConsentResult:
@@ -88,6 +95,7 @@ class ConsentService:
         normalized_action = _enum_value(ConsentAction, action, "action")
         normalized_policy = _required_text(policy_version, "policy_version", 80)
         normalized_channel = _required_text(channel, "channel", 30).casefold()
+        normalized_target = _optional_channel(target_channel, "target_channel")
         normalized_locale = _required_text(locale, "locale", 20)
         normalized_correlation = _required_text(
             correlation_id,
@@ -103,14 +111,35 @@ class ConsentService:
             raise InvalidConsentCommandError("revocations cannot expire")
         if normalized_expiration is not None and normalized_expiration <= event_time:
             raise InvalidConsentCommandError("consent expiration must be in the future")
+        if normalized_purpose is ConsentPurpose.COMMERCIAL_FOLLOW_UP and (
+            normalized_target is None or contact_point_id is None
+        ):
+            raise InvalidConsentCommandError(
+                "commercial follow-up consent requires an exact delivery target"
+            )
 
-        conversation, _ = await validate_contact_source(
-            db,
-            agent_id=agent_id,
-            principal_id=principal_id,
-            conversation_id=source_conversation_id,
-            channel_identity_id=source_channel_identity_id,
-        )
+        if source_channel_identity_id is None:
+            if normalized_action is not ConsentAction.REVOKE:
+                raise InvalidConsentCommandError(
+                    "consent grant requires source identity evidence"
+                )
+            conversation = await db.get(ChatConversation, source_conversation_id)
+            if (
+                conversation is None
+                or conversation.agent_id != agent_id
+                or conversation.principal_id != principal_id
+            ):
+                raise ContactSourceMismatchError(
+                    "consent source conversation does not match subject"
+                )
+        else:
+            conversation, _ = await validate_contact_source(
+                db,
+                agent_id=agent_id,
+                principal_id=principal_id,
+                conversation_id=source_conversation_id,
+                channel_identity_id=source_channel_identity_id,
+            )
         if conversation.channel != normalized_channel:
             raise ContactSourceMismatchError(
                 "consent channel does not match source conversation"
@@ -133,6 +162,17 @@ class ConsentService:
                     "contact point does not belong to contact"
                 )
 
+        scope = _target_scope(
+            agent_id=agent_id,
+            principal_id=principal_id,
+            purpose=normalized_purpose,
+            source_conversation_id=source_conversation_id,
+            target_channel=normalized_target,
+            contact_point_id=contact_point_id,
+        )
+        if scope is not None:
+            await acquire_consent_scope_lock(db, scope=scope)
+
         command_hash = _command_hash(
             agent_id=agent_id,
             principal_id=principal_id,
@@ -142,6 +182,7 @@ class ConsentService:
             action=normalized_action,
             policy_version=normalized_policy,
             channel=normalized_channel,
+            target_channel=normalized_target,
             locale=normalized_locale,
             source_conversation_id=source_conversation_id,
             source_channel_identity_id=source_channel_identity_id,
@@ -172,9 +213,11 @@ class ConsentService:
             action=normalized_action,
             policy_version=normalized_policy,
             channel=normalized_channel,
+            target_channel=normalized_target,
             locale=normalized_locale,
             source_conversation_id=source_conversation_id,
             source_channel_identity_id=source_channel_identity_id,
+            actor_admin_id=actor_admin_id,
             correlation_id=normalized_correlation,
             idempotency_key=normalized_key,
             command_hash=command_hash,
@@ -193,9 +236,24 @@ class ConsentService:
         principal_id: uuid.UUID,
         purpose: ConsentPurpose | str,
         contact_point_id: uuid.UUID | None = None,
+        source_conversation_id: uuid.UUID | None = None,
+        target_channel: str | None = None,
         at: datetime | None = None,
     ) -> EffectiveConsent:
         normalized_purpose = _enum_value(ConsentPurpose, purpose, "purpose")
+        normalized_target = _optional_channel(target_channel, "target_channel")
+        if normalized_purpose is ConsentPurpose.COMMERCIAL_FOLLOW_UP and (
+            source_conversation_id is None
+            or normalized_target is None
+            or contact_point_id is None
+        ):
+            raise InvalidConsentCommandError(
+                "commercial follow-up authorization requires an exact scope"
+            )
+        if (source_conversation_id is None) != (normalized_target is None):
+            raise InvalidConsentCommandError(
+                "target-scoped consent requires source conversation and target channel"
+            )
         await assert_agent_principal_scope(
             db,
             agent_id=agent_id,
@@ -213,20 +271,39 @@ class ConsentService:
                     "contact point does not belong to principal"
                 )
 
+        scope = _target_scope(
+            agent_id=agent_id,
+            principal_id=principal_id,
+            purpose=normalized_purpose,
+            source_conversation_id=source_conversation_id,
+            target_channel=normalized_target,
+            contact_point_id=contact_point_id,
+        )
+        if scope is not None:
+            await acquire_consent_scope_lock(db, scope=scope)
+
         point_filter = (
             ConsentRecord.contact_point_id.is_(None)
             if contact_point_id is None
             else ConsentRecord.contact_point_id == contact_point_id
         )
+        filters = [
+            ConsentRecord.agent_id == agent_id,
+            ConsentRecord.principal_id == principal_id,
+            ConsentRecord.purpose == normalized_purpose,
+            point_filter,
+        ]
+        if scope is not None:
+            filters.extend(
+                [
+                    ConsentRecord.source_conversation_id == source_conversation_id,
+                    ConsentRecord.target_channel == normalized_target,
+                ]
+            )
         record = (
             await db.execute(
                 select(ConsentRecord)
-                .where(
-                    ConsentRecord.agent_id == agent_id,
-                    ConsentRecord.principal_id == principal_id,
-                    ConsentRecord.purpose == normalized_purpose,
-                    point_filter,
-                )
+                .where(*filters)
                 .order_by(
                     ConsentRecord.occurred_at.desc(),
                     ConsentRecord.created_at.desc(),
@@ -243,6 +320,68 @@ class ConsentService:
         )
         return EffectiveConsent(granted=granted, record=record)
 
+    async def effective_targets_for_point(
+        self,
+        db: AsyncSession,
+        *,
+        agent_id: uuid.UUID,
+        principal_id: uuid.UUID,
+        purpose: ConsentPurpose | str,
+        contact_point_id: uuid.UUID,
+        at: datetime | None = None,
+    ) -> frozenset[str]:
+        """Return target summaries for display, never for authorization."""
+
+        normalized_purpose = _enum_value(ConsentPurpose, purpose, "purpose")
+        await assert_agent_principal_scope(
+            db,
+            agent_id=agent_id,
+            principal_id=principal_id,
+        )
+        contact_point = await db.get(ContactPoint, contact_point_id)
+        contact = (
+            await db.get(Contact, contact_point.contact_id)
+            if contact_point is not None
+            else None
+        )
+        if contact is None or contact.principal_id != principal_id:
+            raise ConsentSubjectMismatchError(
+                "contact point does not belong to principal"
+            )
+        records = list(
+            (
+                await db.execute(
+                    select(ConsentRecord)
+                    .where(
+                        ConsentRecord.agent_id == agent_id,
+                        ConsentRecord.principal_id == principal_id,
+                        ConsentRecord.purpose == normalized_purpose,
+                        ConsentRecord.contact_point_id == contact_point_id,
+                        ConsentRecord.source_conversation_id.is_not(None),
+                        ConsentRecord.target_channel.is_not(None),
+                    )
+                    .order_by(
+                        ConsentRecord.occurred_at.desc(),
+                        ConsentRecord.created_at.desc(),
+                        ConsentRecord.id.desc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        effective_at = _aware_utc(at or datetime.now(UTC), "at")
+        latest: dict[tuple[uuid.UUID, str], ConsentRecord] = {}
+        for record in records:
+            key = (record.source_conversation_id, record.target_channel)
+            latest.setdefault(key, record)
+        return frozenset(
+            record.target_channel
+            for record in latest.values()
+            if record.action == ConsentAction.GRANT
+            and (record.expires_at is None or record.expires_at > effective_at)
+        )
+
 
 def _enum_value(enum_type, value, field: str):
     try:
@@ -256,6 +395,42 @@ def _required_text(value: str, field: str, max_length: int) -> str:
     if not normalized or len(normalized) > max_length:
         raise InvalidConsentCommandError(f"invalid consent {field}")
     return normalized
+
+
+def _optional_channel(value: str | None, field: str) -> str | None:
+    if value is None:
+        return None
+    normalized = _required_text(value, field, 40).casefold()
+    if not normalized[0].isalpha() or not all(
+        character.isalnum() or character in "_-" for character in normalized
+    ):
+        raise InvalidConsentCommandError(f"invalid consent {field}")
+    return normalized
+
+
+def _target_scope(
+    *,
+    agent_id: uuid.UUID,
+    principal_id: uuid.UUID,
+    purpose: ConsentPurpose,
+    source_conversation_id: uuid.UUID | None,
+    target_channel: str | None,
+    contact_point_id: uuid.UUID | None,
+) -> ConsentScope | None:
+    if (
+        source_conversation_id is None
+        or target_channel is None
+        or contact_point_id is None
+    ):
+        return None
+    return ConsentScope(
+        routing_agent_id=agent_id,
+        principal_id=principal_id,
+        purpose=purpose,
+        source_conversation_id=source_conversation_id,
+        target_channel=target_channel,
+        contact_point_id=contact_point_id,
+    )
 
 
 def _aware_utc(value: datetime, field: str) -> datetime:
@@ -274,15 +449,17 @@ def _command_hash(
     action: ConsentAction,
     policy_version: str,
     channel: str,
+    target_channel: str | None,
     locale: str,
     source_conversation_id: uuid.UUID,
-    source_channel_identity_id: uuid.UUID,
+    source_channel_identity_id: uuid.UUID | None,
     expires_at: datetime | None,
 ) -> str:
     payload = {
         "action": action.value,
         "agent_id": str(agent_id),
         "channel": channel,
+        "target_channel": target_channel,
         "contact_id": str(contact_id) if contact_id else None,
         "contact_point_id": str(contact_point_id) if contact_point_id else None,
         "expires_at": expires_at.isoformat() if expires_at else None,
@@ -290,7 +467,9 @@ def _command_hash(
         "policy_version": policy_version,
         "principal_id": str(principal_id),
         "purpose": purpose.value,
-        "source_channel_identity_id": str(source_channel_identity_id),
+        "source_channel_identity_id": (
+            str(source_channel_identity_id) if source_channel_identity_id else None
+        ),
         "source_conversation_id": str(source_conversation_id),
     }
     canonical = json.dumps(

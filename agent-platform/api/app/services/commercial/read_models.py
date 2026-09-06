@@ -564,12 +564,14 @@ class CommercialReadService:
         )
         result: list[ContactPointOut] = []
         for point in points:
-            follow_up_allowed = await self._consent_allowed(
-                db,
-                contact=contact,
-                point=point,
-                agent_id=consent_agent_id,
-                purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            follow_up_allowed = bool(
+                await self._consents.effective_targets_for_point(
+                    db,
+                    agent_id=consent_agent_id,
+                    principal_id=contact.principal_id,
+                    purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+                    contact_point_id=point.id,
+                )
             )
             quote_delivery_allowed = await self._consent_allowed(
                 db,

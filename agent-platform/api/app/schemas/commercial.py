@@ -278,6 +278,18 @@ class CommercialAutomationPolicyUpdateRequest(BaseModel):
     max_pending_tasks: int = Field(ge=1, le=100_000)
 
 
+class CommercialConsentRevocationRequest(BaseModel):
+    source_conversation_id: UUID
+    contact_point_id: UUID
+    target_channel: Literal["email", "whatsapp"]
+    policy_version: str = Field(min_length=1, max_length=80)
+
+
+class CommercialConsentRevocationOut(BaseModel):
+    consent_record_id: UUID
+    created: bool
+
+
 class QuoteRequestCreateRequest(BaseModel):
     requirements: dict = Field(default_factory=dict)
     status: Literal["unavailable", "review_required"] = "unavailable"

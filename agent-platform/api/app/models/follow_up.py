@@ -460,6 +460,11 @@ class FollowUpTaskEvent(Base):
         ForeignKey("consent_records.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    caused_by_consent_record_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("consent_records.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     chat_message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("chat_messages.id", ondelete="SET NULL"),

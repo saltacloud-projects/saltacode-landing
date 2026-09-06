@@ -31,6 +31,7 @@ from app.models.quote import QuoteRequest, QuoteVersion
 from app.services.commercial.follow_ups import (
     FollowUpConsentRequiredError,
     FollowUpKind,
+    FollowUpNotFoundError,
     FollowUpService,
     FollowUpStatus,
     FollowUpVersionConflictError,
@@ -416,6 +417,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
                 actor_agent_id=context.opportunity_agent_id,
                 actor_operator_id=None,
                 contact_point_id=context.contact_point_id,
+                target_channel="email",
                 kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
                 due_at=now + timedelta(days=2),
                 note=None,
@@ -433,6 +435,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
                 actor_agent_id=context.opportunity_agent_id,
                 actor_operator_id=None,
                 contact_point_id=context.contact_point_id,
+                target_channel="email",
                 kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
                 due_at=now + timedelta(days=2),
                 note="Send the requested follow-up.",
@@ -453,6 +456,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
             action="grant",
             policy_version="commercial-v1",
             channel="web",
+            target_channel="email",
             locale="es-AR",
             source_conversation_id=context.conversation_id,
             source_channel_identity_id=context.identity_id,
@@ -471,6 +475,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
             actor_agent_id=context.opportunity_agent_id,
             actor_operator_id=None,
             contact_point_id=context.contact_point_id,
+            target_channel="email",
             kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
             due_at=now + timedelta(days=2),
             note="Send the requested follow-up.",
@@ -480,7 +485,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
         )
         assert scheduled.task.consent_record_id == consent.id
         assert scheduled.task.conversation_id == context.conversation_id
-        assert scheduled.task.target_channel == "web"
+        assert scheduled.task.target_channel == "email"
         assert scheduled.task.scheduled_control_version == 0
         assert scheduled.task.scheduled_automation_version == 1
         assert scheduled.task.scheduled_policy_version == 0
@@ -515,7 +520,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
                 actor_agent_id=context.opportunity_agent_id,
                 actor_operator_id=None,
                 contact_point_id=context.contact_point_id,
-                target_channel="email",
+                target_channel="whatsapp",
                 kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
                 due_at=now + timedelta(days=2),
                 note=None,
@@ -558,6 +563,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
                 actor_agent_id=context.opportunity_agent_id,
                 actor_operator_id=None,
                 contact_point_id=context.contact_point_id,
+                target_channel="email",
                 kind=FollowUpKind.PROPOSAL_REMINDER,
                 due_at=now + timedelta(days=3),
                 note="Remind the lead about the issued proposal.",
@@ -639,6 +645,7 @@ async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
             actor_agent_id=context.opportunity_agent_id,
             actor_operator_id=None,
             contact_point_id=context.contact_point_id,
+            target_channel="email",
             kind=FollowUpKind.PROPOSAL_REMINDER,
             due_at=now + timedelta(days=3),
             note="Remind the lead about the issued proposal.",
@@ -720,6 +727,7 @@ async def test_follow_up_fails_closed_for_acting_mismatch_and_ambiguous_links(
                 actor_agent_id=context.opportunity_agent_id,
                 actor_operator_id=None,
                 contact_point_id=context.contact_point_id,
+                target_channel="email",
                 kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
                 due_at=now + timedelta(days=1),
                 note=None,
@@ -779,6 +787,7 @@ async def test_follow_up_fails_closed_for_acting_mismatch_and_ambiguous_links(
                 action="grant",
                 policy_version="commercial-v1",
                 channel="web",
+                target_channel="email",
                 locale="es-AR",
                 source_conversation_id=context.conversation_id,
                 source_channel_identity_id=context.identity_id,
@@ -798,6 +807,7 @@ async def test_follow_up_fails_closed_for_acting_mismatch_and_ambiguous_links(
                 actor_agent_id=context.opportunity_agent_id,
                 actor_operator_id=None,
                 contact_point_id=context.contact_point_id,
+                target_channel="email",
                 kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
                 due_at=now + timedelta(days=1),
                 note=None,
@@ -814,6 +824,7 @@ async def test_follow_up_fails_closed_for_acting_mismatch_and_ambiguous_links(
             actor_operator_id=None,
             contact_point_id=context.contact_point_id,
             conversation_id=context.conversation_id,
+            target_channel="email",
             kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
             due_at=now + timedelta(days=1),
             note=None,
@@ -822,6 +833,177 @@ async def test_follow_up_fails_closed_for_acting_mismatch_and_ambiguous_links(
             now=now,
         )
         assert explicit.task.conversation_id == context.conversation_id
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_consent_revocation_cancels_exact_and_quarantines_ambiguous_tasks(
+    commercial_dossier: CommercialDossierContext,
+) -> None:
+    context = commercial_dossier
+    opportunities = OpportunityService()
+    follow_ups = FollowUpService()
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        opportunity = (
+            await opportunities.create(
+                db,
+                contact_id=context.contact_id,
+                source_conversation_id=context.conversation_id,
+                created_by_agent_id=context.intake_agent_id,
+                assigned_agent_id=context.opportunity_agent_id,
+                assigned_operator_id=None,
+                title="Revocable follow-up",
+                summary=None,
+                correlation_id="revocation-opportunity",
+                idempotency_key="revocation-opportunity",
+            )
+        ).opportunity
+        await ConversationAutomationAssignmentService().assign(
+            db,
+            conversation_id=context.conversation_id,
+            routing_agent_id=context.intake_agent_id,
+            target_agent_id=context.opportunity_agent_id,
+            expected_automation_version=0,
+            actor_agent_id=context.intake_agent_id,
+            actor_admin_id=None,
+            trigger="commercial_test",
+            opportunity_id=opportunity.id,
+            correlation_id="revocation-assignment",
+            idempotency_key="revocation-assignment",
+        )
+        consent = ConsentRecord(
+            principal_id=context.principal_id,
+            contact_id=context.contact_id,
+            contact_point_id=context.contact_point_id,
+            agent_id=context.intake_agent_id,
+            purpose="commercial_follow_up",
+            action="grant",
+            policy_version="commercial-v1",
+            channel="web",
+            target_channel="email",
+            locale="es-AR",
+            source_conversation_id=context.conversation_id,
+            source_channel_identity_id=context.identity_id,
+            correlation_id="revocation-grant",
+            idempotency_key="revocation-grant",
+            command_hash="9" * 64,
+            occurred_at=now,
+        )
+        db.add(consent)
+        await db.commit()
+        opportunity_id = opportunity.id
+        consent_id = consent.id
+
+    async with AsyncSessionLocal() as db:
+        exact = await follow_ups.schedule(
+            db,
+            opportunity_id=opportunity_id,
+            actor_agent_id=context.opportunity_agent_id,
+            actor_operator_id=None,
+            contact_point_id=context.contact_point_id,
+            conversation_id=context.conversation_id,
+            target_channel="email",
+            kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+            due_at=now + timedelta(days=1),
+            note=None,
+            correlation_id="revocation-task",
+            idempotency_key="revocation-task",
+            now=now + timedelta(seconds=1),
+        )
+        legacy_consent = ConsentRecord(
+            principal_id=context.principal_id,
+            contact_id=context.contact_id,
+            contact_point_id=context.contact_point_id,
+            agent_id=context.intake_agent_id,
+            purpose="commercial_follow_up",
+            action="grant",
+            policy_version="legacy-v1",
+            channel="web",
+            locale="es-AR",
+            source_conversation_id=context.conversation_id,
+            source_channel_identity_id=context.identity_id,
+            correlation_id="ambiguous-grant",
+            idempotency_key="ambiguous-grant",
+            command_hash="8" * 64,
+            occurred_at=now - timedelta(seconds=1),
+        )
+        db.add(legacy_consent)
+        await db.flush()
+        ambiguous = FollowUpTask(
+            opportunity_id=opportunity_id,
+            conversation_id=context.conversation_id,
+            fifo_key=f"conversation:{context.conversation_id}",
+            target_channel="email",
+            contact_point_id=context.contact_point_id,
+            consent_record_id=legacy_consent.id,
+            assigned_agent_id=context.opportunity_agent_id,
+            kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+            status=FollowUpStatus.SCHEDULED,
+            state_version=0,
+            scheduled_control_version=0,
+            scheduled_automation_version=1,
+            scheduled_policy_version=0,
+            due_at=now + timedelta(days=2),
+            available_at=now + timedelta(days=2),
+            attempts=0,
+            max_attempts=3,
+            correlation_id="ambiguous-task",
+            idempotency_key="ambiguous-task",
+            command_hash="7" * 64,
+        )
+        db.add(ambiguous)
+        await db.flush()
+        admin_id = (await db.execute(select(AdminUser.id).limit(1))).scalar_one()
+        with pytest.raises(FollowUpNotFoundError):
+            await follow_ups.revoke_commercial_follow_up_consent(
+                db,
+                routing_agent_id=context.opportunity_agent_id,
+                actor_admin_id=admin_id,
+                source_conversation_id=context.conversation_id,
+                contact_point_id=context.contact_point_id,
+                target_channel="email",
+                policy_version="operator-revocation-v1",
+                correlation_id="wrong-agent-revocation",
+                idempotency_key="wrong-agent-revocation",
+                occurred_at=now + timedelta(minutes=1),
+            )
+        result = await follow_ups.revoke_commercial_follow_up_consent(
+            db,
+            routing_agent_id=context.intake_agent_id,
+            actor_admin_id=admin_id,
+            source_conversation_id=context.conversation_id,
+            contact_point_id=context.contact_point_id,
+            target_channel="email",
+            policy_version="operator-revocation-v1",
+            correlation_id="revocation-command",
+            idempotency_key="revocation-command",
+            occurred_at=now + timedelta(minutes=1),
+        )
+        assert result.cancelled_tasks == 1
+        assert result.review_required_tasks == 1
+        assert exact.task.status == FollowUpStatus.CANCELLED
+        assert ambiguous.status == FollowUpStatus.REVIEW_REQUIRED
+        assert ambiguous.last_safe_code == "commercial_consent_scope_ambiguous"
+        events = list(
+            (
+                await db.execute(
+                    select(FollowUpTaskEvent).where(
+                        FollowUpTaskEvent.caused_by_consent_record_id
+                        == result.consent.record.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(events) == 2
+        assert {event.safe_code for event in events} == {
+            "commercial_consent_revoked",
+            "commercial_consent_scope_ambiguous",
+        }
+        assert result.consent.record.actor_admin_id == admin_id
+        assert result.consent.record.id != consent_id
         await db.commit()
 
 

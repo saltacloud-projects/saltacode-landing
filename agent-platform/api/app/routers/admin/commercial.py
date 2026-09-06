@@ -15,6 +15,8 @@ from app.schemas.commercial import (
     AuthoritativeQuoteVersionCreateRequest,
     CommercialAutomationPolicyOut,
     CommercialAutomationPolicyUpdateRequest,
+    CommercialConsentRevocationOut,
+    CommercialConsentRevocationRequest,
     CommercialOperatorOut,
     ConversationLinkMutationOut,
     FollowUpCreateRequest,
@@ -35,6 +37,10 @@ from app.schemas.commercial import (
 )
 from app.services.admin_agent_access import admin_agent_access_service
 from app.services.admin_rbac import AdminPermission
+from app.services.commercial.consents import (
+    ConsentIdempotencyConflictError,
+    InvalidConsentCommandError,
+)
 from app.services.commercial.follow_ups import (
     FollowUpConsentRequiredError,
     FollowUpIdempotencyConflictError,
@@ -174,6 +180,48 @@ async def list_opportunity_operators(
         return await commercial_read_service.list_operators(db, agent_id=agent_id)
     except CommercialReadNotFoundError as exc:
         _raise_not_found(exc)
+
+
+@router.post(
+    "/consent-revocations",
+    response_model=CommercialConsentRevocationOut,
+)
+async def revoke_commercial_follow_up_consent(
+    agent_id: uuid.UUID,
+    payload: CommercialConsentRevocationRequest,
+    idempotency_key: str = Header(
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=220,
+    ),
+    correlation_id: str | None = Header(
+        default=None,
+        alias="X-Correlation-ID",
+        max_length=120,
+    ),
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.OPPORTUNITIES_MANAGE)
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> CommercialConsentRevocationOut:
+    try:
+        result = await follow_up_service.revoke_commercial_follow_up_consent(
+            db,
+            routing_agent_id=agent_id,
+            actor_admin_id=admin.id,
+            source_conversation_id=payload.source_conversation_id,
+            contact_point_id=payload.contact_point_id,
+            target_channel=payload.target_channel,
+            policy_version=payload.policy_version,
+            correlation_id=_correlation_id(correlation_id),
+            idempotency_key=idempotency_key,
+        )
+    except Exception as exc:
+        _raise_commercial_error(exc)
+    return CommercialConsentRevocationOut(
+        consent_record_id=result.consent.record.id,
+        created=result.consent.created,
+    )
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityDetailOut)
@@ -681,6 +729,7 @@ def _raise_commercial_error(exc: Exception) -> NoReturn:
             FollowUpVersionConflictError,
             FollowUpIdempotencyConflictError,
             FollowUpConsentRequiredError,
+            ConsentIdempotencyConflictError,
             QuoteVersionConflictError,
             QuoteIdempotencyConflictError,
         ),
@@ -694,6 +743,7 @@ def _raise_commercial_error(exc: Exception) -> NoReturn:
         (
             InvalidOpportunityCommandError,
             InvalidFollowUpCommandError,
+            InvalidConsentCommandError,
             InvalidQuoteCommandError,
         ),
     ):

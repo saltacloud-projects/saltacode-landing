@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -339,6 +340,26 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
                 source_channel_identity_id=context.identity_id,
             )
         ).contact_point
+        db.add(
+            ConsentRecord(
+                principal_id=context.principal_id,
+                contact_id=contact.id,
+                contact_point_id=point.id,
+                agent_id=context.agent_id,
+                purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+                action=ConsentAction.GRANT,
+                policy_version="legacy-commercial-v1",
+                channel="web",
+                locale="es-AR",
+                source_conversation_id=context.conversation_id,
+                source_channel_identity_id=context.identity_id,
+                correlation_id="legacy-targetless-consent",
+                idempotency_key="legacy-targetless-consent",
+                command_hash="f" * 64,
+                occurred_at=occurred_at,
+            )
+        )
+        await db.flush()
 
         commercial_only = await consents.effective(
             db,
@@ -346,6 +367,8 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
             principal_id=context.principal_id,
             contact_point_id=point.id,
             purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            source_conversation_id=context.conversation_id,
+            target_channel="email",
         )
         assert commercial_only.granted is False
         assert commercial_only.record is None
@@ -360,6 +383,7 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
             action=ConsentAction.GRANT,
             policy_version="commercial-v1",
             channel="web",
+            target_channel="email",
             locale="es-AR",
             source_conversation_id=context.conversation_id,
             source_channel_identity_id=context.identity_id,
@@ -377,6 +401,7 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
             action=ConsentAction.GRANT,
             policy_version="commercial-v1",
             channel="web",
+            target_channel="email",
             locale="es-AR",
             source_conversation_id=context.conversation_id,
             source_channel_identity_id=context.identity_id,
@@ -399,6 +424,7 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
                 action=ConsentAction.REVOKE,
                 policy_version="commercial-v1",
                 channel="web",
+                target_channel="email",
                 locale="es-AR",
                 source_conversation_id=context.conversation_id,
                 source_channel_identity_id=context.identity_id,
@@ -413,9 +439,23 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
             principal_id=context.principal_id,
             contact_point_id=point.id,
             purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            source_conversation_id=context.conversation_id,
+            target_channel="email",
             at=occurred_at + timedelta(seconds=1),
         )
         assert effective.granted is True
+        wrong_target = await consents.effective(
+            db,
+            agent_id=context.agent_id,
+            principal_id=context.principal_id,
+            contact_point_id=point.id,
+            purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            source_conversation_id=context.conversation_id,
+            target_channel="whatsapp",
+            at=occurred_at + timedelta(seconds=1),
+        )
+        assert wrong_target.granted is False
+        assert wrong_target.record is None
 
         await consents.record(
             db,
@@ -427,6 +467,7 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
             action=ConsentAction.REVOKE,
             policy_version="commercial-v1",
             channel="web",
+            target_channel="email",
             locale="es-AR",
             source_conversation_id=context.conversation_id,
             source_channel_identity_id=context.identity_id,
@@ -461,6 +502,8 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
             principal_id=context.principal_id,
             contact_point_id=point.id,
             purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            source_conversation_id=context.conversation_id,
+            target_channel="email",
             at=occurred_at + timedelta(minutes=4),
         )
         expired = await consents.effective(
@@ -484,6 +527,8 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
                 principal_id=context.principal_id,
                 contact_point_id=point.id,
                 purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+                source_conversation_id=context.conversation_id,
+                target_channel="email",
             )
         with pytest.raises(ContactSourceMismatchError):
             await consents.record(
@@ -518,6 +563,131 @@ async def test_consent_is_idempotent_revocable_expirable_and_purpose_specific(
                 correlation_id="request-7",
                 idempotency_key="consent-5",
             )
+
+
+@pytest.mark.asyncio
+async def test_target_scoped_effective_waits_for_grant_and_revoke(
+    contact_crypto_keys,
+    commercial_context: CommercialContext,
+) -> None:
+    context = commercial_context
+    contacts = ContactService(crypto=ContactCrypto())
+    consents = ConsentService()
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        contact = (
+            await contacts.ensure_contact(
+                db,
+                agent_id=context.agent_id,
+                principal_id=context.principal_id,
+                source_conversation_id=context.conversation_id,
+                source_channel_identity_id=context.identity_id,
+            )
+        ).contact
+        point = (
+            await contacts.add_contact_point(
+                db,
+                agent_id=context.agent_id,
+                contact_id=contact.id,
+                kind="email",
+                value="serialized-consent@example.com",
+                source_conversation_id=context.conversation_id,
+                source_channel_identity_id=context.identity_id,
+            )
+        ).contact_point
+        await db.commit()
+        contact_id = contact.id
+        point_id = point.id
+
+    grant_db = AsyncSessionLocal()
+    observer_db = AsyncSessionLocal()
+    try:
+        await consents.record(
+            grant_db,
+            agent_id=context.agent_id,
+            principal_id=context.principal_id,
+            contact_id=contact_id,
+            contact_point_id=point_id,
+            purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            action=ConsentAction.GRANT,
+            policy_version="commercial-v1",
+            channel="web",
+            target_channel="email",
+            locale="es-AR",
+            source_conversation_id=context.conversation_id,
+            source_channel_identity_id=context.identity_id,
+            correlation_id="serialized-grant",
+            idempotency_key="serialized-grant",
+            occurred_at=now,
+        )
+
+        async def read_effective():
+            result = await consents.effective(
+                observer_db,
+                agent_id=context.agent_id,
+                principal_id=context.principal_id,
+                contact_point_id=point_id,
+                purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+                source_conversation_id=context.conversation_id,
+                target_channel="email",
+                at=now + timedelta(seconds=1),
+            )
+            await observer_db.commit()
+            return result
+
+        competing_read = asyncio.create_task(read_effective())
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(competing_read), timeout=0.05)
+        await grant_db.commit()
+        granted = await asyncio.wait_for(competing_read, timeout=2)
+        assert granted.granted is True
+    finally:
+        await grant_db.close()
+        await observer_db.close()
+
+    revoke_db = AsyncSessionLocal()
+    final_db = AsyncSessionLocal()
+    try:
+        await consents.record(
+            revoke_db,
+            agent_id=context.agent_id,
+            principal_id=context.principal_id,
+            contact_id=contact_id,
+            contact_point_id=point_id,
+            purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+            action=ConsentAction.REVOKE,
+            policy_version="commercial-v1",
+            channel="web",
+            target_channel="email",
+            locale="es-AR",
+            source_conversation_id=context.conversation_id,
+            source_channel_identity_id=context.identity_id,
+            correlation_id="serialized-revoke",
+            idempotency_key="serialized-revoke",
+            occurred_at=now + timedelta(seconds=2),
+        )
+        competing_read = asyncio.create_task(
+            consents.effective(
+                final_db,
+                agent_id=context.agent_id,
+                principal_id=context.principal_id,
+                contact_point_id=point_id,
+                purpose=ConsentPurpose.COMMERCIAL_FOLLOW_UP,
+                source_conversation_id=context.conversation_id,
+                target_channel="email",
+                at=now + timedelta(seconds=3),
+            )
+        )
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(competing_read), timeout=0.05)
+        await revoke_db.commit()
+        revoked = await asyncio.wait_for(competing_read, timeout=2)
+        assert revoked.granted is False
+        assert revoked.record is not None
+        assert revoked.record.action == ConsentAction.REVOKE
+    finally:
+        await revoke_db.close()
+        await final_db.close()
 
 
 @pytest.mark.asyncio
