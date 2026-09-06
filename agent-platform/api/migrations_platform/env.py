@@ -43,6 +43,10 @@ from app.models.contact import ConsentRecord, Contact, ContactPoint  # noqa: F40
 from app.models.conversation_control import ConversationControlEvent  # noqa: F401
 from app.models.conversation_event import ConversationEvent  # noqa: F401
 from app.models.conversation_message import ConversationMessage  # noqa: F401
+from app.models.identity_link_claim import (  # noqa: F401
+    IdentityLinkClaim,
+    IdentityLinkClaimEvent,
+)
 from app.models.integration_source import IntegrationSource  # noqa: F401
 from app.models.knowledge_block import KnowledgeBlock  # noqa: F401
 from app.models.message_status import MessageStatus  # noqa: F401

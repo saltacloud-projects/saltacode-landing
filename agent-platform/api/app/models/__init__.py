@@ -25,6 +25,7 @@ from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.conversation_control import ConversationControlEvent
 from app.models.conversation_event import ConversationEvent
 from app.models.conversation_message import ConversationMessage
+from app.models.identity_link_claim import IdentityLinkClaim, IdentityLinkClaimEvent
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.message_status import MessageStatus
