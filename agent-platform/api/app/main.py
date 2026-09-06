@@ -22,6 +22,7 @@ from app.routers.admin.agent_resources import router as admin_agent_resources_ro
 from app.routers.admin.agent_runtime import router as admin_agent_runtime_router
 from app.routers.admin.audit import router as admin_audit_router
 from app.routers.admin.auth import router as admin_auth_router
+from app.routers.admin.channel_inbound import router as admin_channel_inbound_router
 from app.routers.admin.commercial import router as admin_commercial_router
 from app.routers.admin.config import router as admin_config_router
 from app.routers.admin.conversation_control import (
@@ -264,6 +265,10 @@ app.include_router(
 app.include_router(
     admin_meetings_router,
     prefix="/api/admin/agents/{agent_id}/meetings",
+)
+app.include_router(
+    admin_channel_inbound_router,
+    prefix="/api/admin/agents/{agent_id}/inbound-jobs",
 )
 app.include_router(
     admin_identity_link_claims_router,

@@ -23,7 +23,7 @@ from app.models.opportunity import Opportunity
 from app.models.platform import Principal
 
 _REVISION = "f10a4e6b8c12"
-_HEAD_REVISION = "f11b5f7c9d23"
+_HEAD_REVISION = "f12c6a8d0e34"
 _DOWN_REVISION = "f9d3e5a7b012"
 
 

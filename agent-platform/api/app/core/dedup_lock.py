@@ -116,7 +116,6 @@ async def conversation_lock(
                 logger.warning(
                     "conversation_lock_redis_error_failing_open",
                     extra={
-                        "phone": phone_number,
                         "request_id": request_id,
                         "error": str(e),
                     },
@@ -131,7 +130,6 @@ async def conversation_lock(
                 logger.warning(
                     "conversation_lock_timeout_failing_open",
                     extra={
-                        "phone": phone_number,
                         "request_id": request_id,
                         "timeout_s": timeout_seconds,
                     },
@@ -156,7 +154,6 @@ async def conversation_lock(
                 logger.warning(
                     "conversation_lock_release_error",
                     extra={
-                        "phone": phone_number,
                         "request_id": request_id,
                         "error": str(e),
                     },

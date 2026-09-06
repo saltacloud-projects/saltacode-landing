@@ -14,6 +14,7 @@ No hay clasificador, menús, ni ramas de intent enlatadas: el agente maneja
 todo. El único gate que permanece es el de seguridad (auth + permisos).
 """
 
+import hashlib
 import logging
 import time
 import uuid
@@ -28,6 +29,7 @@ from app.models.agent_profile import AgentProfile
 from app.models.outbound import OutboundMessage
 from app.models.platform import ChatMessage
 from app.models.tool_config import ToolConfig
+from app.ports.channel_inbound import ChannelInboundLifecycle
 from app.schemas.audit import AuditLogCreate
 from app.schemas.common import ChannelEnum, InputTypeEnum, StatusEnum
 from app.schemas.inbound import InboundMessageEnvelope
@@ -75,6 +77,8 @@ class PipelineService:
         request_id: str | None = None,
         propagate_errors: bool = False,
         notify_on_error: bool = True,
+        lock_subject: str | None = None,
+        lifecycle: ChannelInboundLifecycle | None = None,
     ) -> None:
         """
         Pipeline completo de procesamiento de un mensaje entrante.
@@ -113,10 +117,8 @@ class PipelineService:
             "pipeline_started",
             extra={
                 "request_id": request_id,
-                "phone": phone,
-                "content_preview": content[:80] if content else "",
                 "message_id": message_id,
-                "interactive_id": interactive_id,
+                "content_type": input_type,
             },
         )
 
@@ -127,7 +129,7 @@ class PipelineService:
         async with pipeline_semaphore:
             logger.debug(
                 "pipeline_semaphore_acquired",
-                extra={"request_id": request_id, "phone": phone},
+                extra={"request_id": request_id},
             )
             # Serialización por usuario: evita que dos mensajes consecutivos del
             # mismo phone corran en paralelo y corrompan memoria/retry/orden.
@@ -148,6 +150,8 @@ class PipelineService:
                 channel_route_id=channel_route_id,
                 propagate_errors=propagate_errors,
                 notify_on_error=notify_on_error,
+                lock_subject=lock_subject,
+                lifecycle=lifecycle,
             )
 
     async def _process_with_user_lock(
@@ -169,14 +173,23 @@ class PipelineService:
         channel_route_id: uuid.UUID | None,
         propagate_errors: bool,
         notify_on_error: bool,
+        lock_subject: str | None,
+        lifecycle: ChannelInboundLifecycle | None = None,
     ) -> None:
         """Wrap _process_locked() with the per-user Redis lock."""
-        lock_subject = f"{channel_route_id or 'legacy'}:{phone}"
-        async with conversation_lock(redis, lock_subject, request_id) as lock_acquired:
+        safe_lock_subject = (
+            lock_subject
+            or hashlib.sha256(
+                f"{channel_route_id or 'legacy'}:{phone}".encode()
+            ).hexdigest()
+        )
+        async with conversation_lock(
+            redis, safe_lock_subject, request_id
+        ) as lock_acquired:
             if not lock_acquired:
                 logger.info(
                     "pipeline_proceeding_without_lock",
-                    extra={"request_id": request_id, "phone": phone},
+                    extra={"request_id": request_id},
                 )
             await self._process_locked(
                 phone=phone,
@@ -195,6 +208,7 @@ class PipelineService:
                 channel_route_id=channel_route_id,
                 propagate_errors=propagate_errors,
                 notify_on_error=notify_on_error,
+                lifecycle=lifecycle,
             )
 
     @staticmethod
@@ -277,6 +291,7 @@ class PipelineService:
         channel_route_id: uuid.UUID | None,
         propagate_errors: bool,
         notify_on_error: bool,
+        lifecycle: ChannelInboundLifecycle | None = None,
     ) -> None:
         """
         Cuerpo principal del pipeline (ya con lock por usuario adquirido).
@@ -299,14 +314,6 @@ class PipelineService:
         control_version: int | None = None
         automation_version: int | None = None
         try:
-            # Marcar el mensaje como leído + typing (feedback inmediato).
-            if message_id:
-                await whatsapp_service.mark_as_read(
-                    message_id,
-                    request_id=request_id,
-                    connection=whatsapp_connection,
-                )
-
             async with AsyncSessionLocal() as db:
                 try:
                     (
@@ -373,7 +380,6 @@ class PipelineService:
                             "pipeline_access_denied",
                             extra={
                                 "request_id": request_id,
-                                "phone": phone,
                                 "reason": str(exc),
                             },
                         )
@@ -400,12 +406,13 @@ class PipelineService:
                             control_version=control_version,
                             automation_version=automation_version,
                             raise_on_error=propagate_errors,
+                            lifecycle=lifecycle,
                         )
                         return
                     except InboundAccessPolicyError:
                         logger.error(
                             "pipeline_access_check_inconsistent_failing_closed",
-                            extra={"request_id": request_id, "phone": phone},
+                            extra={"request_id": request_id},
                         )
                         await automation_guard()
                         msg_err = profile.error_message
@@ -432,6 +439,7 @@ class PipelineService:
                             control_version=control_version,
                             automation_version=automation_version,
                             raise_on_error=propagate_errors,
+                            lifecycle=lifecycle,
                         )
                         return
                     user_id = inbound_identity.user_id
@@ -446,7 +454,25 @@ class PipelineService:
                         content=content,
                     )
                     await db.commit()
+                    if lifecycle is not None:
+                        await lifecycle.inbound_recorded(
+                            conversation_id=controlled_conversation.id,
+                            control_version=control_version,
+                            automation_agent_id=profile.id,
+                            automation_version=automation_version,
+                        )
                     await automation_guard()
+
+                    if message_id:
+                        if lifecycle is not None:
+                            await lifecycle.before_external_effect(
+                                phase="provider_effect_started"
+                            )
+                        await whatsapp_service.mark_as_read(
+                            message_id,
+                            request_id=request_id,
+                            connection=whatsapp_connection,
+                        )
 
                     # -----------------------------------------------------------
                     # 2b. Memoria — ventana activa + resumen rodante de largo plazo
@@ -467,7 +493,7 @@ class PipelineService:
                         if not audio_media_id:
                             logger.warning(
                                 "pipeline_audio_no_media_id",
-                                extra={"request_id": request_id, "phone": phone},
+                                extra={"request_id": request_id},
                             )
                             fallback = (
                                 "No pude acceder al audio que enviaste. "
@@ -495,9 +521,14 @@ class PipelineService:
                                 control_version=control_version,
                                 automation_version=automation_version,
                                 raise_on_error=propagate_errors,
+                                lifecycle=lifecycle,
                             )
                             return
 
+                        if lifecycle is not None:
+                            await lifecycle.before_external_effect(
+                                phase="transcription_started"
+                            )
                         transcript = (
                             await transcription_service.download_and_transcribe(
                                 media_id=audio_media_id,
@@ -512,8 +543,7 @@ class PipelineService:
                                 "pipeline_audio_transcription_failed",
                                 extra={
                                     "request_id": request_id,
-                                    "phone": phone,
-                                    "media_id": audio_media_id,
+                                    "has_media_id": audio_media_id is not None,
                                 },
                             )
                             fallback = (
@@ -542,6 +572,7 @@ class PipelineService:
                                 control_version=control_version,
                                 automation_version=automation_version,
                                 raise_on_error=propagate_errors,
+                                lifecycle=lifecycle,
                             )
                             return
 
@@ -549,9 +580,7 @@ class PipelineService:
                             "pipeline_audio_transcribed",
                             extra={
                                 "request_id": request_id,
-                                "phone": phone,
                                 "chars": len(transcript),
-                                "preview": transcript[:80],
                             },
                         )
                         # Reemplazar el placeholder con el texto real transcripto.
@@ -571,7 +600,6 @@ class PipelineService:
                             "pipeline_unsupported_input",
                             extra={
                                 "request_id": request_id,
-                                "phone": phone,
                                 "input_type": input_type,
                             },
                         )
@@ -596,6 +624,7 @@ class PipelineService:
                             control_version=control_version,
                             automation_version=automation_version,
                             raise_on_error=propagate_errors,
+                            lifecycle=lifecycle,
                         )
                         return
 
@@ -612,7 +641,6 @@ class PipelineService:
                             "http_api_tools_sync_before_pipeline_failed",
                             extra={
                                 "request_id": request_id,
-                                "phone": phone,
                                 "error_type": type(e).__name__,
                             },
                         )
@@ -660,7 +688,6 @@ class PipelineService:
                         "pipeline_available_tools_for_user",
                         extra={
                             "request_id": request_id,
-                            "phone": phone,
                             "count": len(available_tools),
                         },
                     )
@@ -700,6 +727,10 @@ class PipelineService:
                     # herramientas/bases según haga falta. Sin clasificador,
                     # sin menús, sin ramas enlatadas.
                     # -----------------------------------------------------------
+                    if lifecycle is not None:
+                        await lifecycle.before_external_effect(
+                            phase="agent_effect_started"
+                        )
                     agent_result = await run_agent_loop(
                         user_message=content,
                         conversation_history=openai_history,
@@ -727,6 +758,10 @@ class PipelineService:
                         if agent_result.tools_used
                         else None
                     )
+                    if lifecycle is not None:
+                        await lifecycle.before_external_effect(
+                            phase="outbox_effect_started"
+                        )
                     await chat_application_service.record_whatsapp_exchange(
                         db,
                         routing_profile=routing_profile,
@@ -774,7 +809,6 @@ class PipelineService:
                         "pipeline_completed",
                         extra={
                             "request_id": request_id,
-                            "phone": phone,
                             "tools": agent_result.tools_used,
                             "iterations": agent_result.iterations,
                             "tool_calls": agent_result.total_tool_calls,
@@ -796,10 +830,11 @@ class PipelineService:
                 "pipeline_automation_blocked",
                 extra={
                     "request_id": request_id,
-                    "phone": phone,
                     "control_version": control_version,
                 },
             )
+            if propagate_errors:
+                raise
             return
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
@@ -807,7 +842,6 @@ class PipelineService:
                 "pipeline_error",
                 extra={
                     "request_id": request_id,
-                    "phone": phone,
                     "error_type": type(e).__name__,
                     "duration_ms": elapsed,
                 },
@@ -852,7 +886,6 @@ class PipelineService:
                         "pipeline_error_notification_blocked",
                         extra={
                             "request_id": request_id,
-                            "phone": phone,
                             "control_version": control_version,
                         },
                     )
@@ -885,6 +918,7 @@ class PipelineService:
         tool_calls: list | None = None,
         extra_metadata: dict | None = None,
         raise_on_error: bool = False,
+        lifecycle: ChannelInboundLifecycle | None = None,
     ) -> None:
         """Registra la auditoría de la interacción."""
         try:
@@ -954,6 +988,7 @@ class PipelineService:
         control_version: int | None = None,
         automation_version: int | None = None,
         raise_on_error: bool = False,
+        lifecycle: ChannelInboundLifecycle | None = None,
     ) -> None:
         """
         Cierre uniforme de exit paths del pipeline.
@@ -981,6 +1016,10 @@ class PipelineService:
                     "WhatsApp finalization requires a persisted route and control epoch"
                 )
             try:
+                if lifecycle is not None:
+                    await lifecycle.before_external_effect(
+                        phase="outbox_effect_started"
+                    )
                 if persist_conversation:
                     await chat_application_service.record_whatsapp_exchange(
                         db,
@@ -1016,7 +1055,6 @@ class PipelineService:
                     "pipeline_finalize_conversation_save_failed",
                     extra={
                         "request_id": request_id,
-                        "phone": phone,
                         "error_type": type(e).__name__,
                     },
                 )
@@ -1045,7 +1083,6 @@ class PipelineService:
                 "pipeline_finalize_failed",
                 extra={
                     "request_id": request_id,
-                    "phone": phone,
                     "error_type": type(e).__name__,
                 },
                 exc_info=True,

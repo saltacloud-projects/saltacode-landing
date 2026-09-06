@@ -444,24 +444,25 @@ async def test_whatsapp_human_control_persists_inbound_without_automation(
     service = PipelineService()
     monkeypatch.setattr(service, "_build_automation_guard", lambda **_kwargs: guard)
 
-    await service._process_locked(
-        phone="5493870000000",
-        content="I need a person.",
-        message_id="wamid.human",
-        input_type="text",
-        audio_media_id=None,
-        interactive_id=None,
-        quoted_id=None,
-        redis=None,
-        request_id="inbound-human-control",
-        start=0.0,
-        resolved_runtime=runtime,
-        whatsapp_connection=SimpleNamespace(),
-        route_key="whatsapp-human",
-        channel_route_id=route_id,
-        propagate_errors=True,
-        notify_on_error=True,
-    )
+    with pytest.raises(AutomationBlockedError, match="human control"):
+        await service._process_locked(
+            phone="5493870000000",
+            content="I need a person.",
+            message_id="wamid.human",
+            input_type="text",
+            audio_media_id=None,
+            interactive_id=None,
+            quoted_id=None,
+            redis=None,
+            request_id="inbound-human-control",
+            start=0.0,
+            resolved_runtime=runtime,
+            whatsapp_connection=SimpleNamespace(),
+            route_key="whatsapp-human",
+            channel_route_id=route_id,
+            propagate_errors=True,
+            notify_on_error=True,
+        )
 
     inbound.assert_awaited_once_with(
         FakeSession.db,

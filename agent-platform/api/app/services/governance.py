@@ -91,7 +91,7 @@ class GovernanceService:
         db.add(user)
         await db.flush()
         await self._sync_user_areas(db, user.id, data.area_ids)
-        logger.info("user_created", extra={"phone": data.phone_number})
+        logger.info("user_created")
         return user
 
     async def update_user(

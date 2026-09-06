@@ -347,8 +347,7 @@ async def test_agent(
     logger.info(
         "admin_test_agent",
         extra={
-            "admin_email": admin.email,
-            "message_preview": data.message[:80],
+            "admin_id": str(admin.id),
             "request_id": request_id,
         },
     )

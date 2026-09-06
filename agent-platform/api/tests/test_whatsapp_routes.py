@@ -15,11 +15,11 @@ from fastapi import FastAPI
 
 from app.dependencies import get_db
 from app.routers import webhooks
-from app.services.whatsapp import WhatsAppConnectionContext
-from app.services.whatsapp_inbox import (
-    WhatsAppEnqueueResult,
-    WhatsAppInboxUnavailable,
+from app.services.channel_inbound import (
+    ChannelInboundBatchResult,
+    ChannelInboundUnavailable,
 )
+from app.services.whatsapp import WhatsAppConnectionContext
 
 
 def _signature(body: bytes, secret: str) -> str:
@@ -101,16 +101,31 @@ def route_app():
 
 def _resolved(label: str):
     runtime = SimpleNamespace(profile=SimpleNamespace(id=uuid4(), slug=label))
+    connection_id = uuid4()
     return SimpleNamespace(
-        route=SimpleNamespace(id=uuid4(), agent_id=runtime.profile.id),
-        connection=SimpleNamespace(),
+        route=SimpleNamespace(
+            id=uuid4(),
+            agent_id=runtime.profile.id,
+            channel="whatsapp",
+            version=0,
+            route_key=f"route-{label[-1]}",
+            channel_connection_id=connection_id,
+            is_active=True,
+        ),
+        connection=SimpleNamespace(
+            id=connection_id,
+            channel="whatsapp",
+            adapter_key="meta_whatsapp_cloud",
+            version=0,
+            is_active=True,
+        ),
         runtime=runtime,
     )
 
 
-def _connection(label: str) -> WhatsAppConnectionContext:
+def _connection(label: str, *, connection_id=None) -> WhatsAppConnectionContext:
     return WhatsAppConnectionContext(
-        connection_id=uuid4(),
+        connection_id=connection_id or uuid4(),
         phone_number_id=f"account-{label}",
         access_token=f"access-{label}",
         verify_token=f"verify-{label}",
@@ -122,7 +137,11 @@ def _connection(label: str) -> WhatsAppConnectionContext:
 @pytest.mark.asyncio
 async def test_routes_enqueue_with_route_scoped_ownership(route_app, monkeypatch):
     resolved = {"route-a": _resolved("agent-a"), "route-b": _resolved("agent-b")}
-    connections = {"route-a": _connection("a"), "route-b": _connection("b")}
+    connections = {
+        route_key: _connection(label[-1], connection_id=value.connection.id)
+        for route_key, value in resolved.items()
+        for label in (route_key,)
+    }
 
     async def resolve_channel_route(_db, _channel, route_key):
         return resolved[route_key]
@@ -141,11 +160,11 @@ async def test_routes_enqueue_with_route_scoped_ownership(route_app, monkeypatch
     )
     enqueue = AsyncMock(
         side_effect=[
-            WhatsAppEnqueueResult(job_id=uuid4()),
-            WhatsAppEnqueueResult(job_id=uuid4()),
+            ChannelInboundBatchResult((uuid4(),), 0),
+            ChannelInboundBatchResult((uuid4(),), 0),
         ]
     )
-    monkeypatch.setattr(webhooks.whatsapp_inbox_service, "enqueue", enqueue)
+    monkeypatch.setattr(webhooks.channel_inbound_service, "enqueue_batch", enqueue)
 
     transport = httpx.ASGITransport(app=route_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -159,8 +178,8 @@ async def test_routes_enqueue_with_route_scoped_ownership(route_app, monkeypatch
             assert response.status_code == 200
     assert enqueue.await_count == 2
     first, second = enqueue.await_args_list
-    first_message = first.kwargs["message"]
-    second_message = second.kwargs["message"]
+    first_message = first.kwargs["messages"][0]
+    second_message = second.kwargs["messages"][0]
     assert first_message.route.channel_route_id == resolved["route-a"].route.id
     assert (
         first_message.route.channel_connection_id
@@ -195,6 +214,36 @@ async def test_unkeyed_legacy_webhook_is_not_registered(route_app):
 
 
 @pytest.mark.asyncio
+async def test_route_rejects_oversized_body_before_json_or_persistence(
+    route_app, monkeypatch
+):
+    resolved = _resolved("agent-a")
+    connection = _connection("a", connection_id=resolved.connection.id)
+    monkeypatch.setattr(
+        webhooks.agent_runtime_resolver,
+        "resolve_channel_route",
+        AsyncMock(return_value=resolved),
+    )
+    monkeypatch.setattr(
+        webhooks.whatsapp_service,
+        "resolve_connection",
+        lambda _row, *, route_key: connection,
+    )
+    enqueue = AsyncMock()
+    monkeypatch.setattr(webhooks.channel_inbound_service, "enqueue_batch", enqueue)
+
+    transport = httpx.ASGITransport(app=route_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/webhooks/whatsapp/route-a",
+            content=b"x" * (webhooks.MAX_WEBHOOK_BODY_BYTES + 1),
+        )
+
+    assert response.status_code == 413
+    enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_route_rejects_wrong_signature_before_processing(route_app, monkeypatch):
     resolved = _resolved("agent-a")
     connection = _connection("a")
@@ -211,7 +260,7 @@ async def test_route_rejects_wrong_signature_before_processing(route_app, monkey
         lambda _row, *, route_key: connection,
     )
     enqueue = AsyncMock()
-    monkeypatch.setattr(webhooks.whatsapp_inbox_service, "enqueue", enqueue)
+    monkeypatch.setattr(webhooks.channel_inbound_service, "enqueue_batch", enqueue)
     body = b"{not-json"
 
     transport = httpx.ASGITransport(app=route_app)
@@ -244,7 +293,7 @@ async def test_route_rejects_wrong_account_before_processing(route_app, monkeypa
         lambda _row, *, route_key: connection,
     )
     enqueue = AsyncMock()
-    monkeypatch.setattr(webhooks.whatsapp_inbox_service, "enqueue", enqueue)
+    monkeypatch.setattr(webhooks.channel_inbound_service, "enqueue_batch", enqueue)
     body = _payload("another-account", "wamid.a")
 
     transport = httpx.ASGITransport(app=route_app)
@@ -278,8 +327,8 @@ async def test_route_returns_retryable_error_when_durable_enqueue_fails(
         "resolve_connection",
         lambda _row, *, route_key: connection,
     )
-    enqueue = AsyncMock(side_effect=WhatsAppInboxUnavailable("database unavailable"))
-    monkeypatch.setattr(webhooks.whatsapp_inbox_service, "enqueue", enqueue)
+    enqueue = AsyncMock(side_effect=ChannelInboundUnavailable("database unavailable"))
+    monkeypatch.setattr(webhooks.channel_inbound_service, "enqueue_batch", enqueue)
     body = _payload("account-a", "wamid.a")
 
     transport = httpx.ASGITransport(app=route_app)

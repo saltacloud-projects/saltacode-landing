@@ -27,6 +27,8 @@ class AdminPermission(StrEnum):
     FOLLOW_UPS_REVIEW = "follow_ups.review"
     MEETINGS_READ = "meetings.read"
     MEETINGS_MANAGE = "meetings.manage"
+    INBOUND_READ = "inbound.read"
+    INBOUND_REVIEW = "inbound.review"
     QUOTES_APPROVE = "quotes.approve"
     DELIVERIES_READ = "deliveries.read"
     DELIVERIES_REVIEW = "deliveries.review"

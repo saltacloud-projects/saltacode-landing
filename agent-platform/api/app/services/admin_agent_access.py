@@ -32,6 +32,8 @@ AGENT_SCOPED_PERMISSIONS = (
     AdminPermission.FOLLOW_UPS_REVIEW,
     AdminPermission.MEETINGS_READ,
     AdminPermission.MEETINGS_MANAGE,
+    AdminPermission.INBOUND_READ,
+    AdminPermission.INBOUND_REVIEW,
     AdminPermission.QUOTES_APPROVE,
     AdminPermission.DELIVERIES_READ,
     AdminPermission.DELIVERIES_REVIEW,

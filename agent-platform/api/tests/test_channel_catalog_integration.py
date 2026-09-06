@@ -12,8 +12,8 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models.agent_profile import AgentProfile
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
+from app.models.channel_inbound import ChannelInboundJob
 from app.models.platform import ChatConversation, ChatMessage, Principal
-from app.models.whatsapp_inbox import WhatsAppInboundJob
 from app.routers.admin.agent_runtime import (
     create_channel,
     list_routes,
@@ -179,14 +179,26 @@ async def test_postgres_rejects_planned_creation_and_preserves_route_isolation()
                 )
             )
             db.add(
-                WhatsAppInboundJob(
+                ChannelInboundJob(
+                    channel="whatsapp",
+                    adapter_key="meta_whatsapp_cloud",
+                    adapter_version=1,
                     channel_route_id=whatsapp_route.id,
+                    channel_route_version=whatsapp_route.version,
+                    route_key_snapshot=whatsapp_route.route_key,
                     channel_connection_id=whatsapp.id,
+                    channel_connection_version=whatsapp.version,
+                    routing_agent_id=agent_a.id,
                     provider_message_id=f"catalog-provider-{uuid4().hex}",
-                    payload_json={},
+                    thread_key="a" * 64,
+                    payload_ciphertext="encrypted",
+                    payload_hash="b" * 64,
+                    legacy_payload_json=None,
                     status="queued",
+                    phase="accepted",
+                    state_version=0,
                     attempts=0,
-                    max_attempts=5,
+                    legacy_max_attempts=1,
                 )
             )
             await db.flush()

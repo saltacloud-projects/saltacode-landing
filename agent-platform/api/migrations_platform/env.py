@@ -43,6 +43,10 @@ from app.models.authorized_user import AuthorizedUser  # noqa: F401
 
 # Importar TODOS los modelos para que Alembic los detecte en --autogenerate
 from app.models.base import TimestampedModel  # noqa: F401
+from app.models.channel_inbound import (  # noqa: F401
+    ChannelInboundEvent,
+    ChannelInboundJob,
+)
 from app.models.commercial_automation_policy import (  # noqa: F401
     CommercialAutomationPolicy,
 )
@@ -94,7 +98,6 @@ from app.models.rag import (  # noqa: F401
     RagSettings,
 )
 from app.models.tool_config import ToolConfig  # noqa: F401
-from app.models.whatsapp_inbox import WhatsAppInboundJob  # noqa: F401
 
 config = context.config
 

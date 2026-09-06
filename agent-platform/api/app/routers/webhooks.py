@@ -14,20 +14,22 @@ from app.services.agent_runtime import (
     ResolvedChannelRoute,
     agent_runtime_resolver,
 )
+from app.services.channel_catalog import require_implemented_adapter
+from app.services.channel_inbound import (
+    ChannelInboundUnavailable,
+    channel_inbound_service,
+)
 from app.services.whatsapp import (
     WhatsAppConnectionContext,
     WhatsAppConnectionUnavailable,
     WhatsAppInboundPayloadInvalid,
     whatsapp_service,
 )
-from app.services.whatsapp_inbox import (
-    WhatsAppInboxUnavailable,
-    whatsapp_inbox_service,
-)
 
 router = APIRouter(tags=["webhooks"])
 logger = logging.getLogger(__name__)
 ROUTE_KEY_PATTERN = r"^[a-z0-9][a-z0-9._:-]{0,119}$"
+MAX_WEBHOOK_BODY_BYTES = 1_048_576
 
 
 async def _resolve_whatsapp_channel_route(
@@ -113,50 +115,63 @@ async def _process_payload(
         )
         return {"status": "ignored"}
 
-    accepted_count = 0
     for message in messages:
         logger.info(
             "whatsapp_inbound_received",
             extra={
                 "content_type": message.content_type.value,
-                "message_id": message.provider_message_id,
                 "has_interaction": message.interaction_id is not None,
                 "content_chars": len(message.content),
                 "route_key": message.route.route_key,
             },
         )
-        try:
-            accepted = await whatsapp_inbox_service.enqueue(
-                db,
-                message=message,
-            )
-        except WhatsAppInboxUnavailable as exc:
-            logger.error(
-                "whatsapp_inbox_enqueue_failed",
-                extra={"route_key": connection.route_key},
-            )
-            raise HTTPException(
-                status_code=503, detail="WhatsApp message was not accepted"
-            ) from exc
-        if accepted.duplicate:
-            logger.info(
-                "whatsapp_inbound_duplicate_ignored",
-                extra={
-                    "message_id": message.provider_message_id,
-                    "route_key": connection.route_key,
-                },
-            )
-            continue
-        accepted_count += 1
-        logger.info(
-            "whatsapp_inbound_enqueued",
-            extra={
-                "job_id": str(accepted.job_id),
-                "message_id": message.provider_message_id,
-                "route_key": connection.route_key,
-            },
+    adapter = require_implemented_adapter(
+        channel=channel_route.route.channel,
+        adapter_key=channel_route.connection.adapter_key,
+    )
+    try:
+        accepted = await channel_inbound_service.enqueue_batch(
+            db,
+            messages=messages,
+            route=channel_route.route,
+            connection=channel_route.connection,
+            adapter=adapter,
         )
-    return {"status": "received" if accepted_count else "duplicate"}
+    except ChannelInboundUnavailable as exc:
+        logger.error(
+            "channel_inbound_batch_rejected",
+            extra={"channel": "whatsapp", "route_key": connection.route_key},
+        )
+        raise HTTPException(
+            status_code=503, detail="WhatsApp message was not accepted"
+        ) from exc
+    logger.info(
+        "channel_inbound_batch_accepted",
+        extra={
+            "channel": "whatsapp",
+            "accepted_count": len(accepted.accepted_job_ids),
+            "duplicate_count": accepted.duplicate_count,
+        },
+    )
+    return {"status": "received" if accepted.accepted_job_ids else "duplicate"}
+
+
+async def _read_bounded_body(request: Request) -> bytes:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_WEBHOOK_BODY_BYTES:
+                raise HTTPException(status_code=413, detail="Webhook body is too large")
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="Invalid Content-Length header"
+            ) from exc
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_WEBHOOK_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="Webhook body is too large")
+    return bytes(body)
 
 
 @router.get("/whatsapp/{route_key}")
@@ -188,7 +203,7 @@ async def whatsapp_route_inbound(
 ):
     """Authenticate and dispatch one persisted WhatsApp route."""
     channel_route, connection = await _resolve_whatsapp_channel_route(db, route_key)
-    raw_body = await request.body()
+    raw_body = await _read_bounded_body(request)
     try:
         verify_meta_signature(
             raw_body=raw_body,

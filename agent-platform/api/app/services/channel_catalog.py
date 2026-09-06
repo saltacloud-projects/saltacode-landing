@@ -11,9 +11,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
+from app.models.channel_inbound import ChannelInboundJob
 from app.models.outbound import OutboundMessage
 from app.models.platform import ChatConversation, ChatMessage
-from app.models.whatsapp_inbox import WhatsAppInboundJob
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ class ChannelAdapterSpec:
     implementation_status: str
     capabilities: tuple[str, ...]
     credentials_required: bool
+    version: int = 1
     blocking_codes: tuple[str, ...] = ()
 
     @property
@@ -167,7 +168,7 @@ class ChannelCatalogService:
             )
 
         web_inbound = await self._web_inbound_evidence(db)
-        whatsapp_inbound = await self._whatsapp_inbound_evidence(db)
+        external_inbound = await self._external_inbound_evidence(db)
         whatsapp_outbound = await self._whatsapp_outbound_evidence(db)
 
         return [
@@ -177,7 +178,7 @@ class ChannelCatalogService:
                 last_inbound_at=(
                     web_inbound.get(connection.id)
                     if connection.channel == "web"
-                    else whatsapp_inbound.get(connection.id)
+                    else external_inbound.get(connection.id)
                 ),
                 last_outbound_at=(
                     whatsapp_outbound.get(connection.id)
@@ -216,15 +217,15 @@ class ChannelCatalogService:
         return {connection_id: occurred_at for connection_id, occurred_at in rows}
 
     @staticmethod
-    async def _whatsapp_inbound_evidence(
+    async def _external_inbound_evidence(
         db: AsyncSession,
     ) -> dict[uuid.UUID, datetime]:
         rows = (
             await db.execute(
                 select(
-                    WhatsAppInboundJob.channel_connection_id,
-                    func.max(WhatsAppInboundJob.created_at),
-                ).group_by(WhatsAppInboundJob.channel_connection_id)
+                    ChannelInboundJob.channel_connection_id,
+                    func.max(ChannelInboundJob.created_at),
+                ).group_by(ChannelInboundJob.channel_connection_id)
             )
         ).all()
         return {connection_id: occurred_at for connection_id, occurred_at in rows}

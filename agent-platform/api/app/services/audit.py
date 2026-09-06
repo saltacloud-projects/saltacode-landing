@@ -58,7 +58,6 @@ class AuditService:
                 "channel_route_id": str(data.channel_route_id)
                 if data.channel_route_id
                 else None,
-                "phone": data.phone_number,
                 "status": data.status.value,
                 "tool": data.tool_used,
             },

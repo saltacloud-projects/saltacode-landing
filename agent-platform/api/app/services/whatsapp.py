@@ -499,7 +499,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.info(
                     "whatsapp_document_sent",
                     extra={
-                        "phone": normalized_phone,
                         "file_name": filename,
                         "request_id": request_id,
                     },
@@ -509,7 +508,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.error(
                     "whatsapp_send_error",
                     extra={
-                        "phone": phone,
                         "status": e.response.status_code,
                     },
                 )
@@ -624,14 +622,12 @@ class WhatsAppService(InboundChannelAdapter):
                 resp.raise_for_status()
                 logger.info(
                     "whatsapp_image_sent",
-                    extra={"phone": normalized_phone, "request_id": request_id},
                 )
                 return True
             except httpx.HTTPStatusError as e:
                 logger.error(
                     "whatsapp_send_error",
                     extra={
-                        "phone": phone,
                         "status": e.response.status_code,
                     },
                 )
@@ -723,7 +719,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.info(
                     "whatsapp_template_sent",
                     extra={
-                        "phone": normalized_phone,
                         "template": template_name,
                         "message_id": message_id,
                         "request_id": request_id,
@@ -734,7 +729,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.error(
                     "whatsapp_template_send_error",
                     extra={
-                        "phone": phone,
                         "template": template_name,
                         "status": e.response.status_code,
                         "request_id": request_id,
@@ -794,8 +788,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.info(
                     "whatsapp_message_sent",
                     extra={
-                        "phone": normalized_phone,
-                        "original_phone": phone,
                         "request_id": request_id,
                         "status": resp.status_code,
                         "message_id": message_id,
@@ -806,7 +798,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.error(
                     "whatsapp_send_error",
                     extra={
-                        "phone": phone,
                         "status": e.response.status_code,
                     },
                 )
@@ -880,7 +871,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.info(
                     "whatsapp_reply_buttons_sent",
                     extra={
-                        "phone": normalized_phone,
                         "buttons": len(buttons),
                         "request_id": request_id,
                     },
@@ -890,7 +880,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.error(
                     "whatsapp_reply_buttons_error",
                     extra={
-                        "phone": phone,
                         "status": e.response.status_code,
                         "request_id": request_id,
                     },
@@ -974,7 +963,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.info(
                     "whatsapp_interactive_sent",
                     extra={
-                        "phone": normalized_phone,
                         "sections": len(sections),
                         "request_id": request_id,
                     },
@@ -984,7 +972,6 @@ class WhatsAppService(InboundChannelAdapter):
                 logger.error(
                     "whatsapp_interactive_error",
                     extra={
-                        "phone": phone,
                         "status": e.response.status_code,
                         "request_id": request_id,
                     },

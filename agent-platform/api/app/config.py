@@ -1,6 +1,6 @@
 """Infrastructure configuration for the channel-neutral agent platform."""
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,13 +40,31 @@ class Settings(BaseSettings):
     # Token secreto para verificar el webhook (lo elegís vos, se configura en Meta)
     whatsapp_verify_token: str = ""
     whatsapp_app_secret: str = ""
-    whatsapp_inbox_worker_id: str = Field(
-        default="whatsapp-inbox-worker-1", min_length=1, max_length=70
+    channel_inbound_worker_id: str = Field(
+        default="channel-inbound-worker-1",
+        min_length=1,
+        max_length=70,
+        validation_alias=AliasChoices(
+            "CHANNEL_INBOUND_WORKER_ID", "WHATSAPP_INBOX_WORKER_ID"
+        ),
     )
-    whatsapp_inbox_poll_seconds: float = Field(default=1.0, gt=0, le=60)
+    channel_inbound_poll_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        le=60,
+        validation_alias=AliasChoices(
+            "CHANNEL_INBOUND_POLL_SECONDS", "WHATSAPP_INBOX_POLL_SECONDS"
+        ),
+    )
     # Runtime loop_timeout is capped at 900s; keep a recovery margin above it.
-    whatsapp_inbox_stale_seconds: int = Field(default=1200, ge=960, le=86_400)
-    whatsapp_inbox_max_attempts: int = Field(default=5, ge=1, le=20)
+    channel_inbound_lease_seconds: int = Field(
+        default=1200,
+        ge=960,
+        le=86_400,
+        validation_alias=AliasChoices(
+            "CHANNEL_INBOUND_LEASE_SECONDS", "WHATSAPP_INBOX_STALE_SECONDS"
+        ),
+    )
     outbound_worker_id: str = Field(
         default="outbound-worker-1", min_length=1, max_length=70
     )

@@ -194,7 +194,6 @@ class TranscriptionService:
                 extra={
                     "request_id": request_id,
                     "chars": len(transcript),
-                    "preview": transcript[:80],
                 },
             )
             return transcript
