@@ -197,6 +197,8 @@ async def test_delivery_review_is_agent_scoped_safe_filterable_and_fifo_aware():
             )
             assert detail.attempts[0].attempt_number == 1
             assert detail.events[0].safe_code == "provider_timeout"
+            assert detail.resolution_version == 0
+            assert detail.resolution is None
             assert not hasattr(detail, "payload_json")
             assert not hasattr(detail.attempts[0], "worker_id")
 

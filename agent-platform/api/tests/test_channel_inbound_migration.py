@@ -19,6 +19,7 @@ from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.channel_inbound import ChannelInboundEvent, ChannelInboundJob
 
 _REVISION = "f12c6a8d0e34"
+_HEAD_REVISION = "f13d7b9e1f45"
 _DOWN_REVISION = "f11b5f7c9d23"
 
 
@@ -30,7 +31,7 @@ def _config() -> Config:
 def test_channel_inbound_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 

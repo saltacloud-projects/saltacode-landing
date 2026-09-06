@@ -80,6 +80,10 @@ class OutboundMessage(TimestampedModel):
             name="ck_outbound_message_counters",
         ),
         CheckConstraint(
+            "resolution_version >= 0",
+            name="ck_outbound_message_resolution_version",
+        ),
+        CheckConstraint(
             "(automation_agent_id IS NULL) = (automation_version IS NULL)",
             name="ck_outbound_message_automation_snapshot_pair",
         ),
@@ -202,6 +206,7 @@ class OutboundMessage(TimestampedModel):
         String(255), nullable=True, index=True
     )
     last_attempt_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    resolution_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     locked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -322,6 +327,85 @@ class OutboundDeliveryEvent(Base):
     actor_type: Mapped[str] = mapped_column(String(20), nullable=False)
     actor_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     safe_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class OutboundDeliveryResolution(Base):
+    """Immutable operator evidence resolving one uncertain provider outcome."""
+
+    __tablename__ = "outbound_delivery_resolutions"
+    __table_args__ = (
+        UniqueConstraint(
+            "outbound_message_id",
+            "resolution_version",
+            name="uq_outbound_delivery_resolution_version",
+        ),
+        UniqueConstraint(
+            "outbound_message_id",
+            "idempotency_key",
+            name="uq_outbound_delivery_resolution_idempotency",
+        ),
+        CheckConstraint(
+            "action IN ('confirm_delivered', 'confirm_not_delivered')",
+            name="ck_outbound_delivery_resolution_action",
+        ),
+        CheckConstraint(
+            "resolution_version > 0",
+            name="ck_outbound_delivery_resolution_version",
+        ),
+        CheckConstraint(
+            "(action = 'confirm_delivered' "
+            "AND provider_message_hash ~ '^[0-9a-f]{64}$' "
+            "AND char_length(provider_message_suffix) BETWEEN 1 AND 6 "
+            "AND evidence_source IN ('provider_api', 'provider_console') "
+            "AND reason_code IS NULL) OR "
+            "(action = 'confirm_not_delivered' "
+            "AND provider_message_hash IS NULL "
+            "AND provider_message_suffix IS NULL "
+            "AND evidence_source IS NULL "
+            "AND reason_code IN ('provider_confirmed_not_delivered', "
+            "'provider_record_not_found', 'operator_verified_not_delivered'))",
+            name="ck_outbound_delivery_resolution_evidence",
+        ),
+        CheckConstraint(
+            "char_length(btrim(idempotency_key)) > 0 "
+            "AND char_length(btrim(correlation_id)) > 0 "
+            "AND command_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_outbound_delivery_resolution_command",
+        ),
+        Index(
+            "ix_outbound_delivery_resolution_message_created",
+            "outbound_message_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    outbound_message_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("outbound_messages.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    resolution_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider_message_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_message_suffix: Mapped[str | None] = mapped_column(
+        String(6), nullable=True
+    )
+    evidence_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    actor_admin_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(220), nullable=False)
+    command_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(120), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -46,7 +46,12 @@ from app.models.opportunity import (
     OpportunityOwnershipEvent,
     OpportunityStageEvent,
 )
-from app.models.outbound import OutboundAttempt, OutboundDeliveryEvent, OutboundMessage
+from app.models.outbound import (
+    OutboundAttempt,
+    OutboundDeliveryEvent,
+    OutboundDeliveryResolution,
+    OutboundMessage,
+)
 from app.models.platform import (
     ChannelIdentity,
     ChatConversation,

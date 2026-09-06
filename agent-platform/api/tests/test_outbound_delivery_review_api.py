@@ -6,15 +6,18 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi import FastAPI
+from pydantic import ValidationError
 
 from app.routers.admin.deliveries import router
+from app.schemas.deliveries import DeliveryResolutionRequest
 from app.services.outbound_delivery_review import OutboundDeliveryReviewService
 
 ROOT = "/api/admin/agents/{agent_id}/deliveries"
 
 
-def test_delivery_review_contract_is_agent_scoped_read_only_and_authenticated():
+def test_delivery_review_contract_is_agent_scoped_and_authenticated():
     app = FastAPI()
     app.include_router(router, prefix=ROOT)
     schema = app.openapi()
@@ -34,11 +37,10 @@ def test_delivery_review_contract_is_agent_scoped_read_only_and_authenticated():
         for parameter in schema["paths"][f"{ROOT}/"]["get"]["parameters"]
     }
     assert {"channel", "status", "conversation_id"} <= list_parameters
-    assert all(
-        set(methods) == {"get"}
-        for path, methods in schema["paths"].items()
-        if path.startswith(ROOT)
-    )
+    resolve = schema["paths"][f"{ROOT}/{{delivery_id}}/resolve"]["post"]
+    assert resolve["security"] == [{"HTTPBearer": []}]
+    headers = {parameter["name"]: parameter for parameter in resolve["parameters"]}
+    assert headers["Idempotency-Key"]["required"] is True
 
 
 def test_delivery_contract_never_exposes_payload_destination_or_internal_actor_ids():
@@ -53,6 +55,10 @@ def test_delivery_contract_never_exposes_payload_destination_or_internal_actor_i
     assert "payload_hash" not in serialized
     assert "worker_id" not in serialized
     assert "actor_id" not in serialized
+    assert "actor_admin_id" not in serialized
+    assert "command_hash" not in serialized
+    assert "provider_message_hash" not in serialized
+    assert "provider_message_suffix" not in serialized
 
 
 def test_delivery_summary_masks_provider_reference_and_describes_fifo_impact():
@@ -68,6 +74,7 @@ def test_delivery_summary_masks_provider_reference_and_describes_fifo_impact():
         sequence=1,
         correlation_id="correlation-safe-1",
         provider_message_id="provider-secret-reference-123456",
+        resolution_version=0,
         created_at=now,
         updated_at=now,
     )
@@ -84,3 +91,42 @@ def test_delivery_summary_masks_provider_reference_and_describes_fifo_impact():
     assert "provider-secret" not in result.provider_reference
     assert result.is_fifo_blocking is True
     assert result.blocked_message_count == 2
+    assert result.resolution_version == 0
+
+
+def test_delivery_resolution_request_enforces_action_specific_evidence():
+    delivered = DeliveryResolutionRequest.model_validate(
+        {
+            "action": "confirm_delivered",
+            "expected_resolution_version": 0,
+            "provider_message_id": "provider-123",
+            "evidence_source": "provider_console",
+        }
+    )
+    assert delivered.reason_code is None
+
+    not_delivered = DeliveryResolutionRequest.model_validate(
+        {
+            "action": "confirm_not_delivered",
+            "expected_resolution_version": 0,
+            "reason_code": "provider_record_not_found",
+        }
+    )
+    assert not_delivered.provider_message_id is None
+
+    with pytest.raises(ValidationError):
+        DeliveryResolutionRequest.model_validate(
+            {
+                "action": "confirm_delivered",
+                "expected_resolution_version": 0,
+            }
+        )
+    with pytest.raises(ValidationError):
+        DeliveryResolutionRequest.model_validate(
+            {
+                "action": "confirm_not_delivered",
+                "expected_resolution_version": 0,
+                "provider_message_id": "unsafe-reference",
+                "reason_code": "provider_record_not_found",
+            }
+        )

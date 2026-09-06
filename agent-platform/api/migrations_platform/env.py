@@ -75,6 +75,7 @@ from app.models.opportunity import (  # noqa: F401
 from app.models.outbound import (  # noqa: F401
     OutboundAttempt,
     OutboundDeliveryEvent,
+    OutboundDeliveryResolution,
     OutboundMessage,
 )
 from app.models.platform import (  # noqa: F401

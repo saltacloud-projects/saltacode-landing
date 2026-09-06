@@ -12,12 +12,14 @@ from sqlalchemy.orm import aliased
 from app.models.outbound import (
     OutboundAttempt,
     OutboundDeliveryEvent,
+    OutboundDeliveryResolution,
     OutboundMessage,
 )
 from app.schemas.deliveries import (
     DeliveryAttemptOut,
     DeliveryDetailOut,
     DeliveryEventOut,
+    DeliveryResolutionOut,
     DeliveryStatus,
     DeliverySummaryOut,
 )
@@ -128,6 +130,14 @@ class OutboundDeliveryReviewService:
             .scalars()
             .all()
         )
+        resolution = (
+            await db.execute(
+                select(OutboundDeliveryResolution)
+                .where(OutboundDeliveryResolution.outbound_message_id == delivery_id)
+                .order_by(OutboundDeliveryResolution.resolution_version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
         summary = self._summary_out(*row)
         return DeliveryDetailOut(
             **summary.model_dump(),
@@ -162,6 +172,23 @@ class OutboundDeliveryReviewService:
                 )
                 for event in events
             ],
+            resolution=(
+                DeliveryResolutionOut(
+                    resolution_version=resolution.resolution_version,
+                    action=resolution.action,
+                    provider_reference=(
+                        f"…{resolution.provider_message_suffix}"
+                        if resolution.provider_message_suffix
+                        else None
+                    ),
+                    evidence_source=resolution.evidence_source,
+                    reason_code=resolution.reason_code,
+                    has_actor_admin=True,
+                    created_at=resolution.created_at,
+                )
+                if resolution is not None
+                else None
+            ),
         )
 
     @staticmethod
@@ -260,6 +287,7 @@ class OutboundDeliveryReviewService:
             blocked_message_count=(
                 int(blocked_message_count or 0) if is_fifo_blocking else 0
             ),
+            resolution_version=message.resolution_version,
             created_at=message.created_at,
             updated_at=message.updated_at,
         )
