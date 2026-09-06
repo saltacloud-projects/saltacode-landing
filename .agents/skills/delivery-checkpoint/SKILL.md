@@ -4,7 +4,7 @@ description: "Trigger: finish work, commit changes, delivery checkpoint, agentic
 license: Apache-2.0
 metadata:
   author: "Oscar Vargas"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 ## Activation Contract
@@ -14,6 +14,7 @@ Load this skill when a bounded implementation, documentation, configuration, or 
 ## Hard Rules
 
 - Inspect and stage only files owned by the current work unit; never absorb unrelated changes.
+- Before reviewing changed source, load and apply `code-style`; run its scope-native formatter, linter, and checks, and report every missing or unavailable enforcement step.
 - Run focused checks and a relevant runtime harness, or record runtime as `N/A` with a concrete reason.
 - For frontend or visual changes, rebuild/recreate the affected active local review service and verify the served response before delivery. Never leave the review runtime on a stale image.
 - State the rollback boundary before committing.
@@ -38,7 +39,7 @@ Load this skill when a bounded implementation, documentation, configuration, or 
 
 1. Define the completed behavior, owned files, and rollback boundary.
 2. Inspect the owned diff and working tree for unrelated changes.
-3. Run focused tests, refresh any active affected review service, exercise the served runtime or justify `N/A`, and run agentic validation when affected.
+3. Apply `code-style`, run scope-native formatting and lint checks, then run focused tests, refresh any active affected review service, exercise the served runtime or justify `N/A`, and run agentic validation when affected.
 4. Refresh Engram, agentic artifacts, the skill registry, and CodeGraph only under their gates.
 5. Stage only the work-unit files, inspect the staged diff, and create one conventional local commit.
 6. Report commit, evidence, rollback boundary, exclusions, and any push or deployment still awaiting authorization.
@@ -50,5 +51,7 @@ Return the work-unit scope, changed and excluded files, test and served-runtime 
 ## References
 
 - `../../../AGENTS.md`
+- `../../../docs/development/coding-conventions.md`
 - `../../../docs/agentic/tooling.md`
 - `../../../scripts/agentic/validate-layer.sh`
+- `../code-style/SKILL.md`

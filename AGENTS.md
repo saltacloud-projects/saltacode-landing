@@ -22,12 +22,13 @@ This repository hosts Saltacode's production landing page. Protect discoverabili
 ## Workflow
 
 1. Read the matching project skill before acting.
-2. Use CodeGraph before broad filesystem searches for structural questions. If the repository index is unavailable, record the fallback.
-3. Search Engram before repeating prior architecture or discovery work; save durable decisions and non-obvious findings.
-4. Delegate only a bounded role with a clear write boundary. One writer owns overlapping files.
-5. Validate locally with `scripts/agentic/validate-layer.sh` and any task-specific checks.
-6. Finish each bounded work unit with `.agents/skills/delivery-checkpoint/SKILL.md`.
-7. Report evidence, remaining unknowns, and potential SEO/performance impact.
+2. Before generating or reviewing any source code, also read `.agents/skills/code-style/SKILL.md` and apply `docs/development/coding-conventions.md`.
+3. Use CodeGraph before broad filesystem searches for structural questions. If the repository index is unavailable, record the fallback.
+4. Search Engram before repeating prior architecture or discovery work; save durable decisions and non-obvious findings.
+5. Delegate only a bounded role with a clear write boundary. One writer owns overlapping files.
+6. Validate locally with `scripts/agentic/validate-layer.sh` and any task-specific checks.
+7. Finish each bounded work unit with `.agents/skills/delivery-checkpoint/SKILL.md`.
+8. Report evidence, remaining unknowns, and potential SEO/performance impact.
 
 ## Project agents
 
@@ -66,6 +67,7 @@ Agent definitions live in `.codex/agents/`. Do not pin agent models; inherit the
 | `.agents/skills/migration-release-safety/SKILL.md` | Persistent-schema, release, receipt, verification, and rollback safety. |
 | `.agents/skills/security-privacy/SKILL.md` | Trust boundaries, access control, secrets, consent, retention, and privacy review. |
 | `.agents/skills/agentic-governance/SKILL.md` | Agent, skill, tool, MCP, memory, validation, and freshness maintenance. |
+| `.agents/skills/code-style/SKILL.md` | Code generation, review, formatting, imports, organization, comments, and style conventions. |
 
 ## Quality contract
 

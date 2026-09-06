@@ -10,6 +10,7 @@
 
 ## Verification
 
+- Code-style, formatter, and lint evidence, including any enforcement gap:
 - Focused checks:
 - Runtime or served evidence, or `N/A` with reason:
 
