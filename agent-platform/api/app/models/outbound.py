@@ -84,6 +84,24 @@ class OutboundMessage(TimestampedModel):
             name="ck_outbound_message_automation_snapshot_pair",
         ),
         CheckConstraint(
+            "(channel IS NULL AND adapter_key IS NULL "
+            "AND channel_connection_id IS NULL AND route_version IS NULL "
+            "AND connection_version IS NULL) OR "
+            "(channel IS NOT NULL AND adapter_key IS NOT NULL "
+            "AND channel_connection_id IS NOT NULL AND route_version IS NOT NULL "
+            "AND connection_version IS NOT NULL)",
+            name="ck_outbound_message_route_snapshot_set",
+        ),
+        CheckConstraint(
+            "(route_version IS NULL OR route_version >= 0) "
+            "AND (connection_version IS NULL OR connection_version >= 0)",
+            name="ck_outbound_message_route_snapshot_versions",
+        ),
+        CheckConstraint(
+            "status NOT IN ('queued', 'dispatching') OR channel IS NOT NULL",
+            name="ck_outbound_message_active_route_snapshot",
+        ),
+        CheckConstraint(
             "char_length(idempotency_key) > 0 "
             "AND char_length(destination) > 0 "
             "AND char_length(correlation_id) > 0 "
@@ -141,6 +159,16 @@ class OutboundMessage(TimestampedModel):
         nullable=False,
         index=True,
     )
+    channel: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    adapter_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    channel_connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("channel_connections.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    route_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    connection_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chat_message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("chat_messages.id", ondelete="SET NULL"),

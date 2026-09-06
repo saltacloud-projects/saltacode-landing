@@ -17,6 +17,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.outbound import (
     OutboundAttempt,
     OutboundDeliveryEvent,
@@ -182,12 +183,21 @@ class OutboundDeliveryService:
             automation_agent_id=automation_agent_id,
             automation_version=automation_version,
         )
+        route, connection = await self._resolve_route_snapshot(
+            db,
+            conversation=conversation,
+        )
         sequence = conversation.next_outbound_sequence
         conversation.next_outbound_sequence += 1
         message = OutboundMessage(
             conversation_id=conversation.id,
             agent_id=agent_id,
             channel_route_id=conversation.channel_route_id,
+            channel=route.channel,
+            adapter_key=connection.adapter_key,
+            channel_connection_id=connection.id,
+            route_version=route.version,
+            connection_version=connection.version,
             chat_message_id=chat_message_id,
             kind=kind,
             payload_json=normalized_payload,
@@ -394,6 +404,35 @@ class OutboundDeliveryService:
             return None
         return message
 
+    async def cancel_claim(
+        self,
+        db: AsyncSession,
+        *,
+        outbound_message_id: uuid.UUID,
+        attempt_id: uuid.UUID,
+        worker_id: str,
+        safe_code: str,
+    ) -> OutboundMessage:
+        """Cancel a claim before provider I/O using a body-free reason code."""
+
+        normalized_worker_id = self._normalize_worker_id(worker_id)
+        if not self._safe_code_pattern.fullmatch(safe_code):
+            raise InvalidOutboundCommandError("invalid safe result code")
+        message, attempt = await self._lock_owned_dispatch(
+            db,
+            outbound_message_id=outbound_message_id,
+            attempt_id=attempt_id,
+            worker_id=normalized_worker_id,
+        )
+        self._cancel_stale_message(
+            db,
+            message=message,
+            attempt=attempt,
+            safe_code=safe_code,
+        )
+        await db.flush()
+        return message
+
     async def record_dispatch_outcome(
         self,
         db: AsyncSession,
@@ -501,12 +540,62 @@ class OutboundDeliveryService:
         return conversation
 
     @staticmethod
+    async def _resolve_route_snapshot(
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+    ) -> tuple[ChannelAgentRoute, ChannelConnection]:
+        route = (
+            await db.execute(
+                select(ChannelAgentRoute)
+                .where(
+                    ChannelAgentRoute.id == conversation.channel_route_id,
+                    ChannelAgentRoute.agent_id == conversation.agent_id,
+                    ChannelAgentRoute.channel == conversation.channel,
+                    ChannelAgentRoute.is_active.is_(True),
+                )
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if route is None:
+            raise OutboundFenceViolationError(
+                "outbound route is unavailable",
+                safe_code="route_configuration_unavailable",
+            )
+        connection = (
+            await db.execute(
+                select(ChannelConnection)
+                .where(
+                    ChannelConnection.id == route.channel_connection_id,
+                    ChannelConnection.channel == route.channel,
+                    ChannelConnection.is_active.is_(True),
+                )
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if connection is None:
+            raise OutboundFenceViolationError(
+                "outbound connection is unavailable",
+                safe_code="route_configuration_unavailable",
+            )
+        return route, connection
+
+    @staticmethod
     def _assert_route_snapshot(
         conversation: ChatConversation,
         message: OutboundMessage,
     ) -> None:
         """Fence routing ownership under the conversation control safe code."""
-        if conversation.channel_route_id != message.channel_route_id:
+        if (
+            conversation.channel_route_id != message.channel_route_id
+            or message.channel is None
+            or message.adapter_key is None
+            or message.channel_connection_id is None
+            or message.route_version is None
+            or message.connection_version is None
+        ):
             raise OutboundFenceViolationError(
                 "conversation route changed",
                 safe_code="conversation_control_changed",

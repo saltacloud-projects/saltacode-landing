@@ -49,7 +49,7 @@ class _OutboundGraph:
 
 
 class _RecordingAdapter:
-    channel = "whatsapp"
+    adapter_key = "meta_whatsapp_cloud"
 
     def __init__(self, result):
         self.result = result
@@ -239,6 +239,11 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
             correlation_id="request-1-retry",
         )
         assert first.duplicate is False
+        assert first.message.channel == "whatsapp"
+        assert first.message.adapter_key == "meta_whatsapp_cloud"
+        assert first.message.channel_connection_id == outbound_graph.connection_id
+        assert first.message.route_version == 0
+        assert first.message.connection_version == 0
         assert duplicate.duplicate is True
         assert duplicate.message.id == first.message.id
         assert duplicate.message.correlation_id == "request-1"
@@ -757,6 +762,110 @@ async def test_dispatcher_revalidates_automation_before_provider_call(outbound_g
         )
         assert event is not None
         assert event.safe_code == "conversation_automation_changed"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_cancels_when_frozen_connection_version_changes(
+    outbound_graph,
+):
+    outbound_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=0,
+        idempotency_key="connection-fence-before-send",
+    )
+    adapter = _RecordingAdapter(Accepted("must-not-send"))
+    dispatcher = OutboundDispatcher(
+        worker_id="worker-connection-fence",
+        stale_seconds=300,
+        adapters=[adapter],
+    )
+    claim = await dispatcher.claim_once()
+    assert claim is not None
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            connection = await db.get(
+                ChannelConnection,
+                outbound_graph.connection_id,
+            )
+            assert connection is not None
+            connection.version += 1
+
+    async with AsyncSessionLocal() as db:
+        replay = await OutboundDeliveryService().enqueue(
+            db,
+            conversation_id=outbound_graph.conversation_ids[0],
+            agent_id=outbound_graph.agent_id,
+            chat_message_id=outbound_graph.message_ids[0],
+            kind=OutboundKind.TEXT,
+            payload={"text": "Dispatcher answer 0"},
+            sender_type=OutboundSenderType.AUTOMATION,
+            control_version=0,
+            automation_agent_id=outbound_graph.agent_id,
+            automation_version=0,
+            idempotency_key="connection-fence-before-send",
+            correlation_id="replayed-after-route-change",
+        )
+        assert replay.duplicate is True
+        assert replay.message.id == outbound_id
+
+    await dispatcher.dispatch_claim(claim)
+
+    assert adapter.calls == []
+    async with AsyncSessionLocal() as db:
+        message = await db.get(OutboundMessage, outbound_id)
+        assert message is not None
+        assert message.status == "cancelled"
+        event = (
+            await db.execute(
+                select(OutboundDeliveryEvent).where(
+                    OutboundDeliveryEvent.outbound_message_id == outbound_id,
+                    OutboundDeliveryEvent.event_type == "cancelled",
+                )
+            )
+        ).scalar_one()
+        assert event.safe_code == "route_snapshot_changed"
+
+
+def test_dispatcher_rejects_duplicate_adapter_keys():
+    adapter = _RecordingAdapter(Accepted("not-used"))
+
+    with pytest.raises(ValueError, match="duplicate outbound adapter key"):
+        OutboundDispatcher(
+            worker_id="duplicate-registry",
+            stale_seconds=300,
+            adapters=[adapter, adapter],
+        )
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_cancels_when_frozen_adapter_is_unavailable(outbound_graph):
+    outbound_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=0,
+        idempotency_key="adapter-unavailable-before-send",
+    )
+    dispatcher = OutboundDispatcher(
+        worker_id="worker-adapter-unavailable",
+        stale_seconds=300,
+        adapters=[],
+    )
+
+    assert await dispatcher.run_once() is True
+
+    async with AsyncSessionLocal() as db:
+        message = await db.get(OutboundMessage, outbound_id)
+        assert message is not None
+        assert message.status == "cancelled"
+        event = (
+            await db.execute(
+                select(OutboundDeliveryEvent).where(
+                    OutboundDeliveryEvent.outbound_message_id == outbound_id,
+                    OutboundDeliveryEvent.event_type == "cancelled",
+                )
+            )
+        ).scalar_one()
+        assert event.safe_code == "adapter_unavailable"
 
 
 @pytest.mark.asyncio

@@ -61,6 +61,8 @@ async def test_delivery_review_is_agent_scoped_safe_filterable_and_fifo_aware():
                 name="Delivery review connection",
                 slug=f"delivery-review-connection-{uuid4().hex}",
                 channel="whatsapp",
+                adapter_key="meta_whatsapp_cloud",
+                version=0,
                 external_account_id=f"delivery-review-{uuid4().hex}",
                 settings_json={},
                 is_active=True,
@@ -70,6 +72,7 @@ async def test_delivery_review_is_agent_scoped_safe_filterable_and_fifo_aware():
             routes = [
                 ChannelAgentRoute(
                     channel="whatsapp",
+                    version=0,
                     route_key=f"delivery-review-route-{label}-{uuid4().hex}",
                     channel_connection_id=connection.id,
                     agent_id=profile.id,
@@ -238,6 +241,11 @@ def _message(
         conversation_id=conversation.id,
         agent_id=conversation.agent_id,
         channel_route_id=route.id,
+        channel=route.channel,
+        adapter_key="meta_whatsapp_cloud",
+        channel_connection_id=route.channel_connection_id,
+        route_version=route.version,
+        connection_version=0,
         chat_message_id=None,
         kind="text",
         payload_json={"text": "Sensitive body excluded from review"},

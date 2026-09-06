@@ -14,7 +14,6 @@ from app.models.outbound import (
     OutboundDeliveryEvent,
     OutboundMessage,
 )
-from app.models.platform import ChatConversation
 from app.schemas.deliveries import (
     DeliveryAttemptOut,
     DeliveryDetailOut,
@@ -133,6 +132,10 @@ class OutboundDeliveryReviewService:
         return DeliveryDetailOut(
             **summary.model_dump(),
             channel_route_id=message.channel_route_id,
+            channel_connection_id=message.channel_connection_id,
+            adapter_key=message.adapter_key,
+            route_version=message.route_version,
+            connection_version=message.connection_version,
             chat_message_id=message.chat_message_id,
             control_version=message.control_version,
             accepted_at=message.accepted_at,
@@ -197,14 +200,10 @@ class OutboundDeliveryReviewService:
         return (
             select(
                 OutboundMessage,
-                ChatConversation.channel,
+                func.coalesce(OutboundMessage.channel, "unknown"),
                 func.coalesce(attempt_counts.c.attempt_count, 0),
                 latest_safe_code,
                 blocked_message_count,
-            )
-            .join(
-                ChatConversation,
-                ChatConversation.id == OutboundMessage.conversation_id,
             )
             .outerjoin(
                 attempt_counts,
@@ -212,7 +211,6 @@ class OutboundDeliveryReviewService:
             )
             .where(
                 OutboundMessage.agent_id == agent_id,
-                ChatConversation.agent_id == agent_id,
             )
         )
 
@@ -225,7 +223,7 @@ class OutboundDeliveryReviewService:
         conversation_id: uuid.UUID | None,
     ) -> Select:
         if channel:
-            statement = statement.where(ChatConversation.channel == channel)
+            statement = statement.where(OutboundMessage.channel == channel)
         if delivery_status:
             statement = statement.where(OutboundMessage.status == delivery_status.value)
         if conversation_id:

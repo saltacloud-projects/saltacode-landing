@@ -21,7 +21,7 @@ from app.models.platform import ChatConversation, Principal
 
 _REVISION = "f4c8d0e2f567"
 _DOWN_REVISION = "f3b7c9d1e456"
-_HEAD_REVISION = "f8c2d4e6a901"
+_HEAD_REVISION = "f9d3e5a7b012"
 
 
 def _config() -> Config:
@@ -73,6 +73,7 @@ def test_migration_backfills_only_safe_legacy_commands_and_blocks_loss() -> None
             command.downgrade(config, _DOWN_REVISION)
     finally:
         command.upgrade(config, "head")
+        asyncio.run(engine.dispose())
         asyncio.run(_cleanup(ids))
         asyncio.run(engine.dispose())
 
@@ -208,7 +209,16 @@ async def _assert_migrated_commands(ids: dict[str, object]) -> None:
         assert safe is not None
         assert safe.automation_agent_id == ids["routing_agent"]
         assert safe.automation_version == 0
-        assert safe.status == "queued"
+        assert safe.status == "cancelled"
+        route_event = (
+            await db.execute(
+                select(OutboundDeliveryEvent).where(
+                    OutboundDeliveryEvent.outbound_message_id == safe.id,
+                    OutboundDeliveryEvent.safe_code == "legacy_route_snapshot_missing",
+                )
+            )
+        ).scalar_one()
+        assert route_event.event_type == "cancelled"
         assert uncertain is not None
         assert uncertain.automation_agent_id is None
         assert uncertain.automation_version is None

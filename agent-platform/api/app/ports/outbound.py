@@ -36,7 +36,7 @@ OutboundResult: TypeAlias = Accepted | Rejected | Unknown
 class OutboundChannelAdapter(Protocol):
     """Deliver one frozen command through one resolved persisted route."""
 
-    channel: str
+    adapter_key: str
 
     async def deliver(
         self,

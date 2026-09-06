@@ -61,10 +61,22 @@ def test_outbound_metadata_enforces_queue_and_append_only_contracts():
     assert "ck_outbound_message_kind" in message_constraints
     assert "ck_outbound_message_payload_shape" in message_constraints
     assert "ck_outbound_message_automation_snapshot_pair" in message_constraints
+    assert "ck_outbound_message_route_snapshot_set" in message_constraints
+    assert "ck_outbound_message_route_snapshot_versions" in message_constraints
+    assert "ck_outbound_message_active_route_snapshot" in message_constraints
     assert OutboundMessage.__table__.c.automation_agent_id.nullable is True
     assert OutboundMessage.__table__.c.automation_version.nullable is True
     assert OutboundMessage.__table__.c.destination.nullable is False
     assert OutboundMessage.__table__.c.chat_message_id.nullable is True
+    assert OutboundMessage.__table__.c.channel.nullable is True
+    assert OutboundMessage.__table__.c.adapter_key.nullable is True
+    assert OutboundMessage.__table__.c.channel_connection_id.nullable is True
+    assert (
+        next(
+            iter(OutboundMessage.__table__.c.channel_connection_id.foreign_keys)
+        ).ondelete
+        == "RESTRICT"
+    )
     assert (
         next(iter(OutboundMessage.__table__.c.chat_message_id.foreign_keys)).ondelete
         == "SET NULL"

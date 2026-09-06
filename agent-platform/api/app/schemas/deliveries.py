@@ -65,6 +65,10 @@ class DeliveryEventOut(BaseModel):
 
 class DeliveryDetailOut(DeliverySummaryOut):
     channel_route_id: UUID
+    channel_connection_id: UUID | None
+    adapter_key: str | None
+    route_version: int | None
+    connection_version: int | None
     chat_message_id: UUID | None
     control_version: int
     accepted_at: datetime | None

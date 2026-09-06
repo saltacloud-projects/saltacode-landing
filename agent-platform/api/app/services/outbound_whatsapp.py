@@ -23,7 +23,7 @@ from app.services.whatsapp import (
 class WhatsAppOutboundAdapter:
     """Translate neutral commands into the persisted WhatsApp route."""
 
-    channel = "whatsapp"
+    adapter_key = "meta_whatsapp_cloud"
     _provider_account_pattern = re.compile(r"^[0-9]{1,64}$")
     _recipient_pattern = re.compile(r"^[1-9][0-9]{5,20}$")
 
@@ -205,8 +205,9 @@ class WhatsAppOutboundAdapter:
             return Unknown("provider_id_invalid")
         return Accepted(provider_id.strip())
 
-    @staticmethod
+    @classmethod
     def _owns_route(
+        cls,
         message: OutboundMessage,
         route: ChannelAgentRoute,
         connection: ChannelConnection,
@@ -214,9 +215,14 @@ class WhatsAppOutboundAdapter:
         return bool(
             route.id == message.channel_route_id
             and route.agent_id == message.agent_id
-            and route.channel == "whatsapp"
-            and route.channel_connection_id == connection.id
-            and connection.channel == "whatsapp"
+            and route.channel == message.channel == "whatsapp"
+            and route.channel_connection_id
+            == message.channel_connection_id
+            == connection.id
+            and route.version == message.route_version
+            and connection.channel == message.channel
+            and connection.adapter_key == message.adapter_key == cls.adapter_key
+            and connection.version == message.connection_version
             and route.is_active
             and connection.is_active
         )
