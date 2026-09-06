@@ -26,6 +26,9 @@ from app.models.agent_runtime import (
 from app.models.audit_log import AuditLog
 from app.models.authorized_user import AuthorizedUser
 from app.models.contact import ConsentRecord, Contact, ContactPoint
+from app.models.conversation_automation_assignment import (
+    ConversationAutomationAssignmentEvent,
+)
 from app.models.conversation_control import ConversationControlEvent
 from app.models.conversation_event import ConversationEvent
 from app.models.conversation_message import ConversationMessage

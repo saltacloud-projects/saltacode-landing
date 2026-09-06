@@ -18,6 +18,7 @@ from app.models.tool_config import ToolConfig
 
 _REVISION = "e1f5a7b9c234"
 _DOWN_REVISION = "d0e4f6a8b123"
+_HEAD_REVISION = "f2a6b8c0d345"
 _TOOL_ID = uuid.UUID("2a0a5cc2-bf7f-4f73-a2eb-11dc7e22b075")
 _TOOL_NAME = "commercial_quote_contact_request"
 
@@ -30,7 +31,7 @@ def _config() -> Config:
 def test_quote_contact_request_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 

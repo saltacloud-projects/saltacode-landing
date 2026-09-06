@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -22,6 +23,12 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampedModel
+
+
+def _default_automation_agent_id(context: Any) -> uuid.UUID:
+    """Default the acting agent to the conversation routing owner."""
+
+    return context.get_current_parameters()["agent_id"]
 
 
 class Principal(TimestampedModel):
@@ -83,6 +90,12 @@ class ChatConversation(TimestampedModel):
             "control_mode",
             "updated_at",
         ),
+        Index(
+            "ix_chat_conversation_automation_status_updated",
+            "automation_agent_id",
+            "status",
+            "updated_at",
+        ),
         CheckConstraint(
             "control_mode IN ('automated', 'paused', 'human', 'closed')",
             name="ck_chat_conversation_control_mode",
@@ -90,6 +103,10 @@ class ChatConversation(TimestampedModel):
         CheckConstraint(
             "control_version >= 0",
             name="ck_chat_conversation_control_version",
+        ),
+        CheckConstraint(
+            "automation_version >= 0",
+            name="ck_chat_conversation_automation_version",
         ),
         CheckConstraint(
             "control_mode != 'human' OR assigned_admin_id IS NOT NULL",
@@ -109,6 +126,19 @@ class ChatConversation(TimestampedModel):
         UUID(as_uuid=True),
         ForeignKey("agent_profiles.id", ondelete="CASCADE"),
         index=True,
+    )
+    automation_agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_profiles.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+        default=_default_automation_agent_id,
+    )
+    automation_version: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
     )
     principal_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("principals.id", ondelete="CASCADE"), index=True
