@@ -48,6 +48,7 @@ export interface MeetingEvent {
 export interface MeetingSummary {
   id: string;
   opportunity_id: string;
+  opportunity_control_version: number;
   conversation_id: string | null;
   status: MeetingStatus;
   state_version: number;

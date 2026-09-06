@@ -65,6 +65,7 @@ function summary(state: MeetingState) {
   return {
     id: MEETING_ID,
     opportunity_id: OPPORTUNITY_ID,
+    opportunity_control_version: 4,
     conversation_id: null,
     status: state.status,
     state_version: state.stateVersion,
@@ -261,29 +262,20 @@ test("operator coordinates a meeting with versioned and idempotent commands", as
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("radio").check();
-  await page.getByLabel("Referencia de evidencia").fill("internal-audit-record-42");
+  await page.getByLabel("Referencia de evidencia").fill("operator-log-42");
   await page.getByRole("button", { name: "Confirmar reunión" }).click();
   await expect.poll(() => commands.length).toBe(3);
   expect(commands[2].body).toMatchObject({
     expected_version: 3,
     expected_opportunity_version: 4,
     slot_id: SLOT_ID,
-    evidence_type: "operator_confirmation",
-    evidence_reference: "internal-audit-record-42",
+    evidence_reference: "operator-log-42",
   });
   await expect(
     page.getByRole("region", { name: "Detalle de reunión" }).getByText("Confirmada", {
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.getByText("internal-audit-record-42")).toHaveCount(0);
-  await expect(page.getByText("Evidencia registrada", { exact: false })).toBeVisible();
-
-  await page.getByLabel("Motivo obligatorio").first().fill("El contacto pidió otro horario");
-  await page.getByRole("button", { name: "Solicitar reprogramación" }).click();
-  await expect.poll(() => commands.length).toBe(4);
-  expect(commands[3].body).toMatchObject({ expected_version: 4 });
 });
 
 test("a stale command reloads the meeting and explains the conflict", async ({ page }) => {

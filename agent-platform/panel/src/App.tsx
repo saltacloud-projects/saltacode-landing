@@ -13,6 +13,7 @@ import { ChannelConnectionsPage, ProviderConnectionsPage } from "./pages/Connect
 import DashboardPage from "./pages/Dashboard";
 import DeliveriesPage from "./pages/Deliveries";
 import DocumentsPage from "./pages/Documents";
+import FollowUpsPage from "./pages/FollowUps";
 import HandoffsPage from "./pages/Handoffs";
 import InboxPage from "./pages/Inbox";
 import KnowledgePage from "./pages/KnowledgeBlocks";
@@ -323,6 +324,14 @@ export default function App() {
                 element={
                   <PermissionRoute permission={PERMISSIONS.MEETINGS_READ}>
                     <MeetingsPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="follow-ups"
+                element={
+                  <PermissionRoute permission={PERMISSIONS.FOLLOW_UPS_READ}>
+                    <FollowUpsPage />
                   </PermissionRoute>
                 }
               />

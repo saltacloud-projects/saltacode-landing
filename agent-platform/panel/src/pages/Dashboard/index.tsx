@@ -13,6 +13,7 @@ import {
   Globe2,
   Inbox,
   Library,
+  ListChecks,
   type LucideIcon,
   Send,
   Settings2,
@@ -72,6 +73,13 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
         segment: "meetings",
         icon: CalendarDays,
         permission: PERMISSIONS.MEETINGS_READ,
+      },
+      {
+        label: "Seguimientos",
+        description: "Revisá la cola durable y resolvé tareas que requieren intervención.",
+        segment: "follow-ups",
+        icon: ListChecks,
+        permission: PERMISSIONS.FOLLOW_UPS_READ,
       },
       {
         label: "Entregas",

@@ -85,10 +85,7 @@ export function MeetingActions({
     () => meeting.slots.filter((slot) => slot.proposal_version === meeting.proposal_version),
     [meeting.proposal_version, meeting.slots],
   );
-  const latestOpportunityVersion = meeting.events.reduce(
-    (latest, event) => Math.max(latest, event.opportunity_control_version),
-    0,
-  );
+  const opportunityControlVersion = meeting.opportunity_control_version;
   const canPropose = [
     "requested",
     "slots_proposed",
@@ -97,13 +94,14 @@ export function MeetingActions({
     "review_required",
   ].includes(meeting.status);
   const canSelect = ["slots_proposed", "awaiting_response"].includes(meeting.status);
-  const canSchedule = [
+  const supportsManualSchedule = [
     "slots_proposed",
     "awaiting_response",
     "slot_selected",
     "reschedule_requested",
     "review_required",
   ].includes(meeting.status);
+  const canSchedule = supportsManualSchedule;
   const isTerminal = meeting.status === "cancelled";
   const isProviderOwned = meeting.status === "calendar_pending";
 
@@ -301,7 +299,7 @@ export function MeetingActions({
             event.preventDefault();
             if (!selectedSlotId || !evidenceReference.trim()) return;
             void onScheduleManually({
-              expected_opportunity_version: latestOpportunityVersion,
+              expected_opportunity_version: opportunityControlVersion,
               slot_id: selectedSlotId,
               evidence_type: evidenceType,
               evidence_reference: evidenceReference.trim(),

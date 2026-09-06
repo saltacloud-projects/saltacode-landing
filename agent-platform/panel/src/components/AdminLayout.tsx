@@ -16,6 +16,7 @@ import {
   Globe2,
   Inbox,
   Library,
+  ListChecks,
   LogOut,
   type LucideIcon,
   Menu,
@@ -157,6 +158,12 @@ const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
         label: "Reuniones",
         icon: CalendarDays,
         permission: PERMISSIONS.MEETINGS_READ,
+      },
+      {
+        segment: "follow-ups",
+        label: "Seguimientos",
+        icon: ListChecks,
+        permission: PERMISSIONS.FOLLOW_UPS_READ,
       },
       {
         segment: "deliveries",
