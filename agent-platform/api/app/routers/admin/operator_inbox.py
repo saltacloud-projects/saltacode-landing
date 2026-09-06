@@ -20,11 +20,24 @@ from app.schemas.conversation_control import (
     OperatorMessageRequest,
 )
 from app.schemas.operator_inbox import (
+    AutomationAssignmentHistoryPageOut,
+    AutomationAssignmentReceiptOut,
+    AutomationAssignmentRequest,
     InboxConversationPageOut,
     InboxOperatorOut,
     InboxThreadOut,
 )
+from app.services.admin_agent_access import admin_agent_access_service
 from app.services.admin_rbac import AdminPermission
+from app.services.conversation_automation_assignment import (
+    ConversationAutomationAssignmentClosedError,
+    ConversationAutomationAssignmentConflictError,
+    ConversationAutomationAssignmentError,
+    ConversationAutomationAssignmentInactiveAgentError,
+    ConversationAutomationAssignmentNotFoundError,
+    ConversationAutomationAssignmentValidationError,
+    conversation_automation_assignment_service,
+)
 from app.services.conversation_control import (
     ConversationControlError,
     ConversationNotFoundError,
@@ -120,6 +133,89 @@ async def get_inbox_thread(
         _raise_http_error(exc)
 
 
+@router.get(
+    "/{conversation_id}/automation-assignments",
+    response_model=AutomationAssignmentHistoryPageOut,
+)
+async def list_inbox_automation_assignments(
+    agent_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> AutomationAssignmentHistoryPageOut:
+    try:
+        page = await operator_inbox_service.list_automation_assignments(
+            db,
+            agent_id=agent_id,
+            conversation_id=conversation_id,
+            limit=limit,
+            offset=offset,
+        )
+    except ConversationControlError as exc:
+        _raise_http_error(exc)
+    return AutomationAssignmentHistoryPageOut(
+        items=page.items,
+        total=page.total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/{conversation_id}/automation-assignments",
+    response_model=AutomationAssignmentReceiptOut,
+)
+async def assign_inbox_automation_agent(
+    agent_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    payload: AutomationAssignmentRequest,
+    idempotency_key: str = Header(
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=220,
+    ),
+    correlation_id: str = Header(
+        alias="X-Correlation-ID",
+        min_length=1,
+        max_length=120,
+    ),
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.CONVERSATIONS_MANAGE)
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> AutomationAssignmentReceiptOut:
+    await _require_target_runtime_manage(
+        db,
+        admin=admin,
+        target_agent_id=payload.target_agent_id,
+    )
+    try:
+        result = await conversation_automation_assignment_service.assign(
+            db,
+            conversation_id=conversation_id,
+            routing_agent_id=agent_id,
+            target_agent_id=payload.target_agent_id,
+            expected_automation_version=payload.expected_automation_version,
+            actor_agent_id=None,
+            actor_admin_id=admin.id,
+            trigger=payload.trigger,
+            opportunity_id=None,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            reason=payload.reason,
+        )
+    except ConversationAutomationAssignmentError as exc:
+        _raise_assignment_error(exc)
+    return AutomationAssignmentReceiptOut(
+        event_id=result.event.id,
+        applied=result.applied,
+        duplicate=result.duplicate,
+        automation_agent_id=result.event.to_automation_agent_id,
+        automation_version=result.event.automation_version,
+    )
+
+
 @router.post(
     "/{conversation_id}/control-transitions",
     response_model=ConversationControlSnapshotOut,
@@ -201,3 +297,54 @@ def _raise_http_error(exc: ConversationControlError) -> NoReturn:
         status_code=status.HTTP_409_CONFLICT,
         detail=str(exc),
     ) from exc
+
+
+async def _require_target_runtime_manage(
+    db: AsyncSession,
+    *,
+    admin: AdminUser,
+    target_agent_id: uuid.UUID,
+) -> None:
+    allowed = await admin_agent_access_service.has_permission(
+        db,
+        admin_user_id=admin.id,
+        role_key=admin.role,
+        agent_id=target_agent_id,
+        permission=AdminPermission.RUNTIME_MANAGE,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation or agent not found",
+        )
+
+
+def _raise_assignment_error(exc: ConversationAutomationAssignmentError) -> NoReturn:
+    if isinstance(
+        exc,
+        (
+            ConversationAutomationAssignmentNotFoundError,
+            ConversationAutomationAssignmentInactiveAgentError,
+        ),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation or agent not found",
+        ) from exc
+    if isinstance(
+        exc,
+        (
+            ConversationAutomationAssignmentConflictError,
+            ConversationAutomationAssignmentClosedError,
+        ),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    if isinstance(exc, ConversationAutomationAssignmentValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    raise exc

@@ -13,10 +13,15 @@ from sqlalchemy.orm import aliased
 from app.models.admin_role import AdminRole
 from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
+from app.models.conversation_automation_assignment import (
+    ConversationAutomationAssignmentEvent,
+)
 from app.models.conversation_control import ConversationControlEvent
 from app.models.platform import ChatConversation, ChatMessage, Principal
 from app.schemas.conversation_control import ConversationControlEventOut
 from app.schemas.operator_inbox import (
+    AutomationAssignmentEventOut,
+    InboxAgentOut,
     InboxConversationOut,
     InboxMessageOut,
     InboxOperatorOut,
@@ -29,6 +34,12 @@ from app.services.conversation_control import ConversationNotFoundError
 @dataclass(frozen=True)
 class InboxPage:
     items: list[InboxConversationOut]
+    total: int
+
+
+@dataclass(frozen=True)
+class AutomationAssignmentHistoryPage:
+    items: list[AutomationAssignmentEventOut]
     total: int
 
 
@@ -81,10 +92,20 @@ class OperatorInboxService:
                     conversation,
                     principal,
                     assigned_operator,
+                    routing_agent,
+                    automation_agent,
                     int(count or 0),
                     activity,
                 )
-                for conversation, principal, assigned_operator, count, activity in rows
+                for (
+                    conversation,
+                    principal,
+                    assigned_operator,
+                    routing_agent,
+                    automation_agent,
+                    count,
+                    activity,
+                ) in rows
             ],
             total=total,
         )
@@ -103,7 +124,15 @@ class OperatorInboxService:
         ).one_or_none()
         if row is None:
             raise ConversationNotFoundError("conversation not found")
-        conversation, principal, assigned_operator, count, activity = row
+        (
+            conversation,
+            principal,
+            assigned_operator,
+            routing_agent,
+            automation_agent,
+            count,
+            activity,
+        ) = row
         messages = list(
             (
                 await db.execute(
@@ -139,6 +168,8 @@ class OperatorInboxService:
                 conversation,
                 principal,
                 assigned_operator,
+                routing_agent,
+                automation_agent,
                 int(count or 0),
                 activity,
             ),
@@ -146,6 +177,73 @@ class OperatorInboxService:
             control_events=[
                 ConversationControlEventOut.from_model(event) for event in events
             ],
+        )
+
+    async def list_automation_assignments(
+        self,
+        db: AsyncSession,
+        *,
+        agent_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> AutomationAssignmentHistoryPage:
+        await self._assert_conversation_exists(
+            db,
+            agent_id=agent_id,
+            conversation_id=conversation_id,
+        )
+        from_agent = aliased(AgentProfile, name="assignment_from_agent")
+        to_agent = aliased(AgentProfile, name="assignment_to_agent")
+        scoped = (
+            ConversationAutomationAssignmentEvent.conversation_id == conversation_id
+        )
+        total = int(
+            (
+                await db.execute(
+                    select(func.count(ConversationAutomationAssignmentEvent.id)).where(
+                        scoped,
+                        ConversationAutomationAssignmentEvent.routing_agent_id
+                        == agent_id,
+                    )
+                )
+            ).scalar_one()
+        )
+        rows = (
+            await db.execute(
+                select(
+                    ConversationAutomationAssignmentEvent,
+                    from_agent,
+                    to_agent,
+                )
+                .join(
+                    from_agent,
+                    from_agent.id
+                    == ConversationAutomationAssignmentEvent.from_automation_agent_id,
+                )
+                .join(
+                    to_agent,
+                    to_agent.id
+                    == ConversationAutomationAssignmentEvent.to_automation_agent_id,
+                )
+                .where(
+                    scoped,
+                    ConversationAutomationAssignmentEvent.routing_agent_id == agent_id,
+                )
+                .order_by(
+                    ConversationAutomationAssignmentEvent.created_at.desc(),
+                    ConversationAutomationAssignmentEvent.id.desc(),
+                )
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        return AutomationAssignmentHistoryPage(
+            items=[
+                self._automation_assignment_out(event, previous_agent, next_agent)
+                for event, previous_agent, next_agent in rows
+            ],
+            total=total,
         )
 
     async def list_operators(
@@ -193,15 +291,24 @@ class OperatorInboxService:
             ChatConversation.updated_at,
         )
         assigned_operator = aliased(AdminUser, name="assigned_operator")
+        routing_agent = aliased(AgentProfile, name="routing_agent")
+        automation_agent = aliased(AgentProfile, name="automation_agent")
         statement = (
             select(
                 ChatConversation,
                 Principal,
                 assigned_operator,
+                routing_agent,
+                automation_agent,
                 message_count,
                 last_activity,
             )
             .join(Principal, Principal.id == ChatConversation.principal_id)
+            .join(routing_agent, routing_agent.id == ChatConversation.agent_id)
+            .join(
+                automation_agent,
+                automation_agent.id == ChatConversation.automation_agent_id,
+            )
             .outerjoin(
                 message_stats,
                 message_stats.c.conversation_id == ChatConversation.id,
@@ -257,10 +364,30 @@ class OperatorInboxService:
             raise ConversationNotFoundError("agent not found")
 
     @staticmethod
+    async def _assert_conversation_exists(
+        db: AsyncSession,
+        *,
+        agent_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        exists = (
+            await db.execute(
+                select(ChatConversation.id).where(
+                    ChatConversation.id == conversation_id,
+                    ChatConversation.agent_id == agent_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise ConversationNotFoundError("conversation not found")
+
+    @staticmethod
     def _conversation_out(
         conversation: ChatConversation,
         principal: Principal,
         assigned_operator: object | None,
+        routing_agent: AgentProfile,
+        automation_agent: AgentProfile,
         message_count: int,
         last_activity: datetime,
     ) -> InboxConversationOut:
@@ -280,6 +407,15 @@ class OperatorInboxService:
             status=conversation.status,
             control_mode=conversation.control_mode,
             control_version=conversation.control_version,
+            routing_agent=InboxAgentOut(
+                id=routing_agent.id,
+                name=routing_agent.name,
+            ),
+            automation_agent=InboxAgentOut(
+                id=automation_agent.id,
+                name=automation_agent.name,
+            ),
+            automation_version=conversation.automation_version,
             assigned_operator=operator,
             control_changed_at=conversation.control_changed_at,
             control_reason=conversation.control_reason,
@@ -305,6 +441,30 @@ class OperatorInboxService:
             origin=str(origin) if origin else None,
             actor_admin_id=actor_admin_id,
             created_at=message.created_at,
+        )
+
+    @staticmethod
+    def _automation_assignment_out(
+        event: ConversationAutomationAssignmentEvent,
+        from_agent: AgentProfile,
+        to_agent: AgentProfile,
+    ) -> AutomationAssignmentEventOut:
+        return AutomationAssignmentEventOut(
+            event_id=event.id,
+            from_automation_agent=InboxAgentOut(
+                id=from_agent.id,
+                name=from_agent.name,
+            ),
+            to_automation_agent=InboxAgentOut(
+                id=to_agent.id,
+                name=to_agent.name,
+            ),
+            automation_version=event.automation_version,
+            applied=event.applied,
+            trigger=event.trigger,
+            actor_admin_id=event.actor_admin_id,
+            reason=event.reason,
+            created_at=event.created_at,
         )
 
 
