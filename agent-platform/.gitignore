@@ -29,7 +29,7 @@ env/
 
 # Alembic
 # Las migraciones de Alembic SÍ se versionan en git para colaboración entre devs.
-# El placeholder .gitkeep se mantiene por compatibilidad.
+# No se agrega ninguna regla de exclusión para el historial de migraciones.
 
 # Docker volumes (nunca en el repo)
 postgres_data/

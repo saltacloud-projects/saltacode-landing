@@ -1,11 +1,13 @@
 # Technical-debt audit — 2026-09-05
 
+> Historical snapshot. Counts and validation results below are evidence for the repository state reviewed on 2026-09-05, not for the current working tree or production. The current application paths are included for navigation.
+
 ## Scope and method
 
 This audit re-evaluates the three product fronts after the 2026-08-29 remediation:
 
-- `frontend/`: Astro landing, browser scripts, routes, styles, and generated assets;
-- `backend/` and `contracts/`: public FastAPI BFF and versioned chat boundary;
+- `apps/landing/`: Astro landing, browser scripts, routes, styles, and generated assets;
+- `apps/web-bff/` and `contracts/`: public FastAPI BFF and versioned chat boundary;
 - `agent-platform/`: private API, persistence, workers, integrations, and administration panel.
 
 Code was removed only when CodeGraph, repository-wide references, dependency trees, generated output, and focused tests agreed that it had no consumer. Framework entrypoints, dynamic registrations, public compatibility routes, historical migrations, and operator scripts were not classified as dead from a missing static caller alone.

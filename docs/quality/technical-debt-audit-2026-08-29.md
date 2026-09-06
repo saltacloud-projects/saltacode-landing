@@ -1,19 +1,21 @@
 # Technical-debt audit — 2026-08-29
 
+> Historical snapshot. Counts, paths, and runtime claims below describe the repository at the audit date. The current boundaries are `apps/landing/`, `apps/web-bff/`, `agent-platform/api/`, and `agent-platform/panel/`; use the current topology and verification gates rather than this report as release evidence.
+
 ## Outcome
 
 The repository has a viable architecture for a solo maintainer. The reviewed debt does not justify a rewrite: the correct direction is to preserve the current deployable boundaries, keep their contracts explicit, and extract capabilities only when verified coupling makes that necessary.
 
 The bounded code-debt remediation is complete and the root verification gate passes. This does **not** mean that the product has no future work. The remaining items are production evidence, compatibility-retirement decisions, credential rotation, and professional legal review rather than unidentified dead code or an unresolved architectural foundation.
 
-## Current architecture
+## Architecture at the audit date
 
 | Deployable or boundary | Responsibility | Persistence and coupling |
 |---|---|---|
-| `frontend/` | Static-first Astro site, indexable content, deferred chat UI, theme and navigation. | No provider secrets or durable chat state; calls the same-origin BFF contract. |
-| `backend/` | Public FastAPI BFF for origin checks, consent, session identity, rate limiting, contract adaptation, and SSE. | Ephemeral Redis rate limits; private authenticated call to one persisted agent route. |
-| `agent-platform/fastapi/` | Multi-agent runtime, channel routing, encrypted connections, tools, RAG, conversation history, audit, and provider orchestration. | PostgreSQL and internal Redis; no direct browser trust. |
-| `agent-platform/frontend/` | Administration panel organized around shared resource libraries and a selected agent workspace. | Uses the Agent API; credentials remain write-only. |
+| `apps/landing/` | Static-first Astro site, indexable content, deferred chat UI, theme and navigation. | No provider secrets or durable chat state; calls the same-origin BFF contract. |
+| `apps/web-bff/` | Public FastAPI BFF for origin checks, consent, session identity, rate limiting, contract adaptation, and SSE. | Ephemeral Redis rate limits; private authenticated call to one persisted agent route. |
+| `agent-platform/api/` | Multi-agent runtime, channel routing, encrypted connections, tools, RAG, conversation history, audit, and provider orchestration. | PostgreSQL and internal Redis; no direct browser trust. |
+| `agent-platform/panel/` | Administration panel organized around shared resource libraries and a selected agent workspace. | Uses the Agent API; credentials remain write-only. |
 | `contracts/` | Versioned browser-to-BFF and BFF-to-agent schemas. | Prevents either deployable from depending on internal implementation details. |
 | `compose.yml` and `infrastructure/` | Independent site and agent release units plus the private bridge and host-managed Tunnel routing. | Site rollback does not reset agent data; agent rollback does not rebuild the landing. |
 

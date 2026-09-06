@@ -1,8 +1,8 @@
 # Human-led omnichannel sales architecture
 
-Status: proposed roadmap, not an implemented runtime contract.
+Status: active architecture contract with a dated implementation matrix below.
 
-This document turns the current SaltaCode agent platform into an incremental plan for commercial conversations across web, WhatsApp, Instagram Direct, and Facebook Messenger. Human intervention is a core capability, not an exception path.
+This document defines the commercial conversation architecture for web, WhatsApp, Instagram Direct, Facebook Messenger, and future channels. Human intervention is a core capability, not an exception path. A capability is not considered active merely because its model or adapter exists: provider configuration and production evidence remain separate gates.
 
 ## Product outcome
 
@@ -15,7 +15,7 @@ Channels are adapters to those responsibilities; they are not separate agents. O
 
 The future quoting system remains authoritative for issued quotes. Model output is never a binding quote, approval, or contract.
 
-## Existing foundation
+## Repository foundation
 
 The repository already provides:
 
@@ -29,6 +29,23 @@ The repository already provides:
 
 This foundation should evolve through vertical slices. It should not be replaced with one service per channel or an event-sourced rewrite.
 
+## Implementation matrix
+
+Snapshot: 2026-09-06. `Implemented` means present and covered by repository checks; it does not prove that an external provider or production route is active.
+
+| Capability | Repository state | Activation state |
+|---|---|---|
+| Same-origin web chat v2, durable history, resumable events, and session reset | Implemented | Active only after the corresponding release is deployed and verified. |
+| Human pause, takeover, reply, assignment, resume, and audit | Implemented for persisted web conversations | Production behavior requires a deployed-version check. |
+| Shared outbound outbox, ordered delivery, and incident review | Implemented for the current WhatsApp boundary | Real delivery remains blocked until provider routes and failure semantics are verified. |
+| Canonical authenticated provider-inbound envelope | Implemented for the current WhatsApp ingress | Instagram Direct, Messenger, and email adapters do not exist yet; web uses its dedicated private v2 contract. |
+| Contact points, purpose-specific consent, identity-link claims, opportunities, follow-ups, and quote records | Implemented as persisted commercial capabilities | Automated follow-up execution and external delivery are partial. |
+| Commercial contact capture from the web chat | Implemented with explicit quote-delivery consent and optional follow-up consent | Requires the deployed web/BFF/platform chain. |
+| Route owner separated from acting automation agent | Persisted assignment model and versioned history implemented | Runtime handoff fencing is partial until every execution, tool, and outbound boundary consumes the automation epoch. |
+| Meetings | Not implemented | Blocked on product rules and calendar/provider integration. |
+| Instagram Direct and Messenger | Not implemented | Blocked on Meta application, permissions, secrets, callbacks, and canary evidence. |
+| Authoritative quote generation | Persistence and issuance gates implemented | Blocked on the external quote-system contract and provider integration. |
+
 ## Non-negotiable invariants
 
 1. A web session, phone number, Instagram account, and Facebook account are not automatically the same person.
@@ -39,7 +56,7 @@ This foundation should evolve through vertical slices. It should not be replaced
 6. Browser code never receives provider secrets, privileged policies, or trusted commercial calculations.
 7. A final quote may be sent only after the authoritative quote system reports an issued, versioned artifact.
 
-## Target topology
+## Reference topology
 
 ```text
 Web              WhatsApp          Instagram DM        Messenger
@@ -86,7 +103,7 @@ Provider-specific payloads remain inside adapters. Conversation policy consumes 
 
 ## Identity and consent
 
-Keep `Principal` and `ChannelIdentity`. Add relational state plus append-only evidence:
+`Principal` and `ChannelIdentity` remain the identity root. The current relational state adds append-only verification and consent evidence without inferring cross-channel identity.
 
 ### `IdentityLinkClaim`
 
@@ -103,7 +120,7 @@ Web-to-WhatsApp linking should use a short-lived, opaque, one-time proof. Merely
 - normalized lookup hash;
 - verification state, source, and timestamps.
 
-### `ConsentReceipt`
+### `ConsentRecord`
 
 - principal or provisional identity;
 - purpose, legal version, channel, and locale;
@@ -113,34 +130,47 @@ Consent for answering a current request is not automatically consent for commerc
 
 ## Human control kernel
 
-Add one current-state record and append-only assignments/audit events.
+The current-state fields live on `ChatConversation`; append-only events preserve control and acting-agent history.
 
-### `ConversationControl`
+### `ChatConversation` control projection
 
 ```text
-conversation_id
-mode: automated | paused | human
+id
+agent_id and automation_agent_id
+control_mode: automated | paused | human | closed
 control_version
-assigned_operator_id
-reason
-paused_at
-resumed_at
-updated_at
+automation_version
+assigned_admin_id
+control_reason
+control_changed_at
 ```
 
-### `ConversationAssignment`
+### `ConversationControlEvent`
 
 ```text
 conversation_id
-subject_type: agent | operator
-subject_id
-role
-valid_from
-valid_until
-assigned_by
+event_type: paused | taken_over | reassigned | resumed | closed
+from_mode and to_mode
+from_assigned_admin_id and to_assigned_admin_id
+control_version
+actor_admin_id
+created_at
 ```
 
-The conversation keeps its original owning agent. Reassignment and takeover do not rewrite history.
+### `ConversationAutomationAssignmentEvent`
+
+```text
+conversation_id
+routing_agent_id
+from_automation_agent_id and to_automation_agent_id
+automation_version
+trigger and opportunity_id
+actor_agent_id or actor_admin_id
+idempotency_key and command_hash
+created_at
+```
+
+The conversation keeps its original routing agent. Human reassignment, acting-agent handoff, and takeover do not rewrite that ownership or history. `control_version` fences human ownership changes; `automation_version` independently fences the acting automated identity.
 
 Every control mutation uses optimistic concurrency. A stale `control_version` returns `409 Conflict`. The runtime revalidates that version:
 
@@ -153,28 +183,29 @@ If the version changed, the automatic operation becomes cancelled or review-requ
 
 ## Commercial lifecycle
 
-Add only when the takeover slice is stable:
+The platform persists these commercial records:
 
-- `Lead`: qualified interest without assuming a verified contact route;
 - `Opportunity`: the commercial aggregate and lifecycle state;
 - `OpportunityConversation`: explicit links to independent channel threads;
 - `FollowUpTask`: scheduled action, owner, due time, policy, and outcome;
 - `QuoteRequest`: requirements submitted to the authoritative system;
 - `QuoteVersion`: immutable reference, status, currency, total, validity, content hash, and approval evidence.
 
-An opportunity begins when the visitor intentionally provides contact details for a proposal or explicitly requests continued commercial contact. If the contact route is unverified, its initial status records that fact.
+A qualified contact plus purpose-specific consent is the current pre-opportunity state; there is no separate `Lead` aggregate yet. An opportunity begins when the visitor intentionally provides contact details for a proposal or explicitly requests continued commercial contact. If the contact route is unverified, its initial status records that fact. Persisted follow-up records do not by themselves authorize or prove automatic delivery.
 
 ## Durable outbound boundary
 
-Direct sends from pipelines must be replaced with a shared transactional outbox.
+Automatic provider sends use the shared transactional outbox. New channel adapters must not reintroduce direct sends from conversation pipelines.
 
 ### `OutboundMessage`
 
 ```text
 conversation_id
 channel_route_id
-actor_type and actor_id
+agent_id
+sender_type and sender_admin_id
 control_version
+sequence
 idempotency_key and payload_hash
 status
 provider_message_id
@@ -186,10 +217,13 @@ created_at and updated_at
 
 ```text
 outbound_message_id
-attempt
-started_at and completed_at
-safe result/error code
+attempt_number
+worker_id
+control_version
+created_at
 ```
+
+`OutboundDeliveryEvent` stores append-only transition evidence and safe result codes. Acting-agent identity and `automation_version` still need to be snapshotted on automated outbound work before handoff activation is complete.
 
 Lifecycle:
 
@@ -205,7 +239,7 @@ Strict ordering is per conversation: a later item is not eligible while an earli
 
 ## Web contract evolution
 
-The current v1 contract remains compatible during the first migration. Human replies after the original request require a resumable v2 boundary:
+The v2 boundary is the server-authoritative web chat contract. The v1 contract remains only where an explicit compatibility path still consumes it:
 
 ```http
 POST /api/v2/chat/messages
@@ -244,34 +278,34 @@ The inbox needs filters by agent, channel, state, and assignee; a conversation v
 
 The visual agent selector is context, never authorization. Required object-scoped permissions include conversation read/takeover/reply/assign/resume, opportunity management, quote approval, and delivery review.
 
-## Delivery plan
+## Incremental delivery and activation plan
 
-### Phase 0 — freeze current invariants
+### Phase 0 — freeze current invariants (`implemented`, provider inventory pending)
 
-- Pin current contracts and migration heads in tests.
-- Inventory persisted routes and real provider callbacks before activation.
-- Keep new social routes and real WhatsApp traffic disabled.
+- Current contracts and migration heads are pinned in tests.
+- Persisted route and real provider-callback inventory remains an activation task.
+- New social routes and unverified real WhatsApp traffic remain disabled.
 
 **Gate:** repository, database, and provider state are explicitly known.
 
-### Phase 1 — human takeover on web
+### Phase 1 — human takeover on web (`implemented in repository`)
 
-- Add conversation control, assignments, object-scoped grants, and append-only audit.
-- Add the agent inbox and human composer.
-- Introduce resumable web history/events.
-- Revalidate `control_version` at every automatic effect boundary.
+- Conversation control, operator assignments, object-scoped grants, and append-only audit exist.
+- The agent inbox and human composer exist.
+- Web history and events are resumable.
+- `control_version` is revalidated at the implemented automatic effect boundaries.
 
 **Gate:** once takeover succeeds, no later automatic message or tool effect can be published.
 
-### Phase 2 — shared outbound outbox
+### Phase 2 — shared outbound outbox (`implemented in repository`)
 
-- Add transactional outbound messages and attempts.
-- Remove direct provider sends from pipelines.
-- Enforce per-conversation ordering, reconciliation, and delivery-unknown review.
+- Transactional outbound messages and immutable attempts exist.
+- Current WhatsApp conversation pipelines enqueue instead of sending directly.
+- Per-conversation ordering, reconciliation, and delivery-unknown review are enforced by the current outbox worker.
 
 **Gate:** a simulated crash after provider acceptance cannot cause an automatic duplicate send.
 
-### Phase 3 — WhatsApp canary
+### Phase 3 — WhatsApp canary (`blocked externally`)
 
 - Route WhatsApp replies through human control and the shared outbox.
 - Validate signature, deduplication, attachments, ordering, retry, uncertain delivery, and receipts against current provider behavior.
@@ -279,25 +313,25 @@ The visual agent selector is context, never authorization. Required object-scope
 
 **Gate:** one canary conversation passes inbound, takeover, manual reply, resume, and delivery audit without duplication.
 
-### Phase 4 — identity and opportunity lifecycle
+### Phase 4 — identity and opportunity lifecycle (`partial`)
 
-- Add verified identity links, contact points, purpose-specific consent, leads, opportunities, and follow-up tasks.
-- Add the handoff from public commercial assistant to opportunity assistant.
+- Verified identity-link claims, contact points, purpose-specific consent, opportunities, and follow-up-task records exist.
+- Deterministic opportunity routing and acting-agent assignment history exist; execution, tool, and outbound fencing by `automation_version` is not complete yet.
 
 **Gate:** no cross-channel merge or follow-up occurs without evidence and valid purpose consent.
 
-### Phase 5 — Instagram Direct and Messenger
+### Phase 5 — Instagram Direct and Messenger (`not implemented; blocked externally`)
 
 - Add one authenticated adapter per channel behind the canonical envelope and outbox contracts.
 - Verify provider permissions, identifiers, delivery behavior, and retention independently.
 
 **Gate:** each channel passes the same deduplication, takeover, ordering, and privacy suite before activation.
 
-### Phase 6 — authoritative quotes
+### Phase 6 — authoritative quotes (`partial; external integration blocked`)
 
-- Add a consumer-owned port to the quote system.
-- Store immutable quote versions and approval evidence.
-- Allow delivery only for `issued` versions through the outbox.
+- Quote requests and immutable authoritative-version evidence can be stored.
+- The consumer-owned port to the quote system does not exist yet.
+- Delivery remains blocked unless an authoritative `issued` version exists and the channel outbox accepts it.
 
 **Gate:** unavailable or unapproved quote data produces a retained opportunity and human handoff, never a fabricated final price.
 
@@ -314,7 +348,7 @@ The visual agent selector is context, never authorization. Required object-scope
 - No credential appears in browser code, API output, logs, or audit payloads.
 - No final quote is sent without an authoritative `issued` version.
 
-## Decisions required before activation
+## External decisions and evidence required before activation
 
 - Provider-specific retry and idempotency behavior for each Meta API.
 - Final policy and operator workflow for `delivery_unknown`.

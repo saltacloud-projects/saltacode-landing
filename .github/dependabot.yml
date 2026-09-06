@@ -134,3 +134,22 @@ updates:
           - version-update:semver-major
     commit-message:
       prefix: "chore(deps)"
+
+  - package-ecosystem: docker-compose
+    directory: "/agent-platform"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:45"
+      timezone: America/Argentina/Salta
+    groups:
+      agent-platform-compose-images:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
+    commit-message:
+      prefix: "chore(deps)"
