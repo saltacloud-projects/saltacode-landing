@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "client_message_id": {
+      "format": "uuid",
+      "title": "Client Message Id",
+      "type": "string"
+    },
+    "duplicate": {
+      "title": "Duplicate",
+      "type": "boolean"
+    },
+    "event_cursor": {
+      "minimum": 1,
+      "title": "Event Cursor",
+      "type": "integer"
+    },
+    "message_id": {
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string"
+    },
+    "status": {
+      "const": "accepted",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "client_message_id",
+    "message_id",
+    "status",
+    "event_cursor",
+    "duplicate"
+  ],
+  "title": "MessageAccepted",
+  "type": "object"
+}

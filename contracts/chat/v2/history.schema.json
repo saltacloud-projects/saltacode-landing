@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "HistoryMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "client_message_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Client Message Id",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 16000,
+          "title": "Content",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 30,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "client_message_id",
+        "role",
+        "content",
+        "status",
+        "created_at"
+      ],
+      "title": "HistoryMessage",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "control_mode": {
+      "enum": [
+        "automated",
+        "paused",
+        "human",
+        "closed"
+      ],
+      "title": "Control Mode",
+      "type": "string"
+    },
+    "latest_event_id": {
+      "minimum": 0,
+      "title": "Latest Event Id",
+      "type": "integer"
+    },
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/HistoryMessage"
+      },
+      "title": "Messages",
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "active",
+        "closed"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "control_mode",
+    "latest_event_id",
+    "messages"
+  ],
+  "title": "HistoryResponse",
+  "type": "object"
+}

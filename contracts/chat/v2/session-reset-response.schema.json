@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "latest_event_id": {
+      "minimum": 0,
+      "title": "Latest Event Id",
+      "type": "integer"
+    },
+    "status": {
+      "const": "active",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "latest_event_id"
+  ],
+  "title": "ResetResponse",
+  "type": "object"
+}

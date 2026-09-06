@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "ConversationEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "minimum": 1,
+          "title": "Cursor",
+          "type": "integer"
+        },
+        "event_type": {
+          "pattern": "^[a-z][a-z0-9.]{2,99}$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "2",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "cursor",
+        "event_type",
+        "occurred_at",
+        "payload"
+      ],
+      "title": "ConversationEvent",
+      "type": "object"
+    },
+    "StreamDone": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "const": "failed",
+          "default": "failed",
+          "title": "Outcome",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "2",
+          "default": "2",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "title": "StreamDone",
+      "type": "object"
+    },
+    "StreamFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "chat_temporarily_unavailable",
+          "default": "chat_temporarily_unavailable",
+          "title": "Code",
+          "type": "string"
+        },
+        "retryable": {
+          "const": true,
+          "default": true,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": "2",
+          "default": "2",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "title": "StreamFailure",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/ConversationEvent"
+    },
+    {
+      "$ref": "#/$defs/StreamFailure"
+    },
+    {
+      "$ref": "#/$defs/StreamDone"
+    }
+  ]
+}

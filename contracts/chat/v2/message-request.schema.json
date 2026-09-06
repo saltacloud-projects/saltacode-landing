@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "client_message_id": {
+      "format": "uuid",
+      "title": "Client Message Id",
+      "type": "string"
+    },
+    "locale": {
+      "default": "es-AR",
+      "enum": [
+        "es-AR",
+        "es",
+        "en"
+      ],
+      "title": "Locale",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 16000,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "privacy_version": {
+      "maxLength": 80,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Privacy Version",
+      "type": "string"
+    },
+    "transcript_consent": {
+      "const": true,
+      "title": "Transcript Consent",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "client_message_id",
+    "message",
+    "transcript_consent",
+    "privacy_version"
+  ],
+  "title": "BrowserMessageRequest",
+  "type": "object"
+}

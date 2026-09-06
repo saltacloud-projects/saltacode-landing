@@ -4,15 +4,34 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
+from app.chat_v2.contracts import (
+    BrowserMessageRequest,
+    BrowserResetRequest,
+    ConversationEvent,
+    HistoryResponse,
+    MessageAccepted,
+    ResetResponse,
+    StreamDone,
+    StreamFailure,
+)
 from app.contracts import ChatRequest, ChatStreamEvent, ProblemDetails
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-CONTRACT_DIRECTORY = REPOSITORY_ROOT / "contracts" / "chat" / "v1"
+CONTRACT_ROOT = REPOSITORY_ROOT / "contracts" / "chat"
 
-CONTRACTS = {
-    "request.schema.json": ChatRequest.model_json_schema(),
-    "stream-event.schema.json": TypeAdapter(ChatStreamEvent).json_schema(),
-    "problem.schema.json": ProblemDetails.model_json_schema(),
+CONTRACTS: dict[Path, dict[str, object]] = {
+    Path("v1/request.schema.json"): ChatRequest.model_json_schema(),
+    Path("v1/stream-event.schema.json"): TypeAdapter(ChatStreamEvent).json_schema(),
+    Path("v1/problem.schema.json"): ProblemDetails.model_json_schema(),
+    Path("v2/message-request.schema.json"): BrowserMessageRequest.model_json_schema(),
+    Path("v2/message-accepted.schema.json"): MessageAccepted.model_json_schema(),
+    Path("v2/history.schema.json"): HistoryResponse.model_json_schema(),
+    Path("v2/stream-event.schema.json"): TypeAdapter(
+        ConversationEvent | StreamFailure | StreamDone
+    ).json_schema(),
+    Path("v2/session-reset-request.schema.json"): BrowserResetRequest.model_json_schema(),
+    Path("v2/session-reset-response.schema.json"): ResetResponse.model_json_schema(),
+    Path("v2/problem.schema.json"): ProblemDetails.model_json_schema(),
 }
 
 
@@ -27,8 +46,8 @@ def main() -> int:
     args = parser.parse_args()
 
     drifted: list[Path] = []
-    for filename, schema in CONTRACTS.items():
-        path = CONTRACT_DIRECTORY / filename
+    for relative_path, schema in CONTRACTS.items():
+        path = CONTRACT_ROOT / relative_path
         expected = render(schema)
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != expected:
