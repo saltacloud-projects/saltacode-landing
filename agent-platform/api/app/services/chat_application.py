@@ -29,6 +29,11 @@ from app.services.agent_runtime import (
     ResolvedAgentRuntime,
     agent_runtime_resolver,
 )
+from app.services.conversation_control import (
+    AutomationBlockedError,
+    ControlVersionConflictError,
+    conversation_control_service,
+)
 from app.services.conversation_memory import conversation_memory_service
 from app.services.tool_policy import tool_policy_service
 from app.services.tools.registry import tool_registry
@@ -68,6 +73,7 @@ class ChatApplicationService:
         display_name: str | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
+        control_version: int | None = None,
         runtime: ResolvedAgentRuntime | None = None,
         redis=None,
     ) -> None:
@@ -117,6 +123,11 @@ class ChatApplicationService:
                 inbound_message_id=inbound.id,
                 output_message_id=outbound.id,
                 status="completed",
+                control_version=(
+                    conversation.control_version
+                    if control_version is None
+                    else control_version
+                ),
                 tools_used=list(tools_used),
             )
         )
@@ -141,7 +152,7 @@ class ChatApplicationService:
         channel_route_id: uuid.UUID,
         history_cache_ttl_seconds: int = 0,
         redis=None,
-    ) -> tuple[list[dict[str, str]], str | None]:
+    ) -> tuple[list[dict[str, str]], str | None, ChatConversation]:
         """Load only the neutral conversation owned by this agent and route."""
         conversation = (
             await db.execute(
@@ -154,7 +165,22 @@ class ChatApplicationService:
             )
         ).scalar_one_or_none()
         if conversation is None:
-            return [], None
+            identity = await self._resolve_identity(
+                db,
+                "whatsapp",
+                route_key,
+                external_subject,
+            )
+            conversation = await self._resolve_conversation(
+                db,
+                agent_id=agent_id,
+                principal_id=identity.principal_id,
+                channel="whatsapp",
+                external_thread_id=external_subject,
+                consent_version="whatsapp-existing-history-v1",
+                route_key=route_key,
+                channel_route_id=channel_route_id,
+            )
         if conversation.channel_route_id not in (None, channel_route_id):
             raise AgentNotReady("WhatsApp identity belongs to another route")
         return (
@@ -166,6 +192,7 @@ class ChatApplicationService:
                 cache_ttl_seconds=history_cache_ttl_seconds,
             ),
             conversation.summary,
+            conversation,
         )
 
     async def execute_web(
@@ -263,6 +290,7 @@ class ChatApplicationService:
             profile = resolved_profile
             conversation.transcript_consent = True
             conversation.consent_version = request.consent.version
+            execution.control_version = conversation.control_version
             history = await self._history(
                 db,
                 conversation.id,
@@ -315,9 +343,31 @@ class ChatApplicationService:
                 conversation_id=conversation.id,
                 inbound_message_id=inbound.id,
                 status="running",
+                control_version=conversation.control_version,
             )
             db.add(execution)
             await db.commit()
+
+        started = time.monotonic()
+
+        async def automation_guard() -> None:
+            await conversation_control_service.assert_automation_allowed(
+                db,
+                conversation_id=conversation.id,
+                agent_id=profile.id,
+                expected_version=execution.control_version,
+            )
+
+        try:
+            await automation_guard()
+        except (AutomationBlockedError, ControlVersionConflictError) as exc:
+            await self._mark_execution_control_blocked(
+                db,
+                inbound,
+                execution,
+                started=started,
+            )
+            raise AgentNotReady("conversation automation is not active") from exc
 
         context = ToolExecutionContext(
             request_id=str(request.request_id),
@@ -350,7 +400,6 @@ class ChatApplicationService:
             else {}
         )
 
-        started = time.monotonic()
         try:
             result = await run_agent_loop(
                 user_message=request.input,
@@ -366,7 +415,25 @@ class ChatApplicationService:
                 rag_area_ids_override=set(),
                 execution_context=context,
                 runtime=runtime,
+                automation_guard=automation_guard,
             )
+            await conversation_control_service.assert_automation_allowed(
+                db,
+                conversation_id=conversation.id,
+                agent_id=profile.id,
+                expected_version=execution.control_version,
+                for_update=True,
+            )
+        except (AutomationBlockedError, ControlVersionConflictError) as exc:
+            await self._mark_execution_control_blocked(
+                db,
+                inbound,
+                execution,
+                started=started,
+            )
+            raise AgentNotReady(
+                "conversation automation changed during execution"
+            ) from exc
         except Exception:
             execution.status = "failed"
             execution.error_code = "agent_execution_exception"
@@ -408,6 +475,20 @@ class ChatApplicationService:
         return ExecutionOutcome(
             output=result.response_text, tools_used=tuple(result.tools_used)
         )
+
+    @staticmethod
+    async def _mark_execution_control_blocked(
+        db: AsyncSession,
+        inbound: ChatMessage,
+        execution: ChatExecution,
+        *,
+        started: float,
+    ) -> None:
+        inbound.status = "completed"
+        execution.status = "blocked"
+        execution.error_code = "conversation_control_changed"
+        execution.duration_ms = int((time.monotonic() - started) * 1000)
+        await db.commit()
 
     async def _existing_outcome(
         self, db: AsyncSession, request_id: str

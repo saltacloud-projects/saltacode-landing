@@ -22,6 +22,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -53,6 +54,7 @@ logger = logging.getLogger(__name__)
 MAX_ITERATIONS = 12
 MAX_TOOL_CALLS = 25
 LOOP_TIMEOUT_SECONDS = 150
+AutomationGuard = Callable[[], Awaitable[None]]
 
 # ---------------------------------------------------------------------------
 # Resultado del agent loop
@@ -296,6 +298,7 @@ async def run_agent_loop(
     rag_area_ids_override: set[uuid.UUID] | None = None,
     rag_allow_disabled: bool = False,
     runtime: ResolvedAgentRuntime | None = None,
+    automation_guard: AutomationGuard | None = None,
 ) -> AgentLoopResult:
     """
     Ejecuta el agent loop con function calling de OpenAI.
@@ -306,6 +309,7 @@ async def run_agent_loop(
     """
     api_key = runtime.api_key if runtime is not None else settings.openai_api_key
     if not api_key:
+        await _check_automation_guard(automation_guard)
         return AgentLoopResult(
             response_text="El servicio de IA no está disponible en este momento.",
             status="error",
@@ -422,6 +426,8 @@ async def run_agent_loop(
     loop_start = time.monotonic()
 
     for iteration in range(1, max_iterations + 1):
+        await _check_automation_guard(automation_guard)
+
         # Check timeout global
         elapsed = time.monotonic() - loop_start
         if elapsed > loop_timeout_seconds:
@@ -480,6 +486,7 @@ async def run_agent_loop(
                 "agent_loop_llm_error",
                 extra={"request_id": request_id, "error_type": type(e).__name__},
             )
+            await _check_automation_guard(automation_guard)
             return AgentLoopResult(
                 response_text="Ocurrió un error al procesar tu consulta. Intentá de nuevo.",
                 files=files,
@@ -496,6 +503,7 @@ async def run_agent_loop(
         # Si no hay tool_calls → respuesta final
         if not msg.tool_calls:
             response_text = msg.content or "No pude generar una respuesta."
+            await _check_automation_guard(automation_guard)
             logger.info(
                 "agent_loop_completed",
                 extra={
@@ -585,6 +593,8 @@ async def run_agent_loop(
                     }
                 )
                 continue
+
+            await _check_automation_guard(automation_guard)
 
             # Ejecutar la tool
             logger.info(
@@ -717,6 +727,7 @@ async def run_agent_loop(
             "total_tool_calls": total_tool_calls,
         },
     )
+    await _check_automation_guard(automation_guard)
     return AgentLoopResult(
         response_text=(
             "Estuve buscando la información pero no pude completar la consulta. "
@@ -730,3 +741,8 @@ async def run_agent_loop(
         status="max_iterations",
         rag_hits=rag_trace,
     )
+
+
+async def _check_automation_guard(guard: AutomationGuard | None) -> None:
+    if guard is not None:
+        await guard()

@@ -240,9 +240,13 @@ class ConversationControlService:
         agent_id: uuid.UUID,
         for_update: bool,
     ) -> ChatConversation:
-        statement = select(ChatConversation).where(
-            ChatConversation.id == conversation_id,
-            ChatConversation.agent_id == agent_id,
+        statement = (
+            select(ChatConversation)
+            .where(
+                ChatConversation.id == conversation_id,
+                ChatConversation.agent_id == agent_id,
+            )
+            .execution_options(populate_existing=True)
         )
         if for_update:
             statement = statement.with_for_update()

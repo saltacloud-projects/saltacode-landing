@@ -17,6 +17,7 @@ todo. El único gate que permanece es el de seguridad (auth + permisos).
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select
 
@@ -27,17 +28,24 @@ from app.models.tool_config import ToolConfig
 from app.schemas.audit import AuditLogCreate
 from app.schemas.common import ChannelEnum, InputTypeEnum, StatusEnum
 from app.schemas.governance import AccessCheckRequest
+from app.services.agent_loop import AgentFile, run_agent_loop
 from app.services.agent_profile import agent_profile_service
 from app.services.agent_runtime import ResolvedAgentRuntime
 from app.services.audit import audit_service
 from app.services.configuration import configuration_service
 from app.services.conversation import conversation_service
+from app.services.conversation_control import (
+    AutomationBlockedError,
+    ControlVersionConflictError,
+    conversation_control_service,
+)
 from app.services.governance import governance_service
 from app.services.tools.registry import tool_registry
 from app.services.transcription import transcription_service
 from app.services.whatsapp import WhatsAppConnectionContext, whatsapp_service
 
 logger = logging.getLogger(__name__)
+AutomationGuard = Callable[[], Awaitable[None]]
 
 
 class WhatsAppDeliveryFailed(RuntimeError):
@@ -182,7 +190,13 @@ class PipelineService:
         request_id: str,
         connection: WhatsAppConnectionContext | None,
         require_accepted: bool,
+        automation_guard: AutomationGuard | None = None,
     ) -> str | None:
+        # This check narrows, but cannot eliminate, the race between a control
+        # transition and Meta accepting the direct request. A transactional outbox
+        # is required to fence that external side effect atomically.
+        if automation_guard is not None:
+            await automation_guard()
         message_id = await whatsapp_service.send_text_message(
             phone=phone,
             text=text,
@@ -192,6 +206,80 @@ class PipelineService:
         if require_accepted and not message_id:
             raise WhatsAppDeliveryFailed("Meta did not accept the WhatsApp message")
         return message_id
+
+    async def _deliver_agent_file(
+        self,
+        *,
+        agent_file: AgentFile,
+        phone: str,
+        request_id: str,
+        connection: WhatsAppConnectionContext | None,
+        automation_guard: AutomationGuard | None,
+    ) -> bool:
+        """Upload and send one artifact only while the captured epoch is active."""
+        if automation_guard is not None:
+            await automation_guard()
+        if agent_file.storage_key:
+            from app.services.rag.storage import document_storage
+
+            media_id = await whatsapp_service.upload_media_path(
+                file_path=document_storage.path_for(agent_file.storage_key),
+                filename=agent_file.name,
+                mime_type=agent_file.mime,
+                request_id=request_id,
+                connection=connection,
+            )
+        elif agent_file.content is not None:
+            media_id = await whatsapp_service.upload_media(
+                file_bytes=agent_file.content,
+                filename=agent_file.name,
+                mime_type=agent_file.mime,
+                request_id=request_id,
+                connection=connection,
+            )
+        else:
+            return False
+        if not media_id:
+            return False
+
+        if automation_guard is not None:
+            await automation_guard()
+        if agent_file.mime.startswith("image/"):
+            return bool(
+                await whatsapp_service.send_image_message(
+                    phone=phone,
+                    media_id=media_id,
+                    request_id=request_id,
+                    connection=connection,
+                )
+            )
+        return bool(
+            await whatsapp_service.send_document_message(
+                phone=phone,
+                media_id=media_id,
+                filename=agent_file.name,
+                request_id=request_id,
+                connection=connection,
+            )
+        )
+
+    @staticmethod
+    def _build_automation_guard(
+        *,
+        conversation_id: uuid.UUID,
+        agent_id: uuid.UUID,
+        control_version: int,
+    ) -> AutomationGuard:
+        async def guard() -> None:
+            async with AsyncSessionLocal() as control_db:
+                await conversation_control_service.assert_automation_allowed(
+                    control_db,
+                    conversation_id=conversation_id,
+                    agent_id=agent_id,
+                    expected_version=control_version,
+                )
+
+        return guard
 
     async def _process_locked(
         self,
@@ -223,6 +311,8 @@ class PipelineService:
         herramientas), que NO se relaja.
         """
         profile = resolved_runtime.profile if resolved_runtime is not None else None
+        automation_guard: AutomationGuard | None = None
+        control_version: int | None = None
         try:
             # Marcar el mensaje como leído + typing (feedback inmediato).
             if message_id:
@@ -275,6 +365,7 @@ class PipelineService:
                             request_id=request_id,
                             connection=whatsapp_connection,
                             require_accepted=propagate_errors,
+                            automation_guard=automation_guard,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -324,6 +415,7 @@ class PipelineService:
                             request_id=request_id,
                             connection=whatsapp_connection,
                             require_accepted=propagate_errors,
+                            automation_guard=automation_guard,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -387,6 +479,7 @@ class PipelineService:
                             request_id=request_id,
                             connection=whatsapp_connection,
                             require_accepted=propagate_errors,
+                            automation_guard=automation_guard,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -431,6 +524,7 @@ class PipelineService:
                         (
                             openai_history,
                             conversation_summary,
+                            controlled_conversation,
                         ) = await chat_application_service.load_whatsapp_context(
                             db,
                             agent_id=profile.id,
@@ -441,6 +535,14 @@ class PipelineService:
                             history_cache_ttl_seconds=resolved_runtime.config.history_cache_ttl_seconds,
                             redis=redis,
                         )
+                        control_version = controlled_conversation.control_version
+                        automation_guard = self._build_automation_guard(
+                            conversation_id=controlled_conversation.id,
+                            agent_id=profile.id,
+                            control_version=control_version,
+                        )
+                        await db.commit()
+                        await automation_guard()
                     else:
                         conv_window = await conversation_service.load_window(
                             phone, db, redis
@@ -479,6 +581,7 @@ class PipelineService:
                                 request_id=request_id,
                                 connection=whatsapp_connection,
                                 require_accepted=propagate_errors,
+                                automation_guard=automation_guard,
                             )
                             await self._finalize_pipeline(
                                 db=db,
@@ -530,6 +633,7 @@ class PipelineService:
                                 request_id=request_id,
                                 connection=whatsapp_connection,
                                 require_accepted=propagate_errors,
+                                automation_guard=automation_guard,
                             )
                             await self._finalize_pipeline(
                                 db=db,
@@ -589,6 +693,7 @@ class PipelineService:
                             request_id=request_id,
                             connection=whatsapp_connection,
                             require_accepted=propagate_errors,
+                            automation_guard=automation_guard,
                         )
                         await self._finalize_pipeline(
                             db=db,
@@ -677,6 +782,8 @@ class PipelineService:
                     # las llamadas externas, que pueden tardar).
                     await db.commit()
 
+                    if automation_guard is not None:
+                        await automation_guard()
                     if message_id:
                         await whatsapp_service.show_typing(
                             message_id, connection=whatsapp_connection
@@ -705,8 +812,6 @@ class PipelineService:
                     # herramientas/bases según haga falta. Sin clasificador,
                     # sin menús, sin ramas enlatadas.
                     # -----------------------------------------------------------
-                    from app.services.agent_loop import run_agent_loop
-
                     agent_result = await run_agent_loop(
                         user_message=content,
                         conversation_history=openai_history,
@@ -720,7 +825,10 @@ class PipelineService:
                         conversation_summary=conversation_summary,
                         execution_context=execution_context,
                         runtime=resolved_runtime,
+                        automation_guard=automation_guard,
                     )
+                    if automation_guard is not None:
+                        await automation_guard()
 
                     response_text = agent_result.response_text
 
@@ -729,49 +837,13 @@ class PipelineService:
                     # -----------------------------------------------------------
                     for agent_file in agent_result.files:
                         try:
-                            if agent_file.storage_key:
-                                from app.services.rag.storage import document_storage
-
-                                media_id = await whatsapp_service.upload_media_path(
-                                    file_path=document_storage.path_for(
-                                        agent_file.storage_key
-                                    ),
-                                    filename=agent_file.name,
-                                    mime_type=agent_file.mime,
-                                    request_id=request_id,
-                                    connection=whatsapp_connection,
-                                )
-                            elif agent_file.content is not None:
-                                media_id = await whatsapp_service.upload_media(
-                                    file_bytes=agent_file.content,
-                                    filename=agent_file.name,
-                                    mime_type=agent_file.mime,
-                                    request_id=request_id,
-                                    connection=whatsapp_connection,
-                                )
-                            else:
-                                media_id = None
-                            delivered = False
-                            if media_id:
-                                if agent_file.mime.startswith("image/"):
-                                    delivered = (
-                                        await whatsapp_service.send_image_message(
-                                            phone=phone,
-                                            media_id=media_id,
-                                            request_id=request_id,
-                                            connection=whatsapp_connection,
-                                        )
-                                    )
-                                else:
-                                    delivered = (
-                                        await whatsapp_service.send_document_message(
-                                            phone=phone,
-                                            media_id=media_id,
-                                            filename=agent_file.name,
-                                            request_id=request_id,
-                                            connection=whatsapp_connection,
-                                        )
-                                    )
+                            delivered = await self._deliver_agent_file(
+                                agent_file=agent_file,
+                                phone=phone,
+                                request_id=request_id,
+                                connection=whatsapp_connection,
+                                automation_guard=automation_guard,
+                            )
                             if not delivered and propagate_errors:
                                 raise WhatsAppDeliveryFailed(
                                     "Meta did not accept the WhatsApp attachment"
@@ -785,6 +857,11 @@ class PipelineService:
                                         "phone": phone,
                                     },
                                 )
+                        except (
+                            AutomationBlockedError,
+                            ControlVersionConflictError,
+                        ):
+                            raise
                         except Exception as file_exc:
                             logger.error(
                                 "pipeline_file_send_error",
@@ -805,6 +882,7 @@ class PipelineService:
                         request_id=request_id,
                         connection=whatsapp_connection,
                         require_accepted=propagate_errors,
+                        automation_guard=automation_guard,
                     )
                     # Guardar el texto enviado por wamid para poder resolver
                     # futuras respuestas citadas del usuario (ver quoted_id).
@@ -852,6 +930,7 @@ class PipelineService:
                         display_name=access.user.get("name") if access.user else None,
                         route_key=route_key,
                         channel_route_id=channel_route_id,
+                        control_version=control_version,
                         runtime=resolved_runtime,
                         redis=redis,
                     )
@@ -906,6 +985,16 @@ class PipelineService:
                     await db.rollback()
                     raise
 
+        except (AutomationBlockedError, ControlVersionConflictError):
+            logger.info(
+                "pipeline_automation_blocked",
+                extra={
+                    "request_id": request_id,
+                    "phone": phone,
+                    "control_version": control_version,
+                },
+            )
+            return
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
             logger.error(
@@ -932,11 +1021,22 @@ class PipelineService:
                             "⚠️ Ocurrió un error procesando tu mensaje. Por favor intentá de nuevo más tarde."
                         )
                     )
-                    await whatsapp_service.send_text_message(
+                    await self._send_required_text(
                         phone=phone,
                         text=error_msg,
                         request_id=request_id,
                         connection=whatsapp_connection,
+                        require_accepted=False,
+                        automation_guard=automation_guard,
+                    )
+                except (AutomationBlockedError, ControlVersionConflictError):
+                    logger.info(
+                        "pipeline_error_notification_blocked",
+                        extra={
+                            "request_id": request_id,
+                            "phone": phone,
+                            "control_version": control_version,
+                        },
                     )
                 except Exception:
                     logger.error(
