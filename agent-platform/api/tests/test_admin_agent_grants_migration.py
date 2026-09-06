@@ -21,7 +21,7 @@ def _config() -> Config:
 def test_admin_agent_grant_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == ["f3b7c9d1e456"]
+    assert scripts.get_heads() == ["f4c8d0e2f567"]
     assert scripts.get_revision("b8c2d4e6f901").down_revision == "a6f1d2c3e4b5"
 
 

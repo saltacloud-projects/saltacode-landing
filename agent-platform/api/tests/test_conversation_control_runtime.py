@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -21,7 +21,7 @@ from app.models.platform import (
 )
 from app.schemas.conversation_control import ConversationControlMode
 from app.schemas.executions import InternalExecutionRequest, TranscriptConsent
-from app.services.agent_loop import run_agent_loop
+from app.services.agent_loop import AgentLoopResult, run_agent_loop
 from app.services.chat_application import AgentNotReady, ChatApplicationService
 from app.services.conversation_control import (
     AutomationBlockedError,
@@ -390,6 +390,8 @@ async def test_whatsapp_human_control_persists_inbound_without_automation(
         id=uuid4(),
         principal_id=uuid4(),
         control_version=5,
+        automation_agent_id=profile.id,
+        automation_version=0,
     )
     runtime = SimpleNamespace(
         profile=profile,
@@ -422,6 +424,11 @@ async def test_whatsapp_human_control_persists_inbound_without_automation(
         module.chat_application_service,
         "record_whatsapp_inbound",
         inbound,
+    )
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "load_history_for_runtime",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         module.chat_application_service,
@@ -467,6 +474,148 @@ async def test_whatsapp_human_control_persists_inbound_without_automation(
     exchange.assert_not_awaited()
     notification.assert_not_awaited()
     module.whatsapp_service.show_typing.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_keeps_route_access_owner_but_runs_private_acting_agent(
+    monkeypatch,
+):
+    from app.services import pipeline as module
+
+    class FakeDb:
+        async def execute(self, _statement):
+            return _Result([])
+
+        async def commit(self):
+            return None
+
+        async def rollback(self):
+            return None
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return False
+
+    routing_profile = _profile()
+    acting_profile = _profile()
+    acting_profile.is_public = False
+    routing_runtime = SimpleNamespace(
+        profile=routing_profile,
+        config=SimpleNamespace(
+            history_message_limit=20,
+            history_cache_ttl_seconds=0,
+        ),
+    )
+    acting_runtime = SimpleNamespace(
+        profile=acting_profile,
+        config=SimpleNamespace(
+            history_message_limit=8,
+            history_cache_ttl_seconds=0,
+        ),
+    )
+    route_id = uuid4()
+    conversation = SimpleNamespace(
+        id=uuid4(),
+        principal_id=uuid4(),
+        agent_id=routing_profile.id,
+        automation_agent_id=acting_profile.id,
+        automation_version=3,
+        control_version=2,
+        summary="specialist context",
+    )
+    inbound_identity = SimpleNamespace(
+        principal_id=conversation.principal_id,
+        user_id=None,
+        display_name="Lead",
+    )
+    access = AsyncMock(return_value=inbound_identity)
+    resolve_acting = AsyncMock(return_value=acting_runtime)
+    exchange = AsyncMock()
+    loop = AsyncMock(
+        return_value=AgentLoopResult(
+            response_text="Specialist answer",
+            tools_used=[],
+            status="success",
+        )
+    )
+    guard = AsyncMock()
+
+    monkeypatch.setattr(module, "AsyncSessionLocal", FakeSession)
+    monkeypatch.setattr(module.whatsapp_service, "mark_as_read", AsyncMock())
+    monkeypatch.setattr(module.whatsapp_service, "show_typing", AsyncMock())
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "load_whatsapp_context",
+        AsyncMock(return_value=([], conversation.summary, conversation)),
+    )
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "load_history_for_runtime",
+        AsyncMock(return_value=[{"role": "assistant", "content": "history"}]),
+    )
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "record_whatsapp_inbound",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        module.chat_application_service,
+        "record_whatsapp_exchange",
+        exchange,
+    )
+    monkeypatch.setattr(module.inbound_access_policy, "resolve", access)
+    monkeypatch.setattr(module.agent_runtime_resolver, "resolve_agent", resolve_acting)
+    monkeypatch.setattr(module, "run_agent_loop", loop)
+    monkeypatch.setattr(
+        "app.services.tools.dynamic.sync_http_api_tools",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.tool_policy.tool_policy_service.available_tools",
+        AsyncMock(return_value=[]),
+    )
+    service = PipelineService()
+    monkeypatch.setattr(service, "_build_automation_guard", lambda **_kwargs: guard)
+    monkeypatch.setattr(service, "_log_audit", AsyncMock())
+
+    await service._process_locked(
+        phone="5493870000000",
+        content="I need a quote.",
+        message_id="wamid.private-acting",
+        input_type="text",
+        audio_media_id=None,
+        interactive_id=None,
+        quoted_id=None,
+        redis=None,
+        request_id="private-acting",
+        start=0.0,
+        resolved_runtime=routing_runtime,
+        whatsapp_connection=SimpleNamespace(),
+        route_key="whatsapp-route-owner",
+        channel_route_id=route_id,
+        propagate_errors=True,
+        notify_on_error=False,
+    )
+
+    assert access.await_args.kwargs["profile"] is routing_profile
+    resolve_acting.assert_awaited_once_with(
+        ANY,
+        acting_profile.id,
+        require_public=False,
+    )
+    loop_kwargs = loop.await_args.kwargs
+    assert loop_kwargs["profile"] is acting_profile
+    assert loop_kwargs["runtime"] is acting_runtime
+    assert loop_kwargs["execution_context"].agent_id == str(acting_profile.id)
+    assert loop_kwargs["execution_context"].routing_agent_id == str(routing_profile.id)
+    assert loop_kwargs["execution_context"].control_version == 2
+    assert loop_kwargs["execution_context"].automation_version == 3
+    assert exchange.await_args.kwargs["routing_profile"] is routing_profile
+    assert exchange.await_args.kwargs["acting_runtime"] is acting_runtime
+    assert exchange.await_args.kwargs["automation_version"] == 3
 
 
 @pytest.mark.integration

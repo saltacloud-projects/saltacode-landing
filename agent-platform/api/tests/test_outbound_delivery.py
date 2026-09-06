@@ -22,14 +22,18 @@ from app.services.outbound_delivery import (
 
 
 def _conversation(*, mode: str = "automated", version: int = 0):
+    agent_id = uuid4()
     return ChatConversation(
         id=uuid4(),
-        agent_id=uuid4(),
+        agent_id=agent_id,
+        automation_agent_id=agent_id,
+        automation_version=0,
         principal_id=uuid4(),
         channel="whatsapp",
         route_key="test-route",
         external_thread_id="test-subject",
         channel_route_id=uuid4(),
+        status="active",
         control_mode=mode,
         control_version=version,
         assigned_admin_id=uuid4() if mode == "human" else None,
@@ -56,6 +60,9 @@ def test_outbound_metadata_enforces_queue_and_append_only_contracts():
     assert "ck_outbound_message_sender_actor" in message_constraints
     assert "ck_outbound_message_kind" in message_constraints
     assert "ck_outbound_message_payload_shape" in message_constraints
+    assert "ck_outbound_message_automation_snapshot_pair" in message_constraints
+    assert OutboundMessage.__table__.c.automation_agent_id.nullable is True
+    assert OutboundMessage.__table__.c.automation_version.nullable is True
     assert OutboundMessage.__table__.c.destination.nullable is False
     assert OutboundMessage.__table__.c.chat_message_id.nullable is True
     assert (
@@ -87,12 +94,16 @@ def test_sender_fence_requires_current_mode_version_and_operator_owner():
         sender_type=OutboundSenderType.AUTOMATION,
         sender_admin_id=None,
         control_version=0,
+        automation_agent_id=automated.automation_agent_id,
+        automation_version=0,
     )
     service._assert_sender_fence(
         automated,
         sender_type=OutboundSenderType.SYSTEM,
         sender_admin_id=None,
         control_version=0,
+        automation_agent_id=automated.automation_agent_id,
+        automation_version=0,
     )
     with pytest.raises(OutboundFenceViolationError, match="epoch"):
         service._assert_sender_fence(
@@ -101,6 +112,26 @@ def test_sender_fence_requires_current_mode_version_and_operator_owner():
             sender_admin_id=None,
             control_version=1,
         )
+    with pytest.raises(OutboundFenceViolationError) as stale_automation:
+        service._assert_sender_fence(
+            automated,
+            sender_type=OutboundSenderType.AUTOMATION,
+            sender_admin_id=None,
+            control_version=0,
+            automation_agent_id=uuid4(),
+            automation_version=0,
+        )
+    assert stale_automation.value.safe_code == "conversation_automation_changed"
+    with pytest.raises(OutboundFenceViolationError) as stale_system:
+        service._assert_sender_fence(
+            automated,
+            sender_type=OutboundSenderType.SYSTEM,
+            sender_admin_id=None,
+            control_version=0,
+            automation_agent_id=automated.automation_agent_id,
+            automation_version=1,
+        )
+    assert stale_system.value.safe_code == "conversation_automation_changed"
 
     human = _conversation(mode="human", version=3)
     service._assert_sender_fence(
@@ -169,6 +200,8 @@ def test_payload_hash_changes_for_command_content_actor_and_control_epoch():
         "sender_type": OutboundSenderType.AUTOMATION,
         "sender_admin_id": None,
         "control_version": 0,
+        "automation_agent_id": conversation.automation_agent_id,
+        "automation_version": 0,
     }
 
     hashes = {
@@ -189,9 +222,10 @@ def test_payload_hash_changes_for_command_content_actor_and_control_epoch():
             }
         ),
         service._command_hash(**{**base, "control_version": 1}),
+        service._command_hash(**{**base, "automation_version": 1}),
     }
 
-    assert len(hashes) == 5
+    assert len(hashes) == 6
 
 
 def test_payload_validation_freezes_only_neutral_dispatch_data():

@@ -62,6 +62,12 @@ class TranscriptConsentRequired(RuntimeError):
     pass
 
 
+class WhatsAppAutomationBlockedError(AgentNotReady):
+    """The WhatsApp execution no longer owns its acting-agent epoch."""
+
+    safe_code = "conversation_automation_changed"
+
+
 @dataclass(frozen=True)
 class ExecutionOutcome:
     output: str
@@ -107,7 +113,8 @@ class ChatApplicationService:
         self,
         db: AsyncSession,
         *,
-        profile: AgentProfile,
+        routing_profile: AgentProfile,
+        acting_runtime: ResolvedAgentRuntime,
         request_id: str,
         external_subject: str,
         user_content: str,
@@ -116,9 +123,9 @@ class ChatApplicationService:
         display_name: str | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
-        control_version: int | None = None,
+        control_version: int,
+        automation_version: int,
         outbound_files: list[AgentFile] | None = None,
-        runtime: ResolvedAgentRuntime | None = None,
         redis=None,
     ) -> None:
         """Persist a WhatsApp exchange and its delivery commands atomically."""
@@ -126,7 +133,7 @@ class ChatApplicationService:
             return
         if route_key is None or channel_route_id is None:
             raise AgentNotReady("WhatsApp outbound requires an explicit route")
-        route_scope = route_key or profile.slug
+        route_scope = route_key or routing_profile.slug
         identity = await self._resolve_identity(
             db, "whatsapp", route_scope, external_subject
         )
@@ -137,7 +144,7 @@ class ChatApplicationService:
                 principal.kind = "verified"
         conversation = await self._resolve_conversation(
             db,
-            agent_id=profile.id,
+            agent_id=routing_profile.id,
             principal_id=identity.principal_id,
             channel="whatsapp",
             external_thread_id=external_subject,
@@ -145,8 +152,14 @@ class ChatApplicationService:
             route_key=route_scope,
             channel_route_id=channel_route_id,
         )
-        if conversation.automation_agent_id != profile.id:
-            raise AgentNotReady("conversation acting agent changed during execution")
+        conversation = await self._assert_whatsapp_execution_current(
+            db,
+            conversation=conversation,
+            routing_agent_id=routing_profile.id,
+            acting_agent_id=acting_runtime.profile.id,
+            control_version=control_version,
+            automation_version=automation_version,
+        )
         inbound = await self.record_whatsapp_inbound(
             db,
             conversation=conversation,
@@ -165,16 +178,15 @@ class ChatApplicationService:
         )
         db.add(outbound)
         await db.flush()
-        effective_control_version = (
-            conversation.control_version if control_version is None else control_version
-        )
         await self._enqueue_whatsapp_message(
             db,
             conversation=conversation,
             message=outbound,
             kind=OutboundKind.TEXT,
             payload={"text": assistant_content},
-            control_version=effective_control_version,
+            control_version=control_version,
+            automation_agent_id=acting_runtime.profile.id,
+            automation_version=automation_version,
             idempotency_key=f"whatsapp:{request_id}:assistant:text",
             correlation_id=request_id,
         )
@@ -185,7 +197,9 @@ class ChatApplicationService:
                 request_id=request_id,
                 index=index,
                 agent_file=agent_file,
-                control_version=effective_control_version,
+                control_version=control_version,
+                automation_agent_id=acting_runtime.profile.id,
+                automation_version=automation_version,
             )
         db.add(
             ChatExecution(
@@ -194,27 +208,28 @@ class ChatApplicationService:
                 inbound_message_id=inbound.id,
                 output_message_id=outbound.id,
                 status="completed",
-                control_version=effective_control_version,
-                automation_agent_id=conversation.automation_agent_id,
-                automation_version=conversation.automation_version,
+                control_version=control_version,
+                automation_agent_id=acting_runtime.profile.id,
+                automation_version=automation_version,
                 tools_used=list(tools_used),
             )
         )
         await db.flush()
         await conversation_memory_service.refresh_summary(
-            db, conversation=conversation, runtime=runtime
+            db, conversation=conversation, runtime=acting_runtime
         )
         await self._invalidate_history(
             redis,
             conversation.id,
-            runtime.config.history_message_limit if runtime else 20,
+            acting_runtime.config.history_message_limit,
         )
 
     async def record_whatsapp_notification(
         self,
         db: AsyncSession,
         *,
-        profile: AgentProfile,
+        routing_profile: AgentProfile,
+        acting_runtime: ResolvedAgentRuntime,
         request_id: str,
         purpose: str,
         external_subject: str,
@@ -222,6 +237,7 @@ class ChatApplicationService:
         route_key: str | None,
         channel_route_id: uuid.UUID | None,
         control_version: int,
+        automation_version: int,
     ) -> ChatMessage:
         """Persist one automated notification and delivery command atomically."""
         if route_key is None or channel_route_id is None:
@@ -234,13 +250,21 @@ class ChatApplicationService:
         )
         conversation = await self._resolve_conversation(
             db,
-            agent_id=profile.id,
+            agent_id=routing_profile.id,
             principal_id=identity.principal_id,
             channel="whatsapp",
             external_thread_id=external_subject,
             consent_version="whatsapp-existing-history-v1",
             route_key=route_key,
             channel_route_id=channel_route_id,
+        )
+        conversation = await self._assert_whatsapp_execution_current(
+            db,
+            conversation=conversation,
+            routing_agent_id=routing_profile.id,
+            acting_agent_id=acting_runtime.profile.id,
+            control_version=control_version,
+            automation_version=automation_version,
         )
         client_message_id = f"{request_id}:notification:{purpose}"
         message = (
@@ -273,6 +297,8 @@ class ChatApplicationService:
             kind=OutboundKind.TEXT,
             payload={"text": content},
             control_version=control_version,
+            automation_agent_id=acting_runtime.profile.id,
+            automation_version=automation_version,
             idempotency_key=f"whatsapp:{request_id}:notification:{purpose}",
             correlation_id=request_id,
         )
@@ -287,6 +313,8 @@ class ChatApplicationService:
         index: int,
         agent_file: AgentFile,
         control_version: int,
+        automation_agent_id: uuid.UUID,
+        automation_version: int,
     ) -> None:
         if agent_file.storage_key is None:
             raise AgentNotReady("WhatsApp outbound files require durable storage")
@@ -323,6 +351,8 @@ class ChatApplicationService:
                 "mime": agent_file.mime,
             },
             control_version=control_version,
+            automation_agent_id=automation_agent_id,
+            automation_version=automation_version,
             idempotency_key=f"whatsapp:{request_id}:assistant:file:{index}",
             correlation_id=request_id,
         )
@@ -336,6 +366,8 @@ class ChatApplicationService:
         kind: OutboundKind,
         payload: dict,
         control_version: int,
+        automation_agent_id: uuid.UUID,
+        automation_version: int,
         idempotency_key: str,
         correlation_id: str,
     ) -> None:
@@ -348,6 +380,8 @@ class ChatApplicationService:
             payload=payload,
             sender_type=OutboundSenderType.AUTOMATION,
             control_version=control_version,
+            automation_agent_id=automation_agent_id,
+            automation_version=automation_version,
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
         )
@@ -404,6 +438,23 @@ class ChatApplicationService:
             ),
             conversation.summary,
             conversation,
+        )
+
+    async def load_history_for_runtime(
+        self,
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        runtime: ResolvedAgentRuntime,
+        redis=None,
+    ) -> list[dict[str, str]]:
+        """Load history using the acting agent's bounded runtime configuration."""
+        return await self._history(
+            db,
+            conversation.id,
+            runtime.config.history_message_limit,
+            redis=redis,
+            cache_ttl_seconds=runtime.config.history_cache_ttl_seconds,
         )
 
     async def execute_web(
@@ -610,6 +661,9 @@ class ChatApplicationService:
             principal_id=str(identity.principal_id),
             conversation_id=str(conversation.id),
             agent_id=str(profile.id),
+            routing_agent_id=str(conversation.agent_id),
+            control_version=execution.control_version,
+            automation_version=execution.automation_version,
             external_subject=str(request.session_id),
             scopes=set(),
         )
@@ -862,6 +916,32 @@ class ChatApplicationService:
         db.add(conversation)
         await db.flush()
         return conversation
+
+    @staticmethod
+    async def _assert_whatsapp_execution_current(
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        routing_agent_id: uuid.UUID,
+        acting_agent_id: uuid.UUID,
+        control_version: int,
+        automation_version: int,
+    ) -> ChatConversation:
+        snapshot = await conversation_control_service.assert_automation_allowed(
+            db,
+            conversation_id=conversation.id,
+            agent_id=routing_agent_id,
+            expected_version=control_version,
+            for_update=True,
+        )
+        if (
+            snapshot.automation_agent_id != acting_agent_id
+            or snapshot.automation_version != automation_version
+        ):
+            raise WhatsAppAutomationBlockedError(
+                "conversation acting agent changed during execution"
+            )
+        return snapshot
 
     async def _history(
         self,

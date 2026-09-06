@@ -9,10 +9,16 @@ from sqlalchemy import delete, func, select
 
 from app.core.database import AsyncSessionLocal, engine
 from app.models.agent_profile import AgentProfile
-from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
+from app.models.agent_runtime import (
+    AgentRuntimeConfig,
+    ChannelAgentRoute,
+    ChannelConnection,
+    ProviderConnection,
+)
 from app.models.outbound import OutboundMessage
 from app.models.platform import ChannelIdentity, ChatExecution, ChatMessage, Principal
 from app.services.agent_loop import AgentFile
+from app.services.agent_runtime import ResolvedAgentRuntime
 from app.services.chat_application import AgentNotReady, ChatApplicationService
 
 pytestmark = pytest.mark.integration
@@ -59,6 +65,15 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
             )
             db.add(route)
             await db.commit()
+            runtime = ResolvedAgentRuntime(
+                profile=profile,
+                config=AgentRuntimeConfig(
+                    summary_enabled=False,
+                    history_message_limit=20,
+                ),
+                provider=ProviderConnection(),
+                api_key="test-key",
+            )
             connection_id = connection.id
             route_id = route.id
             route_key = route.route_key
@@ -66,7 +81,8 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
         async with AsyncSessionLocal() as db:
             await service.record_whatsapp_exchange(
                 db,
-                profile=profile,
+                routing_profile=profile,
+                acting_runtime=runtime,
                 request_id=request_id,
                 external_subject="5493870000000",
                 user_content="Please send the proposal.",
@@ -75,6 +91,7 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
                 route_key=route_key,
                 channel_route_id=route_id,
                 control_version=0,
+                automation_version=0,
                 outbound_files=[
                     AgentFile(
                         name="proposal.pdf",
@@ -129,6 +146,12 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
             assert all(message.status == "completed" for message in messages)
             assert [message.kind for message in outbound] == ["text", "document"]
             assert [message.status for message in outbound] == ["queued", "queued"]
+            assert all(
+                message.agent_id == profile.id
+                and message.automation_agent_id == profile.id
+                and message.automation_version == 0
+                for message in outbound
+            )
             assert outbound[1].payload_json == {
                 "storage_key": "blobs/ab/proposal.pdf",
                 "name": "proposal.pdf",
@@ -138,7 +161,8 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
         async with AsyncSessionLocal() as db:
             await service.record_whatsapp_exchange(
                 db,
-                profile=profile,
+                routing_profile=profile,
+                acting_runtime=runtime,
                 request_id=request_id,
                 external_subject="5493870000000",
                 user_content="Please send the proposal.",
@@ -147,6 +171,7 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
                 route_key=route_key,
                 channel_route_id=route_id,
                 control_version=0,
+                automation_version=0,
                 outbound_files=[
                     AgentFile(
                         name="proposal.pdf",
@@ -176,7 +201,8 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
         async with AsyncSessionLocal() as db:
             await service.record_whatsapp_exchange(
                 db,
-                profile=profile,
+                routing_profile=profile,
+                acting_runtime=runtime,
                 request_id=rollback_request_id,
                 external_subject="5493870000000",
                 user_content="This transaction will roll back.",
@@ -185,6 +211,7 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
                 route_key=route_key,
                 channel_route_id=route_id,
                 control_version=0,
+                automation_version=0,
             )
             await db.rollback()
 
@@ -218,7 +245,8 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
             with pytest.raises(AgentNotReady, match="durable storage"):
                 await service.record_whatsapp_exchange(
                     db,
-                    profile=profile,
+                    routing_profile=profile,
+                    acting_runtime=runtime,
                     request_id=in_memory_request_id,
                     external_subject="5493870000000",
                     user_content="Generate an in-memory file.",
@@ -227,6 +255,7 @@ async def test_whatsapp_exchange_and_commands_are_atomic_and_idempotent():
                     route_key=route_key,
                     channel_route_id=route_id,
                     control_version=0,
+                    automation_version=0,
                     outbound_files=[
                         AgentFile(
                             name="temporary.pdf",

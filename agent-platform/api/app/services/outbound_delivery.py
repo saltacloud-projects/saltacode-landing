@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import secrets
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -63,6 +64,10 @@ class OutboundIdempotencyConflictError(OutboundDeliveryError):
 class OutboundFenceViolationError(OutboundDeliveryError):
     """The sender does not own the current conversation-control epoch."""
 
+    def __init__(self, message: str, *, safe_code: str) -> None:
+        super().__init__(message)
+        self.safe_code = safe_code
+
 
 class OutboundClaimOwnershipError(OutboundDeliveryError):
     """A worker attempted to complete a claim it does not own."""
@@ -107,6 +112,8 @@ class OutboundDeliveryService:
         payload: Mapping[str, Any],
         sender_type: OutboundSenderType,
         control_version: int,
+        automation_agent_id: uuid.UUID | None = None,
+        automation_version: int | None = None,
         idempotency_key: str,
         correlation_id: str,
         sender_admin_id: uuid.UUID | None = None,
@@ -128,7 +135,8 @@ class OutboundDeliveryService:
         )
         if conversation.channel_route_id is None:
             raise OutboundFenceViolationError(
-                "outbound delivery requires an explicit channel route"
+                "outbound delivery requires an explicit channel route",
+                safe_code="conversation_control_changed",
             )
         destination = conversation.external_thread_id.strip()
         if not destination or len(destination) > 255:
@@ -148,6 +156,8 @@ class OutboundDeliveryService:
             sender_type=sender_type,
             sender_admin_id=sender_admin_id,
             control_version=control_version,
+            automation_agent_id=automation_agent_id,
+            automation_version=automation_version,
         )
         existing = (
             await db.execute(
@@ -158,7 +168,7 @@ class OutboundDeliveryService:
             )
         ).scalar_one_or_none()
         if existing is not None:
-            if existing.payload_hash != command_hash:
+            if not secrets.compare_digest(existing.payload_hash, command_hash):
                 raise OutboundIdempotencyConflictError(
                     "idempotency key belongs to another outbound command"
                 )
@@ -169,6 +179,8 @@ class OutboundDeliveryService:
             sender_type=sender_type,
             sender_admin_id=sender_admin_id,
             control_version=control_version,
+            automation_agent_id=automation_agent_id,
+            automation_version=automation_version,
         )
         sequence = conversation.next_outbound_sequence
         conversation.next_outbound_sequence += 1
@@ -183,6 +195,8 @@ class OutboundDeliveryService:
             sender_type=sender_type,
             sender_admin_id=sender_admin_id,
             control_version=control_version,
+            automation_agent_id=automation_agent_id,
+            automation_version=automation_version,
             sequence=sequence,
             idempotency_key=normalized_key,
             payload_hash=command_hash,
@@ -245,14 +259,21 @@ class OutboundDeliveryService:
                 for_update=True,
             )
             try:
+                self._assert_route_snapshot(conversation, message)
                 self._assert_sender_fence(
                     conversation,
                     sender_type=OutboundSenderType(message.sender_type),
                     sender_admin_id=message.sender_admin_id,
                     control_version=message.control_version,
+                    automation_agent_id=message.automation_agent_id,
+                    automation_version=message.automation_version,
                 )
-            except OutboundFenceViolationError:
-                self._cancel_stale_message(db, message=message)
+            except OutboundFenceViolationError as exc:
+                self._cancel_stale_message(
+                    db,
+                    message=message,
+                    safe_code=exc.safe_code,
+                )
                 await db.flush()
                 continue
 
@@ -353,14 +374,22 @@ class OutboundDeliveryService:
             for_update=True,
         )
         try:
+            self._assert_route_snapshot(conversation, message)
             self._assert_sender_fence(
                 conversation,
                 sender_type=OutboundSenderType(message.sender_type),
                 sender_admin_id=message.sender_admin_id,
                 control_version=message.control_version,
+                automation_agent_id=message.automation_agent_id,
+                automation_version=message.automation_version,
             )
-        except OutboundFenceViolationError:
-            self._cancel_stale_message(db, message=message, attempt=attempt)
+        except OutboundFenceViolationError as exc:
+            self._cancel_stale_message(
+                db,
+                message=message,
+                attempt=attempt,
+                safe_code=exc.safe_code,
+            )
             await db.flush()
             return None
         return message
@@ -472,15 +501,36 @@ class OutboundDeliveryService:
         return conversation
 
     @staticmethod
+    def _assert_route_snapshot(
+        conversation: ChatConversation,
+        message: OutboundMessage,
+    ) -> None:
+        """Fence routing ownership under the conversation control safe code."""
+        if conversation.channel_route_id != message.channel_route_id:
+            raise OutboundFenceViolationError(
+                "conversation route changed",
+                safe_code="conversation_control_changed",
+            )
+
+    @staticmethod
     def _assert_sender_fence(
         conversation: ChatConversation,
         *,
         sender_type: OutboundSenderType,
         sender_admin_id: uuid.UUID | None,
         control_version: int,
+        automation_agent_id: uuid.UUID | None = None,
+        automation_version: int | None = None,
     ) -> None:
-        if conversation.control_version != control_version:
-            raise OutboundFenceViolationError("conversation control epoch changed")
+        if (
+            conversation.status != "active"
+            or conversation.control_mode == "closed"
+            or conversation.control_version != control_version
+        ):
+            raise OutboundFenceViolationError(
+                "conversation control epoch changed",
+                safe_code="conversation_control_changed",
+            )
         if sender_type == OutboundSenderType.OPERATOR:
             if (
                 conversation.control_mode != "human"
@@ -488,16 +538,34 @@ class OutboundDeliveryService:
                 or conversation.assigned_admin_id != sender_admin_id
             ):
                 raise OutboundFenceViolationError(
-                    "operator does not own this conversation"
+                    "operator does not own this conversation",
+                    safe_code="conversation_control_changed",
                 )
             return
         if sender_admin_id is not None:
             raise OutboundFenceViolationError(
-                "non-operator sender cannot impersonate an administrator"
+                "non-operator sender cannot impersonate an administrator",
+                safe_code="conversation_control_changed",
             )
         if conversation.control_mode != "automated":
             raise OutboundFenceViolationError(
-                "automation is blocked for this conversation"
+                "automation is blocked for this conversation",
+                safe_code="conversation_control_changed",
+            )
+        # Both automation and system messages can originate from unattended
+        # workflows. Neither may bypass the acting-agent epoch fence.
+        if sender_type in (
+            OutboundSenderType.AUTOMATION,
+            OutboundSenderType.SYSTEM,
+        ) and (
+            automation_agent_id is None
+            or automation_version is None
+            or conversation.automation_agent_id != automation_agent_id
+            or conversation.automation_version != automation_version
+        ):
+            raise OutboundFenceViolationError(
+                "conversation automation epoch changed",
+                safe_code="conversation_automation_changed",
             )
 
     @staticmethod
@@ -511,12 +579,18 @@ class OutboundDeliveryService:
         sender_type: OutboundSenderType,
         sender_admin_id: uuid.UUID | None,
         control_version: int,
+        automation_agent_id: uuid.UUID | None = None,
+        automation_version: int | None = None,
     ) -> str:
         payload = {
             "agent_id": str(conversation.agent_id),
             "channel_route_id": str(conversation.channel_route_id),
             "chat_message_id": str(chat_message_id) if chat_message_id else None,
             "control_version": control_version,
+            "automation_agent_id": (
+                str(automation_agent_id) if automation_agent_id else None
+            ),
+            "automation_version": automation_version,
             "conversation_id": str(conversation.id),
             "destination": destination,
             "kind": kind,
@@ -768,6 +842,7 @@ class OutboundDeliveryService:
         *,
         message: OutboundMessage,
         attempt: OutboundAttempt | None = None,
+        safe_code: str,
     ) -> None:
         previous_status = message.status
         message.status = "cancelled"
@@ -782,7 +857,7 @@ class OutboundDeliveryService:
             to_status="cancelled",
             actor_type="system",
             actor_id=None,
-            safe_code="control_fence_changed",
+            safe_code=safe_code,
         )
 
     @staticmethod

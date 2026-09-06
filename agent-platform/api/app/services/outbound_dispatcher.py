@@ -158,6 +158,7 @@ class OutboundDispatcher:
                     .where(
                         ChannelAgentRoute.id == message.channel_route_id,
                         ChannelAgentRoute.agent_id == message.agent_id,
+                        ChannelAgentRoute.is_active.is_(True),
                     )
                     .with_for_update()
                 )
@@ -171,7 +172,10 @@ class OutboundDispatcher:
             (
                 await db.execute(
                     select(ChannelConnection)
-                    .where(ChannelConnection.id == route.channel_connection_id)
+                    .where(
+                        ChannelConnection.id == route.channel_connection_id,
+                        ChannelConnection.is_active.is_(True),
+                    )
                     .with_for_update()
                 )
             )

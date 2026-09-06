@@ -24,6 +24,7 @@ from sqlalchemy import select
 from app.core.concurrency import pipeline_semaphore
 from app.core.database import AsyncSessionLocal
 from app.core.dedup_lock import conversation_lock
+from app.models.agent_profile import AgentProfile
 from app.models.outbound import OutboundMessage
 from app.models.platform import ChatMessage
 from app.models.tool_config import ToolConfig
@@ -31,9 +32,16 @@ from app.schemas.audit import AuditLogCreate
 from app.schemas.common import ChannelEnum, InputTypeEnum, StatusEnum
 from app.schemas.inbound import InboundMessageEnvelope
 from app.services.agent_loop import run_agent_loop
-from app.services.agent_runtime import ResolvedAgentRuntime
+from app.services.agent_runtime import (
+    AgentRuntimeUnavailable,
+    ResolvedAgentRuntime,
+    agent_runtime_resolver,
+)
 from app.services.audit import audit_service
-from app.services.chat_application import chat_application_service
+from app.services.chat_application import (
+    WhatsAppAutomationBlockedError,
+    chat_application_service,
+)
 from app.services.conversation_control import (
     AutomationBlockedError,
     ControlVersionConflictError,
@@ -227,15 +235,26 @@ class PipelineService:
         conversation_id: uuid.UUID,
         agent_id: uuid.UUID,
         control_version: int,
+        automation_agent_id: uuid.UUID,
+        automation_version: int,
     ) -> AutomationGuard:
         async def guard() -> None:
             async with AsyncSessionLocal() as control_db:
-                await conversation_control_service.assert_automation_allowed(
-                    control_db,
-                    conversation_id=conversation_id,
-                    agent_id=agent_id,
-                    expected_version=control_version,
+                conversation = (
+                    await conversation_control_service.assert_automation_allowed(
+                        control_db,
+                        conversation_id=conversation_id,
+                        agent_id=agent_id,
+                        expected_version=control_version,
+                    )
                 )
+                if (
+                    conversation.automation_agent_id != automation_agent_id
+                    or conversation.automation_version != automation_version
+                ):
+                    raise WhatsAppAutomationBlockedError(
+                        "conversation acting agent changed during execution"
+                    )
 
         return guard
 
@@ -272,9 +291,13 @@ class PipelineService:
             raise PipelineFinalizationFailed(
                 "WhatsApp processing requires a persisted route"
             )
-        profile = resolved_runtime.profile
+        routing_runtime = resolved_runtime
+        routing_profile = routing_runtime.profile
+        acting_runtime = routing_runtime
+        profile = acting_runtime.profile
         automation_guard: AutomationGuard | None = None
         control_version: int | None = None
+        automation_version: int | None = None
         try:
             # Marcar el mensaje como leído + typing (feedback inmediato).
             if message_id:
@@ -292,26 +315,52 @@ class PipelineService:
                         controlled_conversation,
                     ) = await chat_application_service.load_whatsapp_context(
                         db,
-                        agent_id=profile.id,
+                        agent_id=routing_profile.id,
                         external_subject=phone,
-                        limit=resolved_runtime.config.history_message_limit,
+                        limit=0,
                         route_key=route_key,
                         channel_route_id=channel_route_id,
-                        history_cache_ttl_seconds=resolved_runtime.config.history_cache_ttl_seconds,
+                        history_cache_ttl_seconds=0,
                         redis=redis,
                     )
                     control_version = controlled_conversation.control_version
+                    automation_version = controlled_conversation.automation_version
+                    try:
+                        if (
+                            controlled_conversation.automation_agent_id
+                            == routing_profile.id
+                        ):
+                            acting_runtime = routing_runtime
+                        else:
+                            acting_runtime = await agent_runtime_resolver.resolve_agent(
+                                db,
+                                controlled_conversation.automation_agent_id,
+                                require_public=False,
+                            )
+                    except AgentRuntimeUnavailable as exc:
+                        raise PipelineFinalizationFailed(str(exc)) from exc
+                    profile = acting_runtime.profile
+                    openai_history = (
+                        await chat_application_service.load_history_for_runtime(
+                            db,
+                            conversation=controlled_conversation,
+                            runtime=acting_runtime,
+                            redis=redis,
+                        )
+                    )
                     automation_guard = self._build_automation_guard(
                         conversation_id=controlled_conversation.id,
-                        agent_id=profile.id,
+                        agent_id=routing_profile.id,
                         control_version=control_version,
+                        automation_agent_id=profile.id,
+                        automation_version=automation_version,
                     )
                     await db.commit()
 
                     try:
                         inbound_identity = await inbound_access_policy.resolve(
                             db,
-                            profile=profile,
+                            profile=routing_profile,
                             conversation=controlled_conversation,
                             sender_id=phone,
                             request_id=request_id,
@@ -344,10 +393,12 @@ class PipelineService:
                             persist_conversation=False,
                             error_code="access_denied",
                             error_message=str(exc),
-                            resolved_runtime=resolved_runtime,
+                            routing_profile=routing_profile,
+                            acting_runtime=acting_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
                             control_version=control_version,
+                            automation_version=automation_version,
                             raise_on_error=propagate_errors,
                         )
                         return
@@ -374,10 +425,12 @@ class PipelineService:
                             persist_conversation=False,
                             error_code="access_user_missing",
                             error_message="access policy returned an invalid identity",
-                            resolved_runtime=resolved_runtime,
+                            routing_profile=routing_profile,
+                            acting_runtime=acting_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
                             control_version=control_version,
+                            automation_version=automation_version,
                             raise_on_error=propagate_errors,
                         )
                         return
@@ -435,10 +488,12 @@ class PipelineService:
                                 status="error",
                                 persist_conversation=False,
                                 error_code="audio_no_media_id",
-                                resolved_runtime=resolved_runtime,
+                                routing_profile=routing_profile,
+                                acting_runtime=acting_runtime,
                                 route_key=route_key,
                                 channel_route_id=channel_route_id,
                                 control_version=control_version,
+                                automation_version=automation_version,
                                 raise_on_error=propagate_errors,
                             )
                             return
@@ -448,7 +503,7 @@ class PipelineService:
                                 media_id=audio_media_id,
                                 request_id=request_id,
                                 connection=whatsapp_connection,
-                                runtime=resolved_runtime,
+                                runtime=acting_runtime,
                             )
                         )
 
@@ -480,10 +535,12 @@ class PipelineService:
                                 status="error",
                                 persist_conversation=False,
                                 error_code="audio_transcription_failed",
-                                resolved_runtime=resolved_runtime,
+                                routing_profile=routing_profile,
+                                acting_runtime=acting_runtime,
                                 route_key=route_key,
                                 channel_route_id=channel_route_id,
                                 control_version=control_version,
+                                automation_version=automation_version,
                                 raise_on_error=propagate_errors,
                             )
                             return
@@ -532,10 +589,12 @@ class PipelineService:
                             tool_used=None,
                             status="unsupported",
                             persist_conversation=True,
-                            resolved_runtime=resolved_runtime,
+                            routing_profile=routing_profile,
+                            acting_runtime=acting_runtime,
                             route_key=route_key,
                             channel_route_id=channel_route_id,
                             control_version=control_version,
+                            automation_version=automation_version,
                             raise_on_error=propagate_errors,
                         )
                         return
@@ -568,6 +627,9 @@ class PipelineService:
                         principal_id=str(inbound_identity.principal_id),
                         conversation_id=str(controlled_conversation.id),
                         agent_id=str(profile.id),
+                        routing_agent_id=str(routing_profile.id),
+                        control_version=control_version,
+                        automation_version=automation_version,
                         external_subject=phone,
                         scopes={"tools:read", "tools:write"},
                     )
@@ -622,7 +684,7 @@ class PipelineService:
                         quoted_text = await self._resolve_quoted_text(
                             db,
                             quoted_id=quoted_id,
-                            agent_id=profile.id,
+                            agent_id=routing_profile.id,
                             channel_route_id=channel_route_id,
                             route_key=route_key,
                             redis=redis,
@@ -650,7 +712,7 @@ class PipelineService:
                         db=db,
                         conversation_summary=conversation_summary,
                         execution_context=execution_context,
-                        runtime=resolved_runtime,
+                        runtime=acting_runtime,
                         automation_guard=automation_guard,
                     )
                     if automation_guard is not None:
@@ -667,7 +729,8 @@ class PipelineService:
                     )
                     await chat_application_service.record_whatsapp_exchange(
                         db,
-                        profile=profile,
+                        routing_profile=routing_profile,
+                        acting_runtime=acting_runtime,
                         request_id=request_id,
                         external_subject=phone,
                         user_content=content,
@@ -677,8 +740,8 @@ class PipelineService:
                         route_key=route_key,
                         channel_route_id=channel_route_id,
                         control_version=control_version,
+                        automation_version=automation_version,
                         outbound_files=list(agent_result.files),
-                        runtime=resolved_runtime,
                         redis=redis,
                     )
 
@@ -687,7 +750,7 @@ class PipelineService:
                     # -----------------------------------------------------------
                     await self._log_audit(
                         db,
-                        agent_id=profile.id,
+                        agent_id=routing_profile.id,
                         channel_route_id=channel_route_id,
                         request_id=request_id,
                         phone=phone,
@@ -724,7 +787,11 @@ class PipelineService:
                     await db.rollback()
                     raise
 
-        except (AutomationBlockedError, ControlVersionConflictError):
+        except (
+            AutomationBlockedError,
+            ControlVersionConflictError,
+            WhatsAppAutomationBlockedError,
+        ):
             logger.info(
                 "pipeline_automation_blocked",
                 extra={
@@ -755,7 +822,7 @@ class PipelineService:
                             "⚠️ Ocurrió un error procesando tu mensaje. Por favor intentá de nuevo más tarde."
                         )
                     )
-                    if control_version is None:
+                    if control_version is None or automation_version is None:
                         raise PipelineFinalizationFailed(
                             "conversation control was not initialized"
                         )
@@ -764,7 +831,8 @@ class PipelineService:
                     async with AsyncSessionLocal() as db_err:
                         await chat_application_service.record_whatsapp_notification(
                             db_err,
-                            profile=resolved_runtime.profile,
+                            routing_profile=routing_profile,
+                            acting_runtime=acting_runtime,
                             request_id=request_id,
                             purpose="pipeline-error",
                             external_subject=phone,
@@ -772,9 +840,14 @@ class PipelineService:
                             route_key=route_key,
                             channel_route_id=channel_route_id,
                             control_version=control_version,
+                            automation_version=automation_version,
                         )
                         await db_err.commit()
-                except (AutomationBlockedError, ControlVersionConflictError):
+                except (
+                    AutomationBlockedError,
+                    ControlVersionConflictError,
+                    WhatsAppAutomationBlockedError,
+                ):
                     logger.info(
                         "pipeline_error_notification_blocked",
                         extra={
@@ -874,10 +947,12 @@ class PipelineService:
         persist_conversation: bool = True,
         error_code: str | None = None,
         error_message: str | None = None,
-        resolved_runtime: ResolvedAgentRuntime | None = None,
+        routing_profile: AgentProfile | None = None,
+        acting_runtime: ResolvedAgentRuntime | None = None,
         route_key: str | None = None,
         channel_route_id: uuid.UUID | None = None,
         control_version: int | None = None,
+        automation_version: int | None = None,
         raise_on_error: bool = False,
     ) -> None:
         """
@@ -895,10 +970,12 @@ class PipelineService:
         """
         try:
             if (
-                resolved_runtime is None
+                routing_profile is None
+                or acting_runtime is None
                 or route_key is None
                 or channel_route_id is None
                 or control_version is None
+                or automation_version is None
             ):
                 raise PipelineFinalizationFailed(
                     "WhatsApp finalization requires a persisted route and control epoch"
@@ -907,7 +984,8 @@ class PipelineService:
                 if persist_conversation:
                     await chat_application_service.record_whatsapp_exchange(
                         db,
-                        profile=resolved_runtime.profile,
+                        routing_profile=routing_profile,
+                        acting_runtime=acting_runtime,
                         request_id=request_id,
                         external_subject=phone,
                         user_content=content,
@@ -916,13 +994,14 @@ class PipelineService:
                         route_key=route_key,
                         channel_route_id=channel_route_id,
                         control_version=control_version,
-                        runtime=resolved_runtime,
+                        automation_version=automation_version,
                         redis=redis,
                     )
                 else:
                     await chat_application_service.record_whatsapp_notification(
                         db,
-                        profile=resolved_runtime.profile,
+                        routing_profile=routing_profile,
+                        acting_runtime=acting_runtime,
                         request_id=request_id,
                         purpose=intent,
                         external_subject=phone,
@@ -930,6 +1009,7 @@ class PipelineService:
                         route_key=route_key,
                         channel_route_id=channel_route_id,
                         control_version=control_version,
+                        automation_version=automation_version,
                     )
             except Exception as e:
                 logger.warning(
@@ -943,7 +1023,7 @@ class PipelineService:
                 raise
             await self._log_audit(
                 db,
-                agent_id=resolved_runtime.profile.id,
+                agent_id=routing_profile.id,
                 channel_route_id=channel_route_id,
                 request_id=request_id,
                 phone=phone,

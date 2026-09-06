@@ -74,8 +74,14 @@ class OutboundMessage(TimestampedModel):
             name="ck_outbound_message_status",
         ),
         CheckConstraint(
-            "control_version >= 0 AND sequence > 0 AND last_attempt_number >= 0",
+            "control_version >= 0 "
+            "AND (automation_version IS NULL OR automation_version >= 0) "
+            "AND sequence > 0 AND last_attempt_number >= 0",
             name="ck_outbound_message_counters",
+        ),
+        CheckConstraint(
+            "(automation_agent_id IS NULL) = (automation_version IS NULL)",
+            name="ck_outbound_message_automation_snapshot_pair",
         ),
         CheckConstraint(
             "char_length(idempotency_key) > 0 "
@@ -152,6 +158,13 @@ class OutboundMessage(TimestampedModel):
         index=True,
     )
     control_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    automation_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_profiles.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    automation_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)

@@ -29,6 +29,9 @@ class ToolExecutionContext(BaseModel):
     principal_id: str | None = None
     conversation_id: str | None = None
     agent_id: str | None = None
+    routing_agent_id: str | None = None
+    control_version: int | None = Field(default=None, ge=0)
+    automation_version: int | None = Field(default=None, ge=0)
     external_subject: str | None = None
     scopes: set[str] = Field(default_factory=set)
     allowed_source_ids: set[str] = Field(default_factory=set)

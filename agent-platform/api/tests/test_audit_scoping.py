@@ -229,10 +229,12 @@ async def test_pipeline_finalize_forwards_resolved_agent_and_route_scope(
         tool_used=None,
         status="success",
         persist_conversation=False,
-        resolved_runtime=runtime,
+        routing_profile=runtime.profile,
+        acting_runtime=runtime,
         route_key="route-a",
         channel_route_id=route_id,
         control_version=0,
+        automation_version=0,
     )
 
     assert log_audit.await_args.kwargs["agent_id"] == agent_id

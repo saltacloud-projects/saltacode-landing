@@ -219,6 +219,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
             payload={"text": "First automated answer"},
             sender_type=OutboundSenderType.AUTOMATION,
             control_version=0,
+            automation_agent_id=outbound_graph.agent_id,
+            automation_version=0,
             idempotency_key="automatic-answer-1",
             correlation_id="request-1",
         )
@@ -231,6 +233,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
             payload={"text": "First automated answer"},
             sender_type=OutboundSenderType.AUTOMATION,
             control_version=0,
+            automation_agent_id=outbound_graph.agent_id,
+            automation_version=0,
             idempotency_key="automatic-answer-1",
             correlation_id="request-1-retry",
         )
@@ -249,6 +253,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
                 payload={"text": "Changed automated answer"},
                 sender_type=OutboundSenderType.AUTOMATION,
                 control_version=0,
+                automation_agent_id=outbound_graph.agent_id,
+                automation_version=0,
                 idempotency_key="automatic-answer-1",
                 correlation_id="request-1",
             )
@@ -262,6 +268,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
                 payload={"template_key": "follow_up", "language": "es_AR"},
                 sender_type=OutboundSenderType.AUTOMATION,
                 control_version=0,
+                automation_agent_id=outbound_graph.agent_id,
+                automation_version=0,
                 idempotency_key="automatic-answer-1",
                 correlation_id="request-kind-conflict",
             )
@@ -275,6 +283,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
                 payload={"text": "Cross-agent answer"},
                 sender_type=OutboundSenderType.AUTOMATION,
                 control_version=0,
+                automation_agent_id=outbound_graph.agent_id,
+                automation_version=0,
                 idempotency_key="cross-agent",
                 correlation_id="request-cross-agent",
             )
@@ -294,6 +304,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
                 payload={"text": "Blocked automated answer"},
                 sender_type=OutboundSenderType.AUTOMATION,
                 control_version=1,
+                automation_agent_id=outbound_graph.agent_id,
+                automation_version=0,
                 idempotency_key="blocked-automation",
                 correlation_id="request-2",
             )
@@ -327,6 +339,8 @@ async def test_enqueue_is_idempotent_agent_scoped_and_control_fenced(outbound_gr
         await db.commit()
 
         assert operator.message.sequence == 2
+        assert operator.message.automation_agent_id is None
+        assert operator.message.automation_version is None
         assert conversation.next_outbound_sequence == 3
         event_count = (
             await db.execute(
@@ -370,6 +384,8 @@ async def test_concurrent_duplicate_enqueue_returns_the_same_record(outbound_gra
             payload={"text": "Concurrent answer"},
             sender_type=OutboundSenderType.AUTOMATION,
             control_version=0,
+            automation_agent_id=outbound_graph.agent_id,
+            automation_version=0,
             idempotency_key="concurrent-idempotency",
             correlation_id="concurrent-request",
         )
@@ -386,6 +402,8 @@ async def test_concurrent_duplicate_enqueue_returns_the_same_record(outbound_gra
             payload={"text": "Concurrent answer"},
             sender_type=OutboundSenderType.AUTOMATION,
             control_version=0,
+            automation_agent_id=outbound_graph.agent_id,
+            automation_version=0,
             idempotency_key="concurrent-idempotency",
             correlation_id="concurrent-request",
         )
@@ -424,6 +442,8 @@ async def test_frozen_file_command_survives_chat_message_change_and_delete(
             payload=payload,
             sender_type=OutboundSenderType.AUTOMATION,
             control_version=0,
+            automation_agent_id=outbound_graph.agent_id,
+            automation_version=0,
             idempotency_key="frozen-document",
             correlation_id="frozen-document-request",
         )
@@ -480,6 +500,8 @@ async def test_claim_is_fifo_parallel_and_stale_dispatch_blocks_only_its_convers
                 payload={"text": f"FIFO answer {offset}"},
                 sender_type=OutboundSenderType.AUTOMATION,
                 control_version=0,
+                automation_agent_id=outbound_graph.agent_id,
+                automation_version=0,
                 idempotency_key=f"fifo-{offset}",
                 correlation_id=f"fifo-request-{offset}",
             )
@@ -605,6 +627,8 @@ async def _enqueue_dispatcher_text(
                 payload={"text": f"Dispatcher answer {message_index}"},
                 sender_type=OutboundSenderType.AUTOMATION,
                 control_version=0,
+                automation_agent_id=graph.agent_id,
+                automation_version=0,
                 idempotency_key=idempotency_key,
                 correlation_id=f"correlation-{idempotency_key}",
             )
@@ -683,6 +707,56 @@ async def test_dispatcher_revalidates_control_before_provider_call(outbound_grap
         message = await db.get(OutboundMessage, outbound_id)
         assert message is not None
         assert message.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_revalidates_automation_before_provider_call(outbound_graph):
+    outbound_id = await _enqueue_dispatcher_text(
+        outbound_graph,
+        message_index=0,
+        idempotency_key="automation-fence-before-send",
+    )
+    adapter = _RecordingAdapter(Accepted("must-not-send"))
+    dispatcher = OutboundDispatcher(
+        worker_id="worker-automation-fence",
+        stale_seconds=300,
+        adapters=[adapter],
+    )
+    claim = await dispatcher.claim_once()
+    assert claim is not None
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            conversation = await db.get(
+                ChatConversation,
+                outbound_graph.conversation_ids[0],
+            )
+            assert conversation is not None
+            conversation.automation_version = 1
+
+    await dispatcher.dispatch_claim(claim)
+
+    assert adapter.calls == []
+    async with AsyncSessionLocal() as db:
+        message = await db.get(OutboundMessage, outbound_id)
+        assert message is not None
+        assert message.status == "cancelled"
+        event = (
+            (
+                await db.execute(
+                    select(OutboundDeliveryEvent)
+                    .where(
+                        OutboundDeliveryEvent.outbound_message_id == outbound_id,
+                        OutboundDeliveryEvent.event_type == "cancelled",
+                    )
+                    .order_by(OutboundDeliveryEvent.created_at.desc())
+                )
+            )
+            .scalars()
+            .first()
+        )
+        assert event is not None
+        assert event.safe_code == "conversation_automation_changed"
 
 
 @pytest.mark.asyncio

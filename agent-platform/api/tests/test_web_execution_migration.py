@@ -19,6 +19,7 @@ from app.models.platform import ChatConversation, ChatExecution, ChatMessage, Pr
 
 _REVISION = "f3b7c9d1e456"
 _DOWN_REVISION = "f2a6b8c0d345"
+_HEAD_REVISION = "f4c8d0e2f567"
 
 
 def _config() -> Config:
@@ -29,7 +30,7 @@ def _config() -> Config:
 def test_resumable_web_execution_migration_is_the_single_head():
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
     assert scripts.get_revision("8f813973069e").down_revision == "7e702862958d"
 

@@ -234,10 +234,12 @@ async def test_durable_pipeline_propagates_final_commit_failure(monkeypatch):
             tool_used=None,
             status="success",
             persist_conversation=False,
-            resolved_runtime=runtime,
+            routing_profile=runtime.profile,
+            acting_runtime=runtime,
             route_key="test-route",
             channel_route_id=uuid4(),
             control_version=0,
+            automation_version=0,
             raise_on_error=True,
         )
     assert db.rolled_back is True

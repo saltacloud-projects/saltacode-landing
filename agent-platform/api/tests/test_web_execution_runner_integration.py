@@ -212,6 +212,11 @@ async def test_runner_executes_neutral_context_and_persists_public_completion(
             {"role": "assistant", "content": "Previous context"}
         ]
         assert kwargs["execution_context"].agent_id == str(runner_graph.acting_agent.id)
+        assert kwargs["execution_context"].routing_agent_id == str(
+            runner_graph.routing_agent.id
+        )
+        assert kwargs["execution_context"].control_version == 0
+        assert kwargs["execution_context"].automation_version == 0
         assert kwargs["execution_context"].conversation_id == str(
             runner_graph.conversation_id
         )

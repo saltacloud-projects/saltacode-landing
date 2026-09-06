@@ -32,6 +32,8 @@ _REQUIRED_OUTBOUND_COLUMNS = {
     "sender_type",
     "sender_admin_id",
     "control_version",
+    "automation_agent_id",
+    "automation_version",
     "sequence",
     "idempotency_key",
     "payload_hash",
