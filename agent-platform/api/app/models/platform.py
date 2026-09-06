@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -98,6 +99,10 @@ class ChatConversation(TimestampedModel):
             "next_outbound_sequence > 0",
             name="ck_chat_conversation_next_outbound_sequence",
         ),
+        CheckConstraint(
+            "next_event_sequence > 0",
+            name="ck_chat_conversation_next_event_sequence",
+        ),
     )
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
@@ -125,6 +130,7 @@ class ChatConversation(TimestampedModel):
     next_outbound_sequence: Mapped[int] = mapped_column(
         Integer, default=1, nullable=False
     )
+    next_event_sequence: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     assigned_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("admin_users.id", ondelete="RESTRICT"),
@@ -174,13 +180,60 @@ class ChatMessage(TimestampedModel):
 
 
 class ChatExecution(TimestampedModel):
-    """Idempotent execution record and correlation boundary for one inbound message."""
+    """Execution record shared by the legacy synchronous path and durable web queue."""
 
     __tablename__ = "chat_executions"
     __table_args__ = (
         CheckConstraint(
             "control_version >= 0",
             name="ck_chat_execution_control_version",
+        ),
+        CheckConstraint(
+            "status IN ('accepted', 'queued', 'running', 'completed', 'failed', "
+            "'blocked', 'cancelled')",
+            name="ck_chat_execution_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_chat_execution_attempt_count",
+        ),
+        CheckConstraint(
+            "(lease_owner IS NULL) = (lease_expires_at IS NULL)",
+            name="ck_chat_execution_lease_pair",
+        ),
+        CheckConstraint(
+            "(client_message_id IS NULL AND input_hash IS NULL AND "
+            "queue_sequence IS NULL) OR (client_message_id IS NOT NULL AND "
+            "char_length(input_hash) = 64 AND queue_sequence > 0)",
+            name="ck_chat_execution_client_hash",
+        ),
+        CheckConstraint(
+            "lease_owner IS NULL OR char_length(lease_owner) > 0",
+            name="ck_chat_execution_lease_owner",
+        ),
+        UniqueConstraint(
+            "conversation_id",
+            "client_message_id",
+            name="uq_chat_execution_conversation_client_message",
+        ),
+        UniqueConstraint(
+            "conversation_id",
+            "queue_sequence",
+            name="uq_chat_execution_conversation_queue_sequence",
+        ),
+        Index(
+            "ix_chat_execution_durable_claim",
+            "status",
+            "available_at",
+            "created_at",
+            postgresql_where=text("status = 'queued'"),
+        ),
+        Index(
+            "ix_chat_execution_expired_lease",
+            "lease_expires_at",
+            postgresql_where=text(
+                "status = 'running' AND lease_expires_at IS NOT NULL"
+            ),
         ),
     )
 
@@ -197,8 +250,19 @@ class ChatExecution(TimestampedModel):
         ForeignKey("chat_messages.id", ondelete="CASCADE"),
         unique=True,
     )
-    status: Mapped[str] = mapped_column(String(30), default="accepted", nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)
     control_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    client_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    queue_sequence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     output_message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("chat_messages.id", ondelete="SET NULL"),

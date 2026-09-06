@@ -39,6 +39,7 @@ from app.models.authorized_user import AuthorizedUser  # noqa: F401
 # Importar TODOS los modelos para que Alembic los detecte en --autogenerate
 from app.models.base import TimestampedModel  # noqa: F401
 from app.models.conversation_control import ConversationControlEvent  # noqa: F401
+from app.models.conversation_event import ConversationEvent  # noqa: F401
 from app.models.conversation_message import ConversationMessage  # noqa: F401
 from app.models.integration_source import IntegrationSource  # noqa: F401
 from app.models.knowledge_block import KnowledgeBlock  # noqa: F401

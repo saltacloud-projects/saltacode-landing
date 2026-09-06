@@ -1,4 +1,4 @@
-"""Revision and rollback coverage for the outbound queue migration."""
+"""Revision and rollback coverage for resumable web execution persistence."""
 
 from __future__ import annotations
 
@@ -18,20 +18,19 @@ def _config() -> Config:
     return Config(str(api_root / "alembic-platform.ini"))
 
 
-def test_outbound_migration_precedes_the_resumable_web_head():
+def test_resumable_web_execution_migration_is_the_single_head():
     scripts = ScriptDirectory.from_config(_config())
 
     assert scripts.get_heads() == ["8f813973069e"]
-    assert scripts.get_revision("7e702862958d").down_revision == "d7e8f9a0b1c2"
     assert scripts.get_revision("8f813973069e").down_revision == "7e702862958d"
 
 
 @pytest.mark.integration
-def test_outbound_migration_downgrades_and_upgrades_cleanly():
+def test_resumable_web_execution_migration_downgrades_and_upgrades_cleanly():
     config = _config()
     asyncio.run(engine.dispose())
     try:
-        command.downgrade(config, "d7e8f9a0b1c2")
+        command.downgrade(config, "7e702862958d")
     finally:
         command.upgrade(config, "head")
     command.check(config)
