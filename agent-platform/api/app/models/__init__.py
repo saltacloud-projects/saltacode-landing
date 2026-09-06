@@ -25,6 +25,7 @@ from app.models.conversation_message import ConversationMessage
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
 from app.models.message_status import MessageStatus
+from app.models.outbound import OutboundAttempt, OutboundDeliveryEvent, OutboundMessage
 from app.models.platform import (
     ChannelIdentity,
     ChatConversation,

@@ -9,13 +9,14 @@ from app.models.conversation_control import ConversationControlEvent
 from app.models.platform import ChatConversation, ChatExecution
 
 
-def test_conversation_control_migration_is_the_single_head():
+def test_conversation_control_migration_precedes_the_outbound_head():
     api_root = Path(__file__).resolve().parents[1]
     config = Config(str(api_root / "alembic-platform.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["d7e8f9a0b1c2"]
+    assert scripts.get_heads() == ["7e702862958d"]
     assert scripts.get_revision("d7e8f9a0b1c2").down_revision == "c6d7e8f9a0b1"
+    assert scripts.get_revision("7e702862958d").down_revision == "d7e8f9a0b1c2"
 
 
 def test_control_metadata_contains_required_constraints_and_fields():

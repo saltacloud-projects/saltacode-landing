@@ -94,6 +94,10 @@ class ChatConversation(TimestampedModel):
             "control_mode != 'human' OR assigned_admin_id IS NOT NULL",
             name="ck_chat_conversation_human_assignment",
         ),
+        CheckConstraint(
+            "next_outbound_sequence > 0",
+            name="ck_chat_conversation_next_outbound_sequence",
+        ),
     )
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
@@ -118,6 +122,9 @@ class ChatConversation(TimestampedModel):
         String(20), default="automated", nullable=False
     )
     control_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_outbound_sequence: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False
+    )
     assigned_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("admin_users.id", ondelete="RESTRICT"),

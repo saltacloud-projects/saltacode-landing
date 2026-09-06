@@ -43,6 +43,11 @@ from app.models.conversation_message import ConversationMessage  # noqa: F401
 from app.models.integration_source import IntegrationSource  # noqa: F401
 from app.models.knowledge_block import KnowledgeBlock  # noqa: F401
 from app.models.message_status import MessageStatus  # noqa: F401
+from app.models.outbound import (  # noqa: F401
+    OutboundAttempt,
+    OutboundDeliveryEvent,
+    OutboundMessage,
+)
 from app.models.platform import (  # noqa: F401
     ChannelIdentity,
     ChatConversation,
