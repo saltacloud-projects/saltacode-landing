@@ -73,12 +73,16 @@ async def lifespan(app: FastAPI):
         socket_connect_timeout=3,
     )
 
-    # La tool documental sólo entrega originales citados. La búsqueda RAG es
-    # automática y no pasa por tool_registry. Se registra siempre para que una
-    # habilitación persistida no requiera reinicio posterior.
+    # Las capacidades nativas se registran siempre; su disponibilidad efectiva
+    # sigue dependiendo de la configuración persistida y del binding por agente.
+    # La búsqueda RAG automática no pasa por tool_registry.
+    from app.services.tools.adapters.commercial_quote_contact_request import (
+        register_commercial_quote_contact_request_tool,
+    )
     from app.services.tools.adapters.rag import register_rag_tools
     from app.services.tools.registry import tool_registry
 
+    register_commercial_quote_contact_request_tool(tool_registry)
     register_rag_tools(tool_registry)
 
     # Source-bound declarative tools are loaded from PostgreSQL. Credentials are
