@@ -1,10 +1,21 @@
 import { AlertTriangle, ArrowLeft, RefreshCw, Send } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
+import { ApiError } from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
+import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 import { CHANNEL_LABELS } from "../../runtime/channels";
 import type { ChannelKind } from "../../runtime/types";
-import { getDelivery, listDeliveries } from "./api";
-import type { DeliveryDetail, DeliveryFilters, DeliveryStatus, DeliverySummary } from "./types";
+import { createResolutionIntent, getDelivery, listDeliveries, resolveDelivery } from "./api";
+import DeliveryResolutionActions from "./DeliveryResolutionActions";
+import type {
+  DeliveryDetail,
+  DeliveryFilters,
+  DeliveryResolutionInput,
+  DeliveryResolutionIntent,
+  DeliveryStatus,
+  DeliverySummary,
+} from "./types";
 
 const INITIAL_FILTERS: DeliveryFilters = { channel: "", status: "", conversationId: "" };
 
@@ -24,6 +35,39 @@ function dateTime(value: string): string {
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+const RESOLUTION_ACTION_LABELS = {
+  confirm_delivered: "Entrega confirmada",
+  confirm_not_delivered: "No entrega confirmada",
+} as const;
+
+const EVIDENCE_SOURCE_LABELS = {
+  provider_api: "API del proveedor",
+  provider_console: "Consola del proveedor",
+} as const;
+
+const NON_DELIVERY_REASON_LABELS = {
+  provider_confirmed_not_delivered: "El proveedor confirmó la no entrega",
+  provider_record_not_found: "El proveedor no encontró el registro",
+  operator_verified_not_delivered: "El operador verificó la no entrega",
+} as const;
+
+function resolutionSignature(
+  deliveryId: string,
+  resolutionVersion: number,
+  input: DeliveryResolutionInput,
+): string {
+  const serialized =
+    input.action === "confirm_delivered"
+      ? `${input.action}\0${input.provider_message_id}\0${input.evidence_source}`
+      : `${input.action}\0${input.reason_code}`;
+  let fingerprint = 0xcbf29ce484222325n;
+  for (const character of serialized) {
+    fingerprint ^= BigInt(character.codePointAt(0) ?? 0);
+    fingerprint = BigInt.asUintN(64, fingerprint * 0x100000001b3n);
+  }
+  return `${deliveryId}:${resolutionVersion}:${fingerprint.toString(16)}`;
 }
 
 function statusClass(status: DeliveryStatus): string {
@@ -83,11 +127,17 @@ function DeliveryCard({
 function DeliveryDetailPanel({
   detail,
   loading,
+  busy,
+  canReview,
   onBack,
+  onResolve,
 }: {
   detail: DeliveryDetail | null;
   loading: boolean;
+  busy: boolean;
+  canReview: boolean;
   onBack: () => void;
+  onResolve: (input: DeliveryResolutionInput) => Promise<boolean>;
 }) {
   if (loading) return <p role="status">Cargando detalle…</p>;
   if (!detail) {
@@ -158,7 +208,60 @@ function DeliveryDetailPanel({
           <dt className="text-[var(--text-muted)]">Versión de control</dt>
           <dd>{detail.control_version}</dd>
         </div>
+        <div>
+          <dt className="text-[var(--text-muted)]">Versión de resolución</dt>
+          <dd>{detail.resolution_version}</dd>
+        </div>
       </dl>
+
+      {detail.resolution && (
+        <section className="mt-6" aria-labelledby="delivery-resolution-evidence-title">
+          <h4 id="delivery-resolution-evidence-title" className="font-medium">
+            Resolución verificada
+          </h4>
+          <dl className="mt-2 grid gap-3 rounded border border-[var(--border-color)] p-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">Decisión</dt>
+              <dd>{RESOLUTION_ACTION_LABELS[detail.resolution.action]}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">Registrada</dt>
+              <dd>{dateTime(detail.resolution.created_at)}</dd>
+            </div>
+            {detail.resolution.provider_reference && (
+              <div>
+                <dt className="text-xs text-[var(--text-muted)]">Referencia minimizada</dt>
+                <dd className="font-mono">{detail.resolution.provider_reference}</dd>
+              </div>
+            )}
+            {detail.resolution.evidence_source && (
+              <div>
+                <dt className="text-xs text-[var(--text-muted)]">Fuente</dt>
+                <dd>{EVIDENCE_SOURCE_LABELS[detail.resolution.evidence_source]}</dd>
+              </div>
+            )}
+            {detail.resolution.reason_code && (
+              <div className="sm:col-span-2">
+                <dt className="text-xs text-[var(--text-muted)]">Motivo verificado</dt>
+                <dd>{NON_DELIVERY_REASON_LABELS[detail.resolution.reason_code]}</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+      )}
+
+      {detail.status === "delivery_unknown" &&
+        (canReview ? (
+          <DeliveryResolutionActions
+            key={`${detail.id}:${detail.resolution_version}`}
+            busy={busy || loading}
+            onResolve={onResolve}
+          />
+        ) : (
+          <p className="mt-6 rounded border border-[var(--border-color)] p-3 text-sm text-[var(--text-muted)]">
+            Tu rol permite revisar esta entrega, pero no resolver la incertidumbre.
+          </p>
+        ))}
 
       <section className="mt-6">
         <h4 className="font-medium">Intentos ({detail.attempts.length})</h4>
@@ -207,12 +310,17 @@ function DeliveryDetailPanel({
 
 export default function DeliveriesPage() {
   const { selectedAgent } = useAgentWorkspace();
+  const { user } = useAuth();
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [items, setItems] = useState<DeliverySummary[]>([]);
   const [detail, setDetail] = useState<DeliveryDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [commandBusy, setCommandBusy] = useState(false);
   const [error, setError] = useState("");
+  const commandInFlight = useRef(false);
+  const pendingIntents = useRef(new Map<string, DeliveryResolutionIntent>());
+  const canReview = hasPermission(user, PERMISSIONS.DELIVERIES_REVIEW);
 
   const refresh = useCallback(async () => {
     if (!selectedAgent) return;
@@ -232,6 +340,7 @@ export default function DeliveriesPage() {
   }, [selectedAgent, filters]);
 
   useEffect(() => {
+    pendingIntents.current.clear();
     void refresh();
   }, [refresh]);
 
@@ -245,6 +354,55 @@ export default function DeliveriesPage() {
       setError(cause instanceof Error ? cause.message : "No se pudo cargar el detalle.");
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const resolve = async (input: DeliveryResolutionInput): Promise<boolean> => {
+    if (!selectedAgent || !detail || commandInFlight.current) return false;
+    commandInFlight.current = true;
+    setCommandBusy(true);
+    setError("");
+    const current = detail;
+    let signature = "";
+    try {
+      signature = resolutionSignature(current.id, current.resolution_version, input);
+      const intent = pendingIntents.current.get(signature) ?? createResolutionIntent();
+      pendingIntents.current.set(signature, intent);
+      await resolveDelivery(
+        selectedAgent.id,
+        current.id,
+        current.resolution_version,
+        input,
+        intent,
+      );
+      pendingIntents.current.delete(signature);
+      await refresh();
+      setDetail(await getDelivery(selectedAgent.id, current.id));
+      return true;
+    } catch (cause) {
+      const hasDefinitiveResponse = cause instanceof ApiError && cause.status < 500;
+      if (hasDefinitiveResponse && signature) pendingIntents.current.delete(signature);
+      try {
+        await refresh();
+        setDetail(await getDelivery(selectedAgent.id, current.id));
+      } catch {
+        // Preserve the resolution error below; the next explicit refresh can reconcile the view.
+      }
+      if (cause instanceof ApiError && cause.status === 409) {
+        setError(
+          "La resolución cambió mientras la revisabas. Recargamos la evidencia actual; comprobala antes de continuar.",
+        );
+      } else if (!hasDefinitiveResponse) {
+        setError(
+          "No pudimos confirmar el resultado. Si repetís exactamente esta decisión, conservaremos su clave para evitar duplicarla.",
+        );
+      } else {
+        setError(cause instanceof Error ? cause.message : "No se pudo resolver la entrega.");
+      }
+      return false;
+    } finally {
+      commandInFlight.current = false;
+      setCommandBusy(false);
     }
   };
 
@@ -357,7 +515,10 @@ export default function DeliveriesPage() {
           <DeliveryDetailPanel
             detail={detail}
             loading={loadingDetail}
+            busy={commandBusy}
+            canReview={canReview}
             onBack={() => setDetail(null)}
+            onResolve={resolve}
           />
         </div>
       </div>
