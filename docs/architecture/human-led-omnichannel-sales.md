@@ -23,7 +23,7 @@ The repository already provides:
 - route-scoped web and WhatsApp channel connections;
 - principals, channel identities, conversations, messages, executions, retention, and audit records;
 - a same-origin web BFF with origin checks, versioned consent, fail-closed rate limiting, an HttpOnly signed session, and versioned SSE events;
-- authenticated WhatsApp ingress with a PostgreSQL inbox, route/message deduplication, leases, recovery, and bounded retry;
+- authenticated WhatsApp ingress into an encrypted provider-neutral PostgreSQL queue with route/message deduplication, per-thread FIFO, leases, recovery, and review;
 - an agent-scoped administration workspace;
 - encrypted write-only provider credentials.
 
@@ -31,18 +31,19 @@ This foundation should evolve through vertical slices. It should not be replaced
 
 ## Implementation matrix
 
-Snapshot: 2026-09-06. `Implemented` means present and covered by repository checks; it does not prove that an external provider or production route is active.
+Snapshot: 2026-09-06 release-candidate repository state. `Implemented` means present and covered by repository checks; it does not prove that an external provider, persisted production route, or deployed image is active.
 
 | Capability | Repository state | Activation state |
 |---|---|---|
 | Same-origin web chat v2, durable history, resumable events, and session reset | Implemented | Active only after the corresponding release is deployed and verified. |
-| Human pause, takeover, reply, assignment, resume, and audit | Implemented for persisted web conversations | Production behavior requires a deployed-version check. |
-| Shared outbound outbox, ordered delivery, and incident review | Implemented for the current WhatsApp boundary | Real delivery remains blocked until provider routes and failure semantics are verified. |
-| Canonical authenticated provider-inbound envelope | Implemented for the current WhatsApp ingress | Instagram Direct, Messenger, and email adapters do not exist yet; web uses its dedicated private v2 contract. |
-| Contact points, purpose-specific consent, identity-link claims, opportunities, follow-ups, and quote records | Implemented as persisted commercial capabilities | Automated follow-up execution and external delivery are partial. |
+| Human pause, takeover, reply, assignment, resume, and audit | Implemented for persisted conversations; web replies publish resumable events and external-channel replies use the outbox | Provider-backed behavior still requires a deployed-route check. |
+| Shared outbound outbox, ordered delivery, and incident resolution | Implemented with immutable attempts/events/resolutions, route snapshots, acting-agent fences, privacy-minimized read models, and irreversible CAS/idempotent operator commands | Real WhatsApp delivery remains blocked until its persisted provider route and canary are verified. |
+| Canonical authenticated provider-inbound envelope | Implemented as an encrypted provider-neutral queue with route snapshots, per-thread FIFO, leases, immutable events, and operator review | Only the WhatsApp authentication/normalization adapter is executable; Instagram Direct, Messenger, and email remain planned. Web keeps its dedicated private v2 contract. |
+| Contact points, purpose-specific consent, identity-link claims, opportunities, follow-ups, and quote records | Implemented as persisted, agent-scoped commercial capabilities | Follow-up execution is implemented for an eligible verified WhatsApp route; email delivery and real provider activation remain pending. |
 | Commercial contact capture from the web chat | Implemented with explicit quote-delivery consent and optional follow-up consent | Requires the deployed web/BFF/platform chain. |
-| Route owner separated from acting automation agent | Persisted assignment model and versioned history implemented | Runtime handoff fencing is partial until every execution, tool, and outbound boundary consumes the automation epoch. |
-| Meetings | Not implemented | Blocked on product rules and calendar/provider integration. |
+| Route owner separated from acting automation agent | Implemented with versioned history and fences across web/WhatsApp execution, tools, outbox, and follow-ups | Activation still depends on deployed route/runtime evidence. |
+| Follow-up operations | Implemented with worker execution, reconciliation, privacy-minimized queue/detail/events, CAS/idempotent cancel/requeue/review, RBAC, and retention-safe evidence | Only the WhatsApp delivery adapter is executable. |
+| Meetings | Implemented for request, slot proposals, selection, awaiting response, manual scheduling evidence, rescheduling, cancellation, review, CAS, RBAC, audit, and panel operation | Automatic calendar scheduling remains blocked on provider selection and integration; `calendar_pending` is intentionally non-operable. |
 | Instagram Direct and Messenger | Not implemented | Blocked on Meta application, permissions, secrets, callbacks, and canary evidence. |
 | Authoritative quote generation | Persistence and issuance gates implemented | Blocked on the external quote-system contract and provider integration. |
 
@@ -59,19 +60,22 @@ Snapshot: 2026-09-06. `Implemented` means present and covered by repository chec
 ## Reference topology
 
 ```text
-Web              WhatsApp          Instagram DM        Messenger
- |                   |                   |                  |
- v                   v                   v                  v
-Same-origin BFF      Authenticated, route-scoped channel adapters
- |                   |
- +-------------------+-------------------+------------------+
-                         canonical inbound envelope
-                                      |
-                                      v
-                     durable inbox + provider deduplication
-                                      |
-                                      v
-                      conversation application service
+Web                       WhatsApp          Instagram DM        Messenger
+ |                            |                   |                  |
+ v                            v                   v                  v
+Same-origin BFF              Authenticated, route-scoped channel adapters
+ |                            |
+ | private web-chat v2        +-------------------+------------------+
+ |                                  canonical external envelope
+ |                                             |
+ |                                             v
+ |                              encrypted durable channel inbox
+ |                              + provider deduplication and FIFO
+ |                                             |
+ +---------------------------------------------+
+                                               |
+                                               v
+                                conversation application service
                         |          |              |
                         |          |              +--> contact, consent, lead,
                         |          |                   opportunity, follow-up
@@ -84,13 +88,15 @@ Same-origin BFF      Authenticated, route-scoped channel adapters
                                       v
                        channel adapter + delivery receipts
 
-Panel --> inbox, takeover, assignments, opportunities, audit, delivery review
+Panel --> inbox, takeover, acting-agent assignments, opportunities,
+          follow-ups, meetings, external inbound review, audit,
+          delivery inspection/resolution
 Quote system --> authoritative internal integration with versioned issued quotes
 ```
 
 ## Canonical channel boundary
 
-Every inbound adapter should normalize provider data into a versioned envelope containing:
+Every executable external-channel adapter must normalize provider data into a versioned envelope containing:
 
 - channel and route identity;
 - provider message/thread identity;
@@ -99,7 +105,7 @@ Every inbound adapter should normalize provider data into a versioned envelope c
 - message kind and bounded content reference;
 - consent and verification evidence available at ingress.
 
-Provider-specific payloads remain inside adapters. Conversation policy consumes only the canonical contract. Duplicate provider events must resolve to one accepted inbound record and one eligible execution.
+Provider-specific authentication and parsing remain inside adapters. The encrypted queue and conversation policy consume only the canonical contract. Duplicate provider events resolve to one accepted inbound record and one eligible execution. Web chat v2 does not use this boundary.
 
 ## Identity and consent
 
@@ -172,14 +178,14 @@ created_at
 
 The conversation keeps its original routing agent. Human reassignment, acting-agent handoff, and takeover do not rewrite that ownership or history. `control_version` fences human ownership changes; `automation_version` independently fences the acting automated identity.
 
-Every control mutation uses optimistic concurrency. A stale `control_version` returns `409 Conflict`. The runtime revalidates that version:
+Every control or acting-agent mutation uses optimistic concurrency. A stale `control_version` or automation epoch is rejected. The runtime revalidates `control_version`, `automation_agent_id`, and `automation_version`:
 
 1. before starting an agent execution;
 2. before a tool with external effects;
 3. before creating an outbound item;
 4. immediately before provider delivery.
 
-If the version changed, the automatic operation becomes cancelled or review-required. It is never published.
+If either epoch changed, the automatic operation becomes cancelled or review-required. It is never published. Web and WhatsApp execution paths pass the epoch guard into tool execution; queued outbound and follow-up work persist the epoch and revalidate it before provider delivery.
 
 ## Commercial lifecycle
 
@@ -203,8 +209,11 @@ Automatic provider sends use the shared transactional outbox. New channel adapte
 conversation_id
 channel_route_id
 agent_id
+channel, adapter_key, and channel_connection_id
+route_version and connection_version
 sender_type and sender_admin_id
 control_version
+automation_agent_id and automation_version
 sequence
 idempotency_key and payload_hash
 status
@@ -223,7 +232,9 @@ control_version
 created_at
 ```
 
-`OutboundDeliveryEvent` stores append-only transition evidence and safe result codes. Acting-agent identity and `automation_version` still need to be snapshotted on automated outbound work before handoff activation is complete.
+`OutboundDeliveryEvent` stores append-only transition evidence and safe result codes. Automated outbound commands snapshot both the acting-agent epoch and the exact route/connection adapter versions. Enqueue and dispatch revalidate those snapshots so a later handoff or route mutation cannot authorize stale work.
+
+`delivery_unknown` is resolved only through an operator command with an independent `resolution_version`. Confirming delivery requires a write-only full provider message ID plus provider API or console evidence and ends in `delivered`; confirming non-delivery requires an allowlisted reason and ends in `cancelled`. Both outcomes are terminal, append immutable resolution evidence, expose only a masked provider reference, and never retry, requeue, or create another attempt.
 
 Lifecycle:
 
@@ -262,7 +273,6 @@ Events carry `schema_version`, `event_id`, `message_id`, `correlation_id`, times
 - agents;
 - shared connections, sources, tools, and knowledge resources;
 - panel users and grants;
-- global delivery incidents and outbox review.
 
 ### Selected-agent workspace
 
@@ -270,13 +280,16 @@ Events carry `schema_version`, `event_id`, `message_id`, `correlation_id`, times
 - channels and routes;
 - inbox;
 - conversations;
-- opportunities and follow-ups;
+- opportunities, handoffs, and automation policy;
+- follow-up queue and review;
+- meetings;
+- external inbound review and outbound delivery inspection/resolution;
 - runtime/resources;
 - audit.
 
-The inbox needs filters by agent, channel, state, and assignee; a conversation view; commercial context; explicit automated/paused/human status; delivery receipts; and actions to pause, take over, assign, reply, return to automation, or close. The human composer is enabled only when both object-scoped permission and current control allow it.
+The current selected-agent inbox filters by channel, control mode, assignee, activity, and open/closed state. It exposes the conversation, routing and acting agents, explicit automated/paused/human status, and actions to pause, take over, reassign, reply, return to automation, or close. The human composer is enabled only when both object-scoped permission and current control allow it.
 
-The visual agent selector is context, never authorization. Required object-scoped permissions include conversation read/takeover/reply/assign/resume, opportunity management, quote approval, and delivery review.
+The visual agent selector is context, never authorization. Required object-scoped permissions include conversation read/manage, opportunity management, `follow_ups.read/manage/review`, `meetings.read/manage`, quote approval, inbound read/review, and delivery read/review. Delivery resolution controls appear only for `delivery_unknown` and `deliveries.review`; read-only operators see minimized evidence without mutation controls.
 
 ## Incremental delivery and activation plan
 
@@ -302,21 +315,22 @@ The visual agent selector is context, never authorization. Required object-scope
 - Transactional outbound messages and immutable attempts exist.
 - Current WhatsApp conversation pipelines enqueue instead of sending directly.
 - Per-conversation ordering, reconciliation, and delivery-unknown review are enforced by the current outbox worker.
+- Evidence-backed operator resolution terminates uncertainty as delivered or cancelled without automatic replay.
 
 **Gate:** a simulated crash after provider acceptance cannot cause an automatic duplicate send.
 
-### Phase 3 — WhatsApp canary (`blocked externally`)
+### Phase 3 — WhatsApp canary (`repository path implemented; activation blocked externally`)
 
-- Route WhatsApp replies through human control and the shared outbox.
+- WhatsApp replies already pass through human control, the provider-neutral inbound queue, and the shared outbox.
 - Validate signature, deduplication, attachments, ordering, retry, uncertain delivery, and receipts against current provider behavior.
 - Activate one controlled route only after acceptance evidence.
 
 **Gate:** one canary conversation passes inbound, takeover, manual reply, resume, and delivery audit without duplication.
 
-### Phase 4 — identity and opportunity lifecycle (`partial`)
+### Phase 4 — identity and opportunity lifecycle (`implemented in repository`)
 
 - Verified identity-link claims, contact points, purpose-specific consent, opportunities, and follow-up-task records exist.
-- Deterministic opportunity routing and acting-agent assignment history exist; execution, tool, and outbound fencing by `automation_version` is not complete yet.
+- Deterministic opportunity routing, acting-agent assignment history, follow-up execution, and execution/tool/outbound fencing by `automation_version` exist.
 
 **Gate:** no cross-channel merge or follow-up occurs without evidence and valid purpose consent.
 
@@ -348,12 +362,18 @@ The visual agent selector is context, never authorization. Required object-scope
 - No credential appears in browser code, API output, logs, or audit payloads.
 - No final quote is sent without an authoritative `issued` version.
 
-## External decisions and evidence required before activation
+## Remaining internal decisions
 
-- Provider-specific retry and idempotency behavior for each Meta API.
-- Final policy and operator workflow for `delivery_unknown`.
-- Purpose-specific legal wording and retention for commercial follow-up.
-- Human support hours, ownership, and response-level objectives.
-- Versioned contract of the future quote system.
+- Define human support hours, ownership, escalation, and response-level objectives.
+- Operate a verified data-subject deletion workflow across conversations, commercial evidence, audit, backups, and processors.
 
-These decisions do not block the current web-chat continuity improvement. They block real omnichannel automation and outbound activation.
+## External blockers and activation evidence
+
+- WhatsApp: persisted Meta credentials and route, callback configuration, real signed ingress, provider retry/idempotency behavior, and a delivery/read canary.
+- Instagram Direct and Messenger: Meta application approval, permissions, credentials, callbacks, and canary evidence after their internal adapters exist.
+- Email: selected provider, credentials, delivery semantics, and canary evidence after its internal adapter exists.
+- Meetings: calendar-provider contract, OAuth/secrets, availability rules, callback/reconciliation semantics, and a real canary. Manual scheduling evidence is already available without a provider.
+- Quotes: a versioned contract and integration with the future authoritative quote system. Persisting an administrator-confirmed issued version is not proof that this integration exists.
+- Legal/privacy: jurisdiction-specific approval of consent wording, commercial-contact retention, processors, international transfers, and data-subject workflows.
+
+Repository implementation does not prove production activation. These external gates block real provider-backed omnichannel automation; they do not block the dedicated web-chat v2 flow when its deployed route/runtime is independently verified.

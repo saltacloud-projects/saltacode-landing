@@ -8,9 +8,9 @@ Use Astro for the indexable landing surface, FastAPI for explicit HTTP boundarie
 |---|---|
 | Frontend | Astro with strict TypeScript, pnpm, static output, and zero default client JavaScript. |
 | Static origin | A small non-root Node server provides health, cache/security headers, and real 404 responses. |
-| Public API | FastAPI with uv provides the same-origin BFF and versioned SSE chat boundary. |
-| Private AI | A separate FastAPI/uv agent platform exposes an authenticated internal execution endpoint and owns multi-channel history, encrypted sources, tools, RAG, and provider adapters. |
-| Contracts | Browser-facing schemas are versioned under `contracts/chat/v1/` and checked for drift. |
+| Public API | FastAPI with uv provides the minimal same-origin BFF and versioned SSE chat boundary. |
+| Private AI | The repository-owned FastAPI/uv Agent Platform exposes authenticated internal execution, owns multi-channel history and commercial workflows, and isolates provider adapters from the browser. |
+| Contracts | Browser-facing v2 schemas are authoritative under `contracts/chat/v2/`; explicit v1 compatibility remains under `contracts/chat/v1/`, and both are checked for drift. |
 | Abuse control | A private, ephemeral Redis instance provides atomic shared rate limiting and fails closed. |
 | Orchestration | Compose builds application images locally and isolates origin, agent, rate-limit, and egress networks. |
 | Ingress | Host-managed `cloudflared` routes `/api/*` to the loopback BFF and other paths to the loopback static origin. |
@@ -33,7 +33,9 @@ Nginx or Caddy remains a valid future option if profiling proves a concrete need
 
 ## AI integration state
 
-The browser-to-BFF and BFF-to-agent boundaries exist, but the private agent intentionally returns unavailable until approved model, knowledge, and tool adapters are configured. Chat must remain outside the critical rendering path, keep a non-chat contact path available, and never send provider credentials to the browser.
+The browser-to-BFF and BFF-to-Agent Platform boundaries, durable web execution, human control, commercial records, outbox, follow-ups, and meetings exist in the repository. Runtime readiness remains configuration- and provider-dependent and must fail closed when the selected agent, route, credentials, policy, or external provider is unavailable. Chat must remain outside the critical rendering path, keep a non-chat contact path available, and never send provider credentials to the browser.
+
+The external channel ingress is provider-neutral and durable, but only the WhatsApp adapter is executable. Instagram Direct, Facebook Messenger, email delivery, calendar scheduling, and authoritative quotation require separate provider integrations and live canary evidence.
 
 ## Production promotion gate
 

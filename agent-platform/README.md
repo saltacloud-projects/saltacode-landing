@@ -1,35 +1,46 @@
 # Agent Platform
 
-Channel-neutral AI agent service for web chat, WhatsApp, and authenticated API clients. It provides persistent conversation history, configurable agents, encrypted integration sources, source-bound tools, document retrieval, and an administration panel.
+Repository-owned, channel-neutral AI and commercial orchestration platform for web chat, external messaging channels, and authenticated API clients. It provides persistent conversation history, configurable acting agents, human control, encrypted integration sources, source-bound tools, opportunities, follow-ups, meetings, durable delivery, document retrieval, and an administration panel.
 
 ## Architecture
 
 ```text
-web browser -> application BFF -> private web-chat v2 API
-Meta webhook ------------------> WhatsApp adapter
-trusted clients ---------------> authenticated API adapter
-                                      |
-                                      v
-                          chat application service
-                         /          |            \
-                 agents       conversations     tool policy
-                                                   |
-                                    integration source adapters
+web browser -> minimal application BFF -> private web-chat v2 API
+Meta webhook -----------------------> WhatsApp authentication adapter
+trusted clients -------------------> authenticated API adapter
+                                                |
+                     provider-neutral encrypted external ingress
+                         + FIFO leases + operator review
+                                                |
+                                                v
+                           conversation application services
+                         /              |                 \
+            routing/acting agents  human control     tool policy
+                         \              |                 /
+                          opportunities + consent + follow-ups
+                                      + meetings
+                                          |
+                             transactional outbound outbox
+                                          |
+                          executable channel/provider adapter
 ```
 
-The browser never receives provider keys, integration credentials, or the internal execution token. WhatsApp is an adapter, not the platform identity.
+The browser never receives provider keys, integration credentials, or the internal execution token. Web chat v2 is a dedicated private contract rather than an external-channel inbox record. WhatsApp is the only executable external adapter today; email, Instagram Direct, and Messenger remain planned catalog entries rather than active channels.
 
 ## Capabilities
 
 - Independent agent profiles with public/private visibility and retention settings.
 - Principals with route-scoped channel identities for web, WhatsApp, and API channels.
 - Persisted conversations, messages, execution state, consent, and audit records.
+- Independent routing-agent ownership, versioned acting-agent assignment, and human pause/takeover/reply/reassign/resume control.
+- Encrypted, provider-neutral external-channel ingress with per-thread FIFO leases, deduplication, immutable events, and privacy-safe operator review.
 - Encrypted integration credentials configured through the panel.
 - HTTP sources with host allowlists, TLS enforcement, timeouts, size limits, and SSRF defenses.
 - Tools bound to a source, HTTP method, channel allowlist, risk level, confirmation, and idempotency policy.
 - Optional RAG worker and document administration.
 - Meta webhook signature validation and optional WhatsApp access policy.
-- Durable web execution, commercial follow-up, and channel-neutral outbound workers with schema healthchecks.
+- Consent-scoped contacts, opportunities, authoritative quote evidence, durable follow-up execution, auditable meeting coordination, and fail-closed operator resolution of uncertain delivery.
+- Durable web execution, external-channel ingress, commercial follow-up, and channel-neutral outbound workers with schema healthchecks.
 
 ## Local stack
 
@@ -56,11 +67,13 @@ Stop the stack with:
 ./scripts/platform/down.sh
 ```
 
-The WhatsApp inbox, outbound delivery, web execution, and commercial follow-up
-workers are required services. They initially run as one replica each, share
+The external-channel ingress, outbound delivery, web execution, and commercial
+follow-up workers are required services. They initially run as one replica each, share
 the immutable API image, and publish no ports. Only services that call providers
 join the egress network; the follow-up worker only commits outbound intent to
-PostgreSQL. Inspect them with:
+PostgreSQL. The Compose service remains named `whatsapp-worker` and invokes a
+compatibility entrypoint, but its implementation now processes the provider-neutral
+`channel_inbound_jobs` queue. Inspect them with:
 
 ```bash
 docker compose --env-file .env.platform.local ps
@@ -73,6 +86,9 @@ docker compose --env-file .env.platform.local exec web-execution-worker \
 docker compose --env-file .env.platform.local exec follow-up-worker \
   python /usr/local/libexec/agent-entrypoint.py \
   python -m app.workers.follow_ups --healthcheck
+docker compose --env-file .env.platform.local exec whatsapp-worker \
+  python /usr/local/libexec/agent-entrypoint.py \
+  python -m app.workers.channel_inbound --healthcheck
 ```
 
 Worker healthchecks verify their local database schema and required storage.
@@ -105,13 +121,14 @@ See [`docs/operations/release-and-rollback.md`](docs/operations/release-and-roll
 1. Sign in and create reusable provider, channel, and API connections in the platform library.
 2. Create an integration source with its base URL, allowed hosts, authentication scheme, transport policy, and write-only encrypted credentials.
 3. Test source connectivity, then create tools bound to that source with an explicit method, parameter location, channel, and risk policy.
-4. Select an agent and assign only the sources, tools, knowledge blocks, document areas, and WhatsApp users it may use.
-5. Configure that agent's provider runtime and its server-owned web or WhatsApp routes.
+4. Select an agent and assign only the sources, tools, knowledge blocks, document areas, and channel users it may use.
+5. Configure that agent's provider runtime, server-owned routes, deterministic handoff rules, and commercial automation policy.
 6. Validate the selected persisted agent in PromptLab before exposing it to a public channel.
+7. Operate conversations, acting-agent assignments, opportunities, follow-ups, meetings, external inbound review, and uncertain-delivery resolution from the selected-agent workspace.
 
 Write-capable tools are never inferred from user text. They require trusted configuration, channel authorization, explicit confirmation, and an idempotency strategy.
 
-See [`docs/architecture/administration-model.md`](docs/architecture/administration-model.md) for the complete hierarchy, persisted/editable configuration, write-only secret boundary, channel routing, and current global-audit limitation.
+See [`docs/architecture/administration-model.md`](docs/architecture/administration-model.md) for the complete hierarchy, persisted/editable configuration, write-only secret boundary, channel routing, and historical unscoped-audit policy.
 
 ## Development
 

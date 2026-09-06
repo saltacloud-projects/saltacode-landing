@@ -8,10 +8,12 @@ SaltaCode's landing platform combines a static-first Astro frontend, a public Fa
 browser -> frontend static origin and same-origin /api proxy
                                 |
                                 v
-                       public FastAPI BFF
+                       minimal public FastAPI BFF
                          |            |
                          v            v
-                private Redis   private agent platform
+                private Redis   repository-owned Agent Platform
+                                      |
+                   control + commercial orchestration + workers
                                       |
                             approved APIs and providers
 ```
@@ -19,8 +21,9 @@ browser -> frontend static origin and same-origin /api proxy
 - Application images are built locally and orchestrated with Docker Compose.
 - Cloudflare Tunnel remains host-managed; there is no host Nginx or Caddy requirement.
 - The browser never receives provider keys or the internal agent token.
-- The BFF owns origin checks, rate limiting, consent, a signed HttpOnly chat session, contract validation, and SSE adaptation.
-- `agent-platform/` owns agents, multi-channel history, encrypted sources, tool policies, WhatsApp, RAG, and provider orchestration as an independent deployable unit.
+- The BFF owns only the public trust boundary: origin checks, rate limiting, consent-version validation, a signed HttpOnly chat session, contract adaptation, and SSE forwarding.
+- `agent-platform/` is repository-owned and independently deployable. It owns agents, web chat v2, provider-neutral external ingress, multi-channel history, human and acting-agent control, encrypted sources, commercial state, durable workers, RAG, and provider orchestration.
+- External-channel ingress is provider-neutral after authentication: payloads are encrypted at rest, ordered per thread, and quarantined for operator review when execution is uncertain. WhatsApp is the only executable external adapter today.
 
 ## Local integrated stack
 
@@ -83,9 +86,10 @@ The doctor fails only for required local capabilities. Recommended tools and ext
 |---|---|
 | `apps/landing/` | Astro, TypeScript, static SEO surface, optimized assets, lazy chat client, and same-origin proxy. |
 | `apps/web-bff/` | Public FastAPI BFF, signed session, SSE contract, origin checks, correlation, and shared rate limiting. |
-| `agent-platform/api/` | Channel-neutral commercial runtime, sources, tools, histories, orchestration, and migrations. |
-| `agent-platform/panel/` | Administration and operator interface for the agent platform. |
-| `contracts/chat/v1/` | Versioned browser-to-BFF JSON Schemas. |
+| `agent-platform/api/` | Repository-owned agent runtime, web v2, external-channel ingress, human control, commercial orchestration, workers, and migrations. |
+| `agent-platform/panel/` | Agent-scoped administration and operations UI for inbox, external ingress review, opportunities, follow-ups, meetings, delivery resolution, and configuration. |
+| `contracts/chat/v2/` | Authoritative browser-to-BFF schemas for durable web chat, history, resumable events, reset, and commercial contact capture. |
+| `contracts/chat/v1/` | Explicit compatibility schemas; not the current web-chat authority. |
 | `compose.yml` | Site/BFF/Redis topology connected to the private agent service network. |
 | `infrastructure/` | Host-managed Tunnel templates and site release verification. |
 | `.codex/`, `.agents/skills/` | Scoped agents and reusable project skills. |

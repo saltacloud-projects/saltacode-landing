@@ -1,9 +1,6 @@
 # Agent platform release and rollback
 
-The agent platform is an independent release unit. Its API, panel, required
-WhatsApp inbox, outbound delivery, web execution, and commercial follow-up
-workers, optional RAG worker, migrations, bootstrap, PostgreSQL, Redis, and document store are
-operated from `agent-platform/`; the landing release scripts never manage them.
+The Agent Platform is an independent release unit owned by this repository. Its API, panel, required external-channel inbound, outbound delivery, web execution, and commercial follow-up workers, optional RAG worker, migrations, bootstrap, PostgreSQL, Redis, and document store are operated from `agent-platform/`; the landing release scripts never manage them. The required inbound worker processes the provider-neutral `channel_inbound_jobs` queue. Its Compose service name remains `whatsapp-worker` during the rollback compatibility window.
 
 ## Safety contract
 
@@ -12,7 +9,7 @@ operated from `agent-platform/`; the landing release scripts never manage them.
 - The API and panel bind to `127.0.0.1` in production. Cloudflare Tunnel, DNS, and the landing are separate operations.
 - PostgreSQL and document volumes are never deleted, recreated, downgraded, or restored by these scripts.
 - Migrations run once, explicitly, while the old application processes are stopped. The deploy does not use `docker compose down`.
-- The WhatsApp inbox, outbound delivery, web execution, and commercial follow-up workers are mandatory for every new release. Each initially runs as one replica from the exact immutable API image and publishes no host port.
+- The external-channel inbound, outbound delivery, web execution, and commercial follow-up workers are mandatory for every new release. Each initially runs as one replica from the exact immutable API image and publishes no host port.
 - Only provider callers join the dedicated egress network. The follow-up worker only commits outbound intent to PostgreSQL, so it remains private-only with PostgreSQL, Redis, migration, bootstrap, integration-test, and panel services.
 - Source credentials, contact data encryption, and contact lookup use independent file-mounted keys. Contact keys must not reuse the same material.
 - Application rollback is permitted only when the current database revision, Compose contract, environment contract, and immutable image IDs match the target release receipt.
@@ -52,9 +49,9 @@ DEFAULT_AGENT_SLUG=saltacode
 DOMAIN=REPLACE_WITH_AGENT_HOST
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
-WHATSAPP_INBOX_WORKER_ID=whatsapp-inbox-worker-1
-WHATSAPP_INBOX_POLL_SECONDS=1
-WHATSAPP_INBOX_STALE_SECONDS=1200
+CHANNEL_INBOUND_WORKER_ID=channel-inbound-worker-1
+CHANNEL_INBOUND_POLL_SECONDS=1
+CHANNEL_INBOUND_LEASE_SECONDS=1200
 WHATSAPP_INBOX_MAX_ATTEMPTS=5
 OUTBOUND_WORKER_ID=outbound-worker-1
 OUTBOUND_WORKER_POLL_SECONDS=1
@@ -81,6 +78,8 @@ exactly one line and mode `0400`, `0440`, `0600`, or `0640`. The two contact
 keys must contain different material. Values never appear in receipts.
 Production also requires a real `DOMAIN`, an HTTPS `ADMIN_FRONTEND_URL` without
 a path, and loopback-only API and panel bindings.
+
+During the rollback compatibility window, the release tooling also accepts `WHATSAPP_INBOX_WORKER_ID`, `WHATSAPP_INBOX_POLL_SECONDS`, and `WHATSAPP_INBOX_STALE_SECONDS` as aliases for the three canonical `CHANNEL_INBOUND_*` settings above. If both forms are present, their values must match or preflight fails. `WHATSAPP_INBOX_MAX_ATTEMPTS` remains a legacy compatibility field until older receipts and images leave the rollback window.
 
 These keys protect persistent data and must be backed up separately. Losing or
 rotating them without a migration makes the corresponding encrypted records
@@ -120,7 +119,7 @@ The bounded sequence is:
 2. Refuse reused receipts or image tags.
 3. Build the API runtime and panel images locally.
 4. Start and wait for PostgreSQL and Redis without replacing their volumes.
-5. Record the current Alembic revision and stop only API, panel, the four required durable workers, and optional RAG worker.
+5. Record the current Alembic revision and stop only API, panel, the four required durable workers, and optional RAG worker. The inbound worker is addressed by its compatibility service name `whatsapp-worker`.
 6. Run `alembic upgrade head` through the one-shot `migrate` service, then run bootstrap.
 7. Start API, panel, and all four required durable workers with `--no-deps`; start the RAG worker only when configured.
 8. Verify API readiness inside the container and through loopback, panel HTTP inside the container and through loopback, and that each required worker is healthy and running from the exact immutable API image reference and image ID.
@@ -139,15 +138,15 @@ Deploy receipts live in:
 Rollback audit receipts live under `rollbacks/`. Version 4 deploy and rollback
 receipts contain release identifiers, Git commit or rollback origin, contract
 hashes where applicable, database revisions, immutable API and panel image IDs,
-RAG state, and required-worker image and health evidence. Every required worker
+RAG state, and required-worker image and health evidence. Version 4 receipts store both `channel_inbound_*` evidence and matching legacy `whatsapp_*` evidence so current and older rollback readers agree on the same worker. Every required worker
 image ID must equal the API image ID. Receipts never contain environment values,
 passwords, provider keys, internal tokens, document contents, or conversation
 data. [`release-receipt.example`](release-receipt.example) shows the current
 version 4 format.
 
 Version 1 receipts remain readable as historical releases with no durable
-workers. Version 2 receipts remain readable with only the required WhatsApp
-inbox worker. Version 3 receipts retain the WhatsApp, outbound, and web
+workers. Version 2 receipts remain readable with only the required WhatsApp-specific
+inbox worker that preceded the neutral ingress model. Version 3 receipts retain that inbound, outbound, and web
 execution workers but predate the follow-up worker. They are restorable only
 when the database, Compose contract,
 environment contract, and immutable API/panel image IDs still match. Because
@@ -189,4 +188,4 @@ AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
 
 None of these scripts change DNS, Cloudflare Tunnel, host services, or the landing stack.
 
-After a compatible release is verified, use the [WhatsApp Cloud API onboarding runbook](whatsapp-onboarding.md) to create the persisted connection and route, run the real Meta canary, and retain rollback evidence.
+After a compatible release is verified, use the [WhatsApp Cloud API onboarding runbook](whatsapp-onboarding.md) to create the persisted connection and route, run the real Meta canary, and retain rollback evidence. That canary activates only WhatsApp; other external channels require their own adapter-specific runbooks and evidence.
