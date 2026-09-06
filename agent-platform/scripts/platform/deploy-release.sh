@@ -41,16 +41,16 @@ restore_previous_after_failure() {
       if assert_release_restorable "${previous_release}" "${database_after}"; then
         previous_receipt="$(deploy_receipt_path "${previous_release}")"
         previous_rag="$(receipt_value "${previous_receipt}" rag_worker_enabled)"
-        previous_whatsapp="$(receipt_whatsapp_worker_enabled "${previous_receipt}")"
+        previous_channel_inbound="$(receipt_channel_inbound_worker_enabled "${previous_receipt}")"
         previous_outbound="$(receipt_outbound_worker_enabled "${previous_receipt}")"
         previous_web_execution="$(receipt_web_execution_worker_enabled "${previous_receipt}")"
         previous_follow_up="$(receipt_follow_up_worker_enabled "${previous_receipt}")"
         if start_application_services \
-             "${previous_release}" "${previous_rag}" "${previous_whatsapp}" \
+             "${previous_release}" "${previous_rag}" "${previous_channel_inbound}" \
              "${previous_outbound}" "${previous_web_execution}" \
              "${previous_follow_up}" &&
            verify_release_runtime \
-             "${previous_release}" "${previous_whatsapp}" \
+             "${previous_release}" "${previous_channel_inbound}" \
              "${previous_outbound}" "${previous_web_execution}" \
              "${previous_follow_up}"; then
           printf 'previous release %s was restored; persistent stores were untouched\n' \

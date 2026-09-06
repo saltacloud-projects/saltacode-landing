@@ -29,15 +29,15 @@ docker compose up --help | grep -q -- '--wait' ||
   die "agent API and panel ports must be numeric"
 (( API_PORT >= 1024 && API_PORT <= 65535 )) || die "AGENT_API_PORT is invalid"
 (( PANEL_PORT >= 1024 && PANEL_PORT <= 65535 )) || die "AGENT_PANEL_PORT is invalid"
-(( ${#WHATSAPP_INBOX_WORKER_ID_VALUE} >= 1 && ${#WHATSAPP_INBOX_WORKER_ID_VALUE} <= 70 )) ||
-  die "WHATSAPP_INBOX_WORKER_ID length is invalid"
-awk -v value="${WHATSAPP_INBOX_POLL_SECONDS_VALUE}" 'BEGIN {
+(( ${#CHANNEL_INBOUND_WORKER_ID_VALUE} >= 1 && ${#CHANNEL_INBOUND_WORKER_ID_VALUE} <= 70 )) ||
+  die "CHANNEL_INBOUND_WORKER_ID length is invalid"
+awk -v value="${CHANNEL_INBOUND_POLL_SECONDS_VALUE}" 'BEGIN {
   valid = value ~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/ && value > 0 && value <= 60
   exit !valid
-}' || die "WHATSAPP_INBOX_POLL_SECONDS must be greater than 0 and at most 60"
-if [[ ! "${WHATSAPP_INBOX_STALE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
-   (( 10#${WHATSAPP_INBOX_STALE_SECONDS_VALUE} < 960 || 10#${WHATSAPP_INBOX_STALE_SECONDS_VALUE} > 86400 )); then
-  die "WHATSAPP_INBOX_STALE_SECONDS must be between 960 and 86400"
+}' || die "CHANNEL_INBOUND_POLL_SECONDS must be greater than 0 and at most 60"
+if [[ ! "${CHANNEL_INBOUND_LEASE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
+   (( 10#${CHANNEL_INBOUND_LEASE_SECONDS_VALUE} < 960 || 10#${CHANNEL_INBOUND_LEASE_SECONDS_VALUE} > 86400 )); then
+  die "CHANNEL_INBOUND_LEASE_SECONDS must be between 960 and 86400"
 fi
 if [[ ! "${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}" =~ ^[0-9]+$ ]] ||
    (( 10#${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE} < 1 || 10#${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE} > 20 )); then
@@ -201,6 +201,9 @@ for worker_service in \
   [[ "${worker_image}" == "$(image_reference api "${RELEASE}")" ]] ||
     die "effective ${worker_service} must use the immutable API image"
 done
+# `whatsapp-worker` and its environment keys remain the deployment aliases
+# until legacy images leave the rollback window. Their rendered values must
+# equal the provider-neutral values resolved by release-lib.
 for worker_contract in \
   "whatsapp-worker:WHATSAPP_INBOX:WORKER_ID POLL_SECONDS STALE_SECONDS MAX_ATTEMPTS" \
   "outbound-worker:OUTBOUND:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS DISPATCH_STALE_SECONDS" \

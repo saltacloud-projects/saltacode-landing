@@ -51,6 +51,21 @@ effective_env_value() {
   fi
 }
 
+compatible_env_value() {
+  local canonical_key="$1"
+  local legacy_key="$2"
+  local default_value="$3"
+  local file="$4"
+  local canonical_value legacy_value
+  canonical_value="$(effective_env_value "${canonical_key}" "${file}")"
+  legacy_value="$(effective_env_value "${legacy_key}" "${file}")"
+  if [[ -n "${canonical_value}" && -n "${legacy_value}" &&
+        "${canonical_value}" != "${legacy_value}" ]]; then
+    die "${canonical_key} and ${legacy_key} must have the same value during the compatibility window"
+  fi
+  printf '%s' "${canonical_value:-${legacy_value:-${default_value}}}"
+}
+
 compose_contract_sha256() {
   local compose_file="$1"
   local override_file="$2"
@@ -102,14 +117,25 @@ configure_release_environment() {
   RAG_WORKER_ENABLED="${RAG_WORKER_ENABLED:-0}"
   [[ "${RAG_WORKER_ENABLED}" == "0" || "${RAG_WORKER_ENABLED}" == "1" ]] ||
     die "AGENT_PLATFORM_ENABLE_RAG_WORKER must be 0 or 1"
-  WHATSAPP_INBOX_WORKER_ID_VALUE="$(effective_env_value WHATSAPP_INBOX_WORKER_ID "${ENV_FILE}")"
-  WHATSAPP_INBOX_WORKER_ID_VALUE="${WHATSAPP_INBOX_WORKER_ID_VALUE:-whatsapp-inbox-worker-1}"
-  WHATSAPP_INBOX_POLL_SECONDS_VALUE="$(effective_env_value WHATSAPP_INBOX_POLL_SECONDS "${ENV_FILE}")"
-  WHATSAPP_INBOX_POLL_SECONDS_VALUE="${WHATSAPP_INBOX_POLL_SECONDS_VALUE:-1}"
-  WHATSAPP_INBOX_STALE_SECONDS_VALUE="$(effective_env_value WHATSAPP_INBOX_STALE_SECONDS "${ENV_FILE}")"
-  WHATSAPP_INBOX_STALE_SECONDS_VALUE="${WHATSAPP_INBOX_STALE_SECONDS_VALUE:-1200}"
+  CHANNEL_INBOUND_WORKER_ID_VALUE="$(compatible_env_value \
+    CHANNEL_INBOUND_WORKER_ID WHATSAPP_INBOX_WORKER_ID channel-inbound-worker-1 "${ENV_FILE}")"
+  CHANNEL_INBOUND_POLL_SECONDS_VALUE="$(compatible_env_value \
+    CHANNEL_INBOUND_POLL_SECONDS WHATSAPP_INBOX_POLL_SECONDS 1 "${ENV_FILE}")"
+  CHANNEL_INBOUND_LEASE_SECONDS_VALUE="$(compatible_env_value \
+    CHANNEL_INBOUND_LEASE_SECONDS WHATSAPP_INBOX_STALE_SECONDS 1200 "${ENV_FILE}")"
+  # The Compose service and variables remain stable while receipts for older
+  # images are valid rollback targets. New images map these aliases to the
+  # provider-neutral worker configuration.
+  WHATSAPP_INBOX_WORKER_ID_VALUE="${CHANNEL_INBOUND_WORKER_ID_VALUE}"
+  WHATSAPP_INBOX_POLL_SECONDS_VALUE="${CHANNEL_INBOUND_POLL_SECONDS_VALUE}"
+  WHATSAPP_INBOX_STALE_SECONDS_VALUE="${CHANNEL_INBOUND_LEASE_SECONDS_VALUE}"
   WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE="$(effective_env_value WHATSAPP_INBOX_MAX_ATTEMPTS "${ENV_FILE}")"
   WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE="${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE:-5}"
+  export \
+    WHATSAPP_INBOX_WORKER_ID="${WHATSAPP_INBOX_WORKER_ID_VALUE}" \
+    WHATSAPP_INBOX_POLL_SECONDS="${WHATSAPP_INBOX_POLL_SECONDS_VALUE}" \
+    WHATSAPP_INBOX_STALE_SECONDS="${WHATSAPP_INBOX_STALE_SECONDS_VALUE}" \
+    WHATSAPP_INBOX_MAX_ATTEMPTS="${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}"
   OUTBOUND_WORKER_ID_VALUE="$(effective_env_value OUTBOUND_WORKER_ID "${ENV_FILE}")"
   OUTBOUND_WORKER_ID_VALUE="${OUTBOUND_WORKER_ID_VALUE:-outbound-worker-1}"
   OUTBOUND_WORKER_POLL_SECONDS_VALUE="$(effective_env_value OUTBOUND_WORKER_POLL_SECONDS "${ENV_FILE}")"
@@ -300,7 +326,7 @@ receipt_worker_enabled() {
   worker_image_id="$(receipt_value "${receipt}" "${worker_name}_worker_image_id")"
   [[ -n "${api_image_id}" && "${worker_image_id}" == "${api_image_id}" ]] ||
     die "release receipt does not bind the ${worker_name} worker to the API image: ${receipt}"
-  if [[ "${version}" == "3" ]]; then
+  if (( 10#${version} >= 3 )); then
     worker_health="$(receipt_value "${receipt}" "${worker_name}_worker_health")"
     [[ "${worker_health}" == "passed" ]] ||
       die "release receipt does not prove ${worker_name} worker health: ${receipt}"
@@ -310,6 +336,27 @@ receipt_worker_enabled() {
 
 receipt_whatsapp_worker_enabled() {
   receipt_worker_enabled "$1" whatsapp 2
+}
+
+receipt_channel_inbound_worker_enabled() {
+  local receipt="$1"
+  local channel_enabled legacy_enabled
+  if [[ -z "$(receipt_value "${receipt}" channel_inbound_worker_enabled)" ]]; then
+    receipt_whatsapp_worker_enabled "${receipt}"
+    return
+  fi
+
+  channel_enabled="$(receipt_worker_enabled "${receipt}" channel_inbound 4)"
+  legacy_enabled="$(receipt_whatsapp_worker_enabled "${receipt}")"
+  [[ "${channel_enabled}" == "${legacy_enabled}" ]] ||
+    die "release receipt has inconsistent channel inbound compatibility state: ${receipt}"
+  [[ "$(receipt_value "${receipt}" channel_inbound_worker_image_id)" == \
+     "$(receipt_value "${receipt}" whatsapp_worker_image_id)" ]] ||
+    die "release receipt has inconsistent channel inbound compatibility image: ${receipt}"
+  [[ "$(receipt_value "${receipt}" channel_inbound_worker_health)" == \
+     "$(receipt_value "${receipt}" whatsapp_worker_health)" ]] ||
+    die "release receipt has inconsistent channel inbound compatibility health: ${receipt}"
+  printf '%s' "${channel_enabled}"
 }
 
 receipt_outbound_worker_enabled() {
@@ -360,7 +407,7 @@ probe_host() {
 
 verify_release_runtime() {
   local release="$1"
-  local whatsapp_worker_enabled="$2"
+  local channel_inbound_worker_enabled="$2"
   local outbound_worker_enabled="$3"
   local web_execution_worker_enabled="$4"
   local follow_up_worker_enabled="$5"
@@ -374,7 +421,10 @@ verify_release_runtime() {
     wget -qO- http://127.0.0.1/ | grep -Fq '<div id="root">'
   curl -fsS --max-time 5 "http://${api_host}:${API_PORT}/ready" >/dev/null
   curl -fsS --max-time 5 "http://${panel_host}:${PANEL_PORT}/" | grep -Fq '<div id="root">'
-  verify_worker_runtime "${release}" whatsapp-worker "${whatsapp_worker_enabled}"
+  # `whatsapp-worker` is the stable Compose identity across the rollback
+  # window. Its compatibility module delegates to the provider-neutral worker
+  # in current images and remains executable in legacy images.
+  verify_worker_runtime "${release}" whatsapp-worker "${channel_inbound_worker_enabled}"
   verify_worker_runtime "${release}" outbound-worker "${outbound_worker_enabled}"
   verify_worker_runtime \
     "${release}" web-execution-worker "${web_execution_worker_enabled}"
@@ -424,14 +474,14 @@ stop_application_services() {
 start_application_services() {
   local release="$1"
   local rag_enabled="$2"
-  local whatsapp_worker_enabled="$3"
+  local channel_inbound_worker_enabled="$3"
   local outbound_worker_enabled="$4"
   local web_execution_worker_enabled="$5"
   local follow_up_worker_enabled="$6"
   [[ "${rag_enabled}" == "0" || "${rag_enabled}" == "1" ]] ||
     die "RAG worker receipt state must be 0 or 1"
-  [[ "${whatsapp_worker_enabled}" == "0" || "${whatsapp_worker_enabled}" == "1" ]] ||
-    die "WhatsApp worker receipt state must be 0 or 1"
+  [[ "${channel_inbound_worker_enabled}" == "0" || "${channel_inbound_worker_enabled}" == "1" ]] ||
+    die "channel inbound worker receipt state must be 0 or 1"
   [[ "${outbound_worker_enabled}" == "0" || "${outbound_worker_enabled}" == "1" ]] ||
     die "outbound worker receipt state must be 0 or 1"
   [[ "${web_execution_worker_enabled}" == "0" || "${web_execution_worker_enabled}" == "1" ]] ||
@@ -443,7 +493,7 @@ start_application_services() {
   if [[ "${rag_enabled}" == "1" ]]; then
     compose_release "${release}" up -d --no-deps rag-worker
   fi
-  if [[ "${whatsapp_worker_enabled}" == "1" ]]; then
+  if [[ "${channel_inbound_worker_enabled}" == "1" ]]; then
     compose_release "${release}" up -d --wait --no-deps whatsapp-worker
   fi
   if [[ "${outbound_worker_enabled}" == "1" ]]; then
@@ -474,7 +524,7 @@ assert_release_restorable() {
   [[ "$(receipt_value "${receipt}" environment_contract_sha256)" == "${ENV_CONTRACT_SHA256}" ]] ||
     die "release ${release} uses a different environment contract"
   receipt_format_version "${receipt}" >/dev/null
-  receipt_whatsapp_worker_enabled "${receipt}" >/dev/null
+  receipt_channel_inbound_worker_enabled "${receipt}" >/dev/null
   receipt_outbound_worker_enabled "${receipt}" >/dev/null
   receipt_web_execution_worker_enabled "${receipt}" >/dev/null
   receipt_follow_up_worker_enabled "${receipt}" >/dev/null
@@ -517,6 +567,9 @@ record_deploy_receipt() {
     printf 'api_image_id=%s\n' "${api_image_id}"
     printf 'panel_image_id=%s\n' "${panel_image_id}"
     printf 'rag_worker_enabled=%s\n' "${RAG_WORKER_ENABLED}"
+    printf 'channel_inbound_worker_enabled=1\n'
+    printf 'channel_inbound_worker_image_id=%s\n' "${api_image_id}"
+    printf 'channel_inbound_worker_health=passed\n'
     printf 'whatsapp_worker_enabled=1\n'
     printf 'whatsapp_worker_image_id=%s\n' "${api_image_id}"
     printf 'whatsapp_worker_health=passed\n'
@@ -540,7 +593,7 @@ record_rollback_receipt() {
   local from_release="$1"
   local target_release="$2"
   local database_revision="$3"
-  local timestamp receipt temporary target_receipt target_rag target_whatsapp
+  local timestamp receipt temporary target_receipt target_rag target_channel_inbound
   local target_outbound target_web_execution target_follow_up
   local target_api_image_id target_panel_image_id
   timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -550,7 +603,7 @@ record_rollback_receipt() {
   target_rag="$(receipt_value "${target_receipt}" rag_worker_enabled)"
   [[ "${target_rag}" == "0" || "${target_rag}" == "1" ]] ||
     die "target release receipt has an invalid RAG worker state"
-  target_whatsapp="$(receipt_whatsapp_worker_enabled "${target_receipt}")"
+  target_channel_inbound="$(receipt_channel_inbound_worker_enabled "${target_receipt}")"
   target_outbound="$(receipt_outbound_worker_enabled "${target_receipt}")"
   target_web_execution="$(receipt_web_execution_worker_enabled "${target_receipt}")"
   target_follow_up="$(receipt_follow_up_worker_enabled "${target_receipt}")"
@@ -571,9 +624,12 @@ record_rollback_receipt() {
     printf 'api_image_id=%s\n' "${target_api_image_id}"
     printf 'panel_image_id=%s\n' "${target_panel_image_id}"
     printf 'rag_worker_enabled=%s\n' "${target_rag}"
-    printf 'whatsapp_worker_enabled=%s\n' "${target_whatsapp}"
-    printf 'whatsapp_worker_image_id=%s\n' "$([[ "${target_whatsapp}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
-    printf 'whatsapp_worker_health=%s\n' "$([[ "${target_whatsapp}" == "1" ]] && printf passed || printf not_applicable)"
+    printf 'channel_inbound_worker_enabled=%s\n' "${target_channel_inbound}"
+    printf 'channel_inbound_worker_image_id=%s\n' "$([[ "${target_channel_inbound}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
+    printf 'channel_inbound_worker_health=%s\n' "$([[ "${target_channel_inbound}" == "1" ]] && printf passed || printf not_applicable)"
+    printf 'whatsapp_worker_enabled=%s\n' "${target_channel_inbound}"
+    printf 'whatsapp_worker_image_id=%s\n' "$([[ "${target_channel_inbound}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
+    printf 'whatsapp_worker_health=%s\n' "$([[ "${target_channel_inbound}" == "1" ]] && printf passed || printf not_applicable)"
     printf 'outbound_worker_enabled=%s\n' "${target_outbound}"
     printf 'outbound_worker_image_id=%s\n' "$([[ "${target_outbound}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
     printf 'outbound_worker_health=%s\n' "$([[ "${target_outbound}" == "1" ]] && printf passed || printf not_applicable)"

@@ -28,8 +28,8 @@ assert_release_restorable "${target_release}" "${current_database_revision}"
 target_receipt="$(deploy_receipt_path "${target_release}")"
 target_rag="$(receipt_value "${target_receipt}" rag_worker_enabled)"
 from_rag="$(receipt_value "${from_receipt}" rag_worker_enabled)"
-target_whatsapp="$(receipt_whatsapp_worker_enabled "${target_receipt}")"
-from_whatsapp="$(receipt_whatsapp_worker_enabled "${from_receipt}")"
+target_channel_inbound="$(receipt_channel_inbound_worker_enabled "${target_receipt}")"
+from_channel_inbound="$(receipt_channel_inbound_worker_enabled "${from_receipt}")"
 target_outbound="$(receipt_outbound_worker_enabled "${target_receipt}")"
 from_outbound="$(receipt_outbound_worker_enabled "${from_receipt}")"
 target_web_execution="$(receipt_web_execution_worker_enabled "${target_receipt}")"
@@ -43,10 +43,10 @@ restore_current_after_failure() {
   printf 'agent-platform rollback failed; attempting to restore release %s\n' "${from_release}" >&2
   stop_application_services "${target_release}" || true
   if start_application_services \
-       "${from_release}" "${from_rag}" "${from_whatsapp}" \
+       "${from_release}" "${from_rag}" "${from_channel_inbound}" \
        "${from_outbound}" "${from_web_execution}" "${from_follow_up}" &&
      verify_release_runtime \
-       "${from_release}" "${from_whatsapp}" \
+       "${from_release}" "${from_channel_inbound}" \
        "${from_outbound}" "${from_web_execution}" "${from_follow_up}"; then
     printf 'release %s was restored; persistent stores were untouched\n' "${from_release}" >&2
   fi
@@ -56,10 +56,10 @@ trap restore_current_after_failure ERR
 
 stop_application_services "${from_release}"
 start_application_services \
-  "${target_release}" "${target_rag}" "${target_whatsapp}" \
+  "${target_release}" "${target_rag}" "${target_channel_inbound}" \
   "${target_outbound}" "${target_web_execution}" "${target_follow_up}"
 verify_release_runtime \
-  "${target_release}" "${target_whatsapp}" \
+  "${target_release}" "${target_channel_inbound}" \
   "${target_outbound}" "${target_web_execution}" "${target_follow_up}"
 record_rollback_receipt "${from_release}" "${target_release}" "${current_database_revision}"
 trap - ERR
