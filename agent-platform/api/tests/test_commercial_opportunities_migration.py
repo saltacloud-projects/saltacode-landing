@@ -1,4 +1,4 @@
-"""Revision and rollback coverage for resumable web execution persistence."""
+"""Revision and rollback coverage for commercial opportunity persistence."""
 
 from __future__ import annotations
 
@@ -18,19 +18,19 @@ def _config() -> Config:
     return Config(str(api_root / "alembic-platform.ini"))
 
 
-def test_resumable_web_execution_migration_is_the_single_head():
+def test_commercial_opportunity_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
     assert scripts.get_heads() == ["a6f1d2c3e4b5"]
-    assert scripts.get_revision("8f813973069e").down_revision == "7e702862958d"
+    assert scripts.get_revision("a6f1d2c3e4b5").down_revision == "4c91b2f7e6a0"
 
 
 @pytest.mark.integration
-def test_resumable_web_execution_migration_downgrades_and_upgrades_cleanly():
+def test_commercial_opportunity_migration_downgrades_and_upgrades_cleanly() -> None:
     config = _config()
     asyncio.run(engine.dispose())
     try:
-        command.downgrade(config, "7e702862958d")
+        command.downgrade(config, "4c91b2f7e6a0")
     finally:
         command.upgrade(config, "head")
     command.check(config)
