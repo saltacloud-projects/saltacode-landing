@@ -6,9 +6,11 @@ from typing import Protocol
 from uuid import UUID
 
 from app.chat_v2.contracts import (
+    CommercialContactAccepted,
     EventsResponse,
     HistoryResponse,
     MessageAccepted,
+    PrivateCommercialContactRequest,
     PrivateMessageRequest,
     PrivateResetRequest,
     ResetResponse,
@@ -35,6 +37,10 @@ class WebChatBlockedError(WebChatClientError):
     """The conversation cannot accept the requested automated action."""
 
 
+class WebChatUnprocessableError(WebChatClientError):
+    """The private service rejected invalid commercial evidence or consent."""
+
+
 class WebChatProtocolError(WebChatUnavailableError):
     """The private service returned an invalid or inconsistent contract."""
 
@@ -46,6 +52,13 @@ class WebChatV2Client(Protocol):
         *,
         correlation_id: str,
     ) -> MessageAccepted: ...
+
+    async def accept_commercial_contact(
+        self,
+        request: PrivateCommercialContactRequest,
+        *,
+        correlation_id: str,
+    ) -> CommercialContactAccepted: ...
 
     async def history(
         self,

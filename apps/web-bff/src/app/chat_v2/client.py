@@ -11,9 +11,11 @@ import httpx2
 from pydantic import ValidationError
 
 from app.chat_v2.contracts import (
+    CommercialContactAccepted,
     EventsResponse,
     HistoryResponse,
     MessageAccepted,
+    PrivateCommercialContactRequest,
     PrivateMessageRequest,
     PrivateResetRequest,
     ResetResponse,
@@ -25,6 +27,7 @@ from app.chat_v2.ports import (
     WebChatProtocolError,
     WebChatSessionNotFoundError,
     WebChatUnavailableError,
+    WebChatUnprocessableError,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +38,9 @@ class UnavailableWebChatV2Client:
     """Fail-closed client used when Agent Platform is not configured."""
 
     async def accept_message(self, *_args, **_kwargs) -> MessageAccepted:
+        raise WebChatUnavailableError("web chat is not configured")
+
+    async def accept_commercial_contact(self, *_args, **_kwargs) -> CommercialContactAccepted:
         raise WebChatUnavailableError("web chat is not configured")
 
     async def history(self, **_kwargs) -> HistoryResponse:
@@ -100,6 +106,23 @@ class HttpWebChatV2Client:
         if response.client_message_id != request.client_message_id:
             raise WebChatProtocolError("private message identity changed")
         return response
+
+    async def accept_commercial_contact(
+        self,
+        request: PrivateCommercialContactRequest,
+        *,
+        correlation_id: str,
+    ) -> CommercialContactAccepted:
+        self._require_route(request.route_key)
+        return await self._request(
+            "POST",
+            "/internal/v2/web/commercial-contact",
+            response_type=CommercialContactAccepted,
+            expected_status=202,
+            correlation_id=correlation_id,
+            map_unprocessable=True,
+            json=request.model_dump(mode="json"),
+        )
 
     async def history(
         self,
@@ -176,6 +199,7 @@ class HttpWebChatV2Client:
         response_type: type[ResponseContract],
         expected_status: int,
         correlation_id: str,
+        map_unprocessable: bool = False,
         **kwargs,
     ) -> ResponseContract:
         try:
@@ -193,7 +217,10 @@ class HttpWebChatV2Client:
             raise WebChatUnavailableError("private web chat is unavailable") from error
 
         if response.status_code != expected_status:
-            self._raise_status(response.status_code)
+            self._raise_status(
+                response.status_code,
+                map_unprocessable=map_unprocessable,
+            )
         try:
             return response_type.model_validate(response.json())
         except (ValueError, ValidationError) as error:
@@ -204,11 +231,13 @@ class HttpWebChatV2Client:
             raise WebChatProtocolError("private web chat contract is invalid") from error
 
     @staticmethod
-    def _raise_status(status_code: int) -> None:
+    def _raise_status(status_code: int, *, map_unprocessable: bool) -> None:
         if status_code == 404:
             raise WebChatSessionNotFoundError("web chat session was not found")
         if status_code == 409:
             raise WebChatConflictError("web chat request conflicts with persisted input")
+        if status_code == 422 and map_unprocessable:
+            raise WebChatUnprocessableError("web chat request contains invalid evidence")
         if status_code == 423:
             raise WebChatBlockedError("web chat session is not automated")
         raise WebChatUnavailableError("private web chat rejected the request")

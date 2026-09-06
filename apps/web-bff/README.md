@@ -9,7 +9,9 @@ browser -> signed-session BFF -> private agent platform -> authorized sources an
 
 The BFF owns the browser session with an HMAC-signed HttpOnly cookie, requires explicit transcript
 consent, validates the versioned request, rate limits the client, and adapts the private agent
-response to SSE. Durable history belongs to the agent platform, not this service.
+response to SSE. It also exposes an explicit commercial-contact command that validates contact and
+consent input before forwarding it to the private platform. Durable history, contacts, consent
+evidence, and opportunities belong to the agent platform, not this service.
 
 ## Local development
 
@@ -37,9 +39,9 @@ SALTACODE_RATE_LIMIT_WINDOW_SECONDS=60
 ```
 
 `SALTACODE_AGENT_AI_BASE_URL` enables the HTTP adapter for the private
-`POST /internal/v1/executions` endpoint. The adapter applies separate connection and response
-timeouts, forwards `X-Correlation-ID`, validates response identity and shape, and converts private
-transport/authentication/protocol failures into safe public SSE errors.
+chat and commercial endpoints. The adapter applies separate connection and response timeouts,
+forwards `X-Correlation-ID`, validates response identity and shape, and converts private
+transport/authentication/protocol failures into safe public responses.
 
 `SALTACODE_AGENT_ROUTE_KEY` identifies the persisted web channel route resolved by the private
 platform. It is configured only on the server: browsers cannot choose an agent ID or route. The
@@ -87,10 +89,12 @@ malformed or multi-value headers and otherwise falls back to the ASGI client add
 trust `X-Forwarded-For`. Keeping the origin loopback-only is therefore part of the security contract.
 
 SSE responses use `Cache-Control: no-store`, do not echo prompts, and carry a correlation ID.
-The BFF does not log or persist request bodies. The browser cannot choose or forge the agent
-session identifier because it is recovered only from the signed cookie.
+Commercial-contact responses follow the same no-store policy and expose only the accepted
+opportunity, target agent, and status. The BFF does not log or persist request bodies or contact
+values. The browser cannot choose or forge the agent session identifier because it is recovered
+only from the signed cookie.
 
-Versioned JSON Schemas live in `../contracts/chat/v1/`. Regenerate them with:
+Versioned JSON Schemas live in `../../contracts/chat/`. Regenerate them with:
 
 ```bash
 uv run python scripts/export_contracts.py

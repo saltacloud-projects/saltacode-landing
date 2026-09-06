@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "opportunity_id": {
+      "format": "uuid",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "status": {
+      "const": "accepted",
+      "title": "Status",
+      "type": "string"
+    },
+    "target_agent_id": {
+      "format": "uuid",
+      "title": "Target Agent Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "opportunity_id",
+    "target_agent_id",
+    "status"
+  ],
+  "title": "CommercialContactAccepted",
+  "type": "object"
+}

@@ -8,13 +8,18 @@ import httpx2
 import pytest
 
 from app.chat_v2.client import HttpWebChatV2Client
-from app.chat_v2.contracts import PrivateMessageRequest, TranscriptConsent
+from app.chat_v2.contracts import (
+    PrivateCommercialContactRequest,
+    PrivateMessageRequest,
+    TranscriptConsent,
+)
 from app.chat_v2.ports import (
     WebChatBlockedError,
     WebChatConflictError,
     WebChatProtocolError,
     WebChatSessionNotFoundError,
     WebChatUnavailableError,
+    WebChatUnprocessableError,
 )
 
 
@@ -99,6 +104,132 @@ async def test_private_message_adapter_rejects_changed_identity() -> None:
             await client.accept_message(request, correlation_id="correlation-private-v2")
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_private_commercial_contact_adapter_owns_auth_route_and_correlation() -> None:
+    session_id = uuid4()
+    opportunity_id = uuid4()
+    target_agent_id = uuid4()
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        assert request.url.path == "/internal/v2/web/commercial-contact"
+        assert request.headers["authorization"] == f"Bearer {'x' * 32}"
+        assert request.headers["x-correlation-id"] == "commercial-correlation"
+        payload = json.loads(request.content)
+        assert payload == {
+            "session_id": str(session_id),
+            "route_key": "saltacode-landing",
+            "client_request_id": payload["client_request_id"],
+            "locale": "es-AR",
+            "title": "Sitio web industrial",
+            "summary": "Catálogo y contacto comercial.",
+            "contact_kind": "email",
+            "contact_value": "lead@example.com",
+            "preferred_delivery_channel": "email",
+            "quote_delivery_consent": True,
+            "commercial_follow_up_consent": False,
+            "policy_version": "privacy-v2",
+        }
+        return httpx2.Response(
+            202,
+            json={
+                "opportunity_id": str(opportunity_id),
+                "target_agent_id": str(target_agent_id),
+                "status": "accepted",
+            },
+        )
+
+    client_request_id = uuid4()
+    client = make_client(handler)
+    try:
+        response = await client.accept_commercial_contact(
+            PrivateCommercialContactRequest(
+                session_id=session_id,
+                route_key="saltacode-landing",
+                client_request_id=client_request_id,
+                locale="es-AR",
+                title="Sitio web industrial",
+                summary="Catálogo y contacto comercial.",
+                contact_kind="email",
+                contact_value="lead@example.com",
+                preferred_delivery_channel="email",
+                quote_delivery_consent=True,
+                commercial_follow_up_consent=False,
+                policy_version="privacy-v2",
+            ),
+            correlation_id="commercial-correlation",
+        )
+    finally:
+        await client.aclose()
+
+    assert response.opportunity_id == opportunity_id
+    assert response.target_agent_id == target_agent_id
+
+
+@pytest.mark.asyncio
+async def test_private_commercial_contact_adapter_maps_invalid_evidence() -> None:
+    def handler(_request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(422, text="private contact detail")
+
+    client = make_client(handler)
+    try:
+        with pytest.raises(WebChatUnprocessableError) as caught:
+            await client.accept_commercial_contact(
+                PrivateCommercialContactRequest(
+                    session_id=uuid4(),
+                    route_key="saltacode-landing",
+                    client_request_id=uuid4(),
+                    locale="es-AR",
+                    title="Sitio web industrial",
+                    contact_kind="email",
+                    contact_value="lead@example.com",
+                    preferred_delivery_channel="email",
+                    quote_delivery_consent=True,
+                    commercial_follow_up_consent=False,
+                    policy_version="privacy-v2",
+                ),
+                correlation_id="commercial-correlation",
+            )
+    finally:
+        await client.aclose()
+
+    assert "private contact detail" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_private_commercial_contact_transport_failure_does_not_log_contact_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    contact_value = "private-lead@example.com"
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError(f"failed for {contact_value}", request=request)
+
+    client = make_client(handler)
+    try:
+        with pytest.raises(WebChatUnavailableError):
+            await client.accept_commercial_contact(
+                PrivateCommercialContactRequest(
+                    session_id=uuid4(),
+                    route_key="saltacode-landing",
+                    client_request_id=uuid4(),
+                    locale="es-AR",
+                    title="Sitio web industrial",
+                    contact_kind="email",
+                    contact_value=contact_value,
+                    preferred_delivery_channel="email",
+                    quote_delivery_consent=True,
+                    commercial_follow_up_consent=False,
+                    policy_version="privacy-v2",
+                ),
+                correlation_id="commercial-correlation",
+            )
+    finally:
+        await client.aclose()
+
+    assert contact_value not in caplog.text
+    assert "commercial-correlation" in caplog.text
 
 
 @pytest.mark.asyncio

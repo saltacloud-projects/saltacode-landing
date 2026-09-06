@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "client_request_id": {
+      "format": "uuid",
+      "title": "Client Request Id",
+      "type": "string"
+    },
+    "commercial_follow_up_consent": {
+      "title": "Commercial Follow Up Consent",
+      "type": "boolean"
+    },
+    "contact_kind": {
+      "enum": [
+        "email",
+        "phone"
+      ],
+      "title": "Contact Kind",
+      "type": "string"
+    },
+    "contact_value": {
+      "maxLength": 320,
+      "minLength": 3,
+      "title": "Contact Value",
+      "type": "string"
+    },
+    "locale": {
+      "default": "es-AR",
+      "enum": [
+        "es-AR",
+        "es",
+        "en"
+      ],
+      "title": "Locale",
+      "type": "string"
+    },
+    "preferred_delivery_channel": {
+      "enum": [
+        "email",
+        "whatsapp"
+      ],
+      "title": "Preferred Delivery Channel",
+      "type": "string"
+    },
+    "privacy_version": {
+      "maxLength": 80,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Privacy Version",
+      "type": "string"
+    },
+    "quote_delivery_consent": {
+      "const": true,
+      "title": "Quote Delivery Consent",
+      "type": "boolean"
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "maxLength": 8000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Summary"
+    },
+    "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "client_request_id",
+    "title",
+    "contact_kind",
+    "contact_value",
+    "preferred_delivery_channel",
+    "quote_delivery_consent",
+    "commercial_follow_up_consent",
+    "privacy_version"
+  ],
+  "title": "BrowserCommercialContactRequest",
+  "type": "object"
+}

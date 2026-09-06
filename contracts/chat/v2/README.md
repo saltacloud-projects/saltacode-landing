@@ -9,6 +9,14 @@ The browser uses durable commands and resumable server-sent events through the s
   monotonic cursors and can be resumed with `Last-Event-ID`.
 - `POST /api/v2/chat/session/reset` accepts `session-reset-request.schema.json` and returns
   `session-reset-response.schema.json`.
+- `POST /api/v2/chat/commercial-contact` accepts `commercial-contact-request.schema.json` and
+  returns `commercial-contact-accepted.schema.json` after the private platform durably captures
+  contact and consent evidence and creates the opportunity handoff.
+
+Commercial contact capture requires an existing signed chat session. The browser supplies an
+idempotent request identifier, the current privacy version, explicit quote-delivery consent, and
+its optional commercial-follow-up choice. The BFF owns the private session, route, and effective
+policy version; none can be selected by browser input.
 
 Pre-stream HTTP failures use `application/problem+json` and `problem.schema.json`. Once streaming has
 started, a temporary dependency failure is represented by the failure and done variants in

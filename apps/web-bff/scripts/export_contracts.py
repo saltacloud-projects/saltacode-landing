@@ -5,8 +5,10 @@ from pathlib import Path
 from pydantic import TypeAdapter
 
 from app.chat_v2.contracts import (
+    BrowserCommercialContactRequest,
     BrowserMessageRequest,
     BrowserResetRequest,
+    CommercialContactAccepted,
     ConversationEvent,
     HistoryResponse,
     MessageAccepted,
@@ -32,6 +34,12 @@ CONTRACTS: dict[Path, dict[str, object]] = {
     Path("v2/session-reset-request.schema.json"): BrowserResetRequest.model_json_schema(),
     Path("v2/session-reset-response.schema.json"): ResetResponse.model_json_schema(),
     Path("v2/problem.schema.json"): ProblemDetails.model_json_schema(),
+    Path("v2/commercial-contact-request.schema.json"): (
+        BrowserCommercialContactRequest.model_json_schema()
+    ),
+    Path("v2/commercial-contact-accepted.schema.json"): (
+        CommercialContactAccepted.model_json_schema()
+    ),
 }
 
 

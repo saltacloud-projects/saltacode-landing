@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 _PRIVATE_PAYLOAD_KEYS = frozenset(
     {
@@ -36,6 +44,15 @@ PrivacyVersion = Annotated[
         pattern=r"^[a-z0-9][a-z0-9._-]*$",
     ),
 ]
+CommercialTitle = Annotated[str, StringConstraints(min_length=1, max_length=200)]
+CommercialSummary = Annotated[str, StringConstraints(min_length=1, max_length=8_000)]
+ContactValue = Annotated[str, StringConstraints(min_length=3, max_length=320)]
+_EMAIL_PATTERN = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}"
+    r"@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+_PHONE_PATTERN = re.compile(r"^\+[1-9][0-9]{7,14}$")
 
 
 class BrowserMessageRequest(StrictContract):
@@ -51,6 +68,32 @@ class BrowserResetRequest(StrictContract):
     privacy_version: PrivacyVersion
 
 
+class BrowserCommercialContactRequest(StrictContract):
+    client_request_id: UUID
+    locale: Literal["es-AR", "es", "en"] = "es-AR"
+    title: CommercialTitle
+    summary: CommercialSummary | None = None
+    contact_kind: Literal["email", "phone"]
+    contact_value: ContactValue
+    preferred_delivery_channel: Literal["email", "whatsapp"]
+    quote_delivery_consent: Literal[True]
+    commercial_follow_up_consent: bool
+    privacy_version: PrivacyVersion
+
+    @model_validator(mode="after")
+    def validate_contact_and_delivery_channel(self) -> BrowserCommercialContactRequest:
+        expected_channel = "email" if self.contact_kind == "email" else "whatsapp"
+        if self.preferred_delivery_channel != expected_channel:
+            raise ValueError("contact kind does not match preferred delivery channel")
+        if self.contact_kind == "email" and (
+            ".." in self.contact_value or not _EMAIL_PATTERN.fullmatch(self.contact_value)
+        ):
+            raise ValueError("contact value must be a valid email address")
+        if self.contact_kind == "phone" and not _PHONE_PATTERN.fullmatch(self.contact_value):
+            raise ValueError("contact value must be an E.164 phone number")
+        return self
+
+
 class TranscriptConsent(StrictContract):
     granted: Literal[True]
     version: PrivacyVersion
@@ -63,6 +106,27 @@ class PrivateMessageRequest(StrictContract):
     content: ChatContent
     locale: Literal["es-AR", "es", "en"]
     consent: TranscriptConsent
+
+
+class PrivateCommercialContactRequest(StrictContract):
+    session_id: UUID
+    route_key: str
+    client_request_id: UUID
+    locale: Literal["es-AR", "es", "en"]
+    title: CommercialTitle
+    summary: CommercialSummary | None = None
+    contact_kind: Literal["email", "phone"]
+    contact_value: ContactValue
+    preferred_delivery_channel: Literal["email", "whatsapp"]
+    quote_delivery_consent: Literal[True]
+    commercial_follow_up_consent: bool
+    policy_version: PrivacyVersion
+
+
+class CommercialContactAccepted(StrictContract):
+    opportunity_id: UUID
+    target_agent_id: UUID
+    status: Literal["accepted"]
 
 
 class MessageAccepted(StrictContract):

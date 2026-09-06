@@ -11,12 +11,15 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.chat_v2.contracts import (
+    BrowserCommercialContactRequest,
     BrowserMessageRequest,
     BrowserResetRequest,
+    CommercialContactAccepted,
     ConversationEvent,
     EventsResponse,
     HistoryResponse,
     MessageAccepted,
+    PrivateCommercialContactRequest,
     PrivateMessageRequest,
     PrivateResetRequest,
     ResetResponse,
@@ -29,6 +32,7 @@ from app.chat_v2.ports import (
     WebChatClientError,
     WebChatConflictError,
     WebChatSessionNotFoundError,
+    WebChatUnprocessableError,
     WebChatV2Client,
 )
 from app.config import Settings
@@ -96,6 +100,16 @@ _RESET_RESPONSES = {
     **_HISTORY_RESPONSES,
     423: _problem_response("Replacement session is not available."),
 }
+_COMMERCIAL_CONTACT_RESPONSES = {
+    400: _problem_response("Privacy notice rejected."),
+    403: _problem_response("Origin rejected."),
+    404: _problem_response("Chat session not found."),
+    409: _problem_response("Commercial contact idempotency conflict."),
+    422: _problem_response("Commercial contact validation failed."),
+    423: _problem_response("Conversation cannot accept commercial contact data."),
+    429: _problem_response("Rate limit exceeded."),
+    503: _problem_response("Private commercial service unavailable."),
+}
 _UPGRADE_RESPONSES = {
     403: _problem_response("Origin rejected."),
     404: _problem_response("Legacy chat session not found."),
@@ -141,6 +155,49 @@ async def create_message(
     except WebChatClientError as error:
         _raise_public_error(error)
     _set_session_cookie(response, session, settings)
+    _set_response_headers(response, rate_limit=decision)
+    return accepted
+
+
+@router.post(
+    "/commercial-contact",
+    response_model=CommercialContactAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=_COMMERCIAL_CONTACT_RESPONSES,
+)
+async def create_commercial_contact(
+    payload: BrowserCommercialContactRequest,
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
+    client: Annotated[WebChatV2Client, Depends(get_web_chat_v2_client)],
+) -> CommercialContactAccepted:
+    enforce_allowed_origin(request, settings)
+    _require_current_privacy(payload.privacy_version, settings)
+    decision = await _check_rate_limit(request, rate_limiter)
+    session = _require_existing_session(request, settings, sessions)
+    try:
+        accepted = await client.accept_commercial_contact(
+            PrivateCommercialContactRequest(
+                session_id=session.session_id,
+                route_key=settings.agent_route_key or "",
+                client_request_id=payload.client_request_id,
+                locale=payload.locale,
+                policy_version=settings.chat_privacy_version,
+                title=payload.title,
+                summary=payload.summary,
+                contact_kind=payload.contact_kind,
+                contact_value=payload.contact_value,
+                preferred_delivery_channel=payload.preferred_delivery_channel,
+                quote_delivery_consent=payload.quote_delivery_consent,
+                commercial_follow_up_consent=payload.commercial_follow_up_consent,
+            ),
+            correlation_id=request.state.correlation_id,
+        )
+    except WebChatClientError as error:
+        _raise_commercial_contact_error(error)
     _set_response_headers(response, rate_limit=decision)
     return accepted
 
@@ -427,6 +484,38 @@ def _raise_public_error(error: WebChatClientError) -> None:
         code="agent_unavailable",
         title="Assistant temporarily unavailable",
         detail="The assistant cannot complete the request right now.",
+    ) from error
+
+
+def _raise_commercial_contact_error(error: WebChatClientError) -> None:
+    if isinstance(error, WebChatSessionNotFoundError):
+        raise _session_not_found() from error
+    if isinstance(error, WebChatConflictError):
+        raise ApiError(
+            status_code=409,
+            code="commercial_contact_conflict",
+            title="Commercial contact conflict",
+            detail="This commercial request identifier is already in use.",
+        ) from error
+    if isinstance(error, WebChatUnprocessableError):
+        raise ApiError(
+            status_code=422,
+            code="commercial_contact_rejected",
+            title="Commercial contact rejected",
+            detail="The contact or consent evidence could not be accepted.",
+        ) from error
+    if isinstance(error, WebChatBlockedError):
+        raise ApiError(
+            status_code=423,
+            code="commercial_contact_blocked",
+            title="Commercial contact blocked",
+            detail="The conversation cannot accept commercial contact data.",
+        ) from error
+    raise ApiError(
+        status_code=503,
+        code="commercial_service_unavailable",
+        title="Commercial service temporarily unavailable",
+        detail="The commercial request cannot be accepted right now.",
     ) from error
 
 
