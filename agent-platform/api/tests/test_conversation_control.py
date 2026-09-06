@@ -57,6 +57,7 @@ def _conversation(
     mode: ConversationControlMode = ConversationControlMode.AUTOMATED,
     version: int = 0,
     assigned_admin_id: UUID | None = None,
+    channel: str = "whatsapp",
 ):
     return SimpleNamespace(
         id=uuid4(),
@@ -64,6 +65,7 @@ def _conversation(
         control_mode=mode.value,
         control_version=version,
         assigned_admin_id=assigned_admin_id,
+        channel=channel,
         control_changed_at=datetime.now(UTC),
         control_reason=None,
     )
@@ -167,6 +169,102 @@ async def test_closed_conversation_is_terminal():
 
 
 @pytest.mark.asyncio
+async def test_closing_control_also_closes_the_operational_conversation():
+    agent_id = uuid4()
+    operator_id = uuid4()
+    conversation = _conversation(agent_id=agent_id)
+    conversation.status = "active"
+    db = _SequenceDb(_Result(conversation))
+    service = ConversationControlService()
+
+    result = await service.transition(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent_id,
+        actor_admin_id=operator_id,
+        target_mode=ConversationControlMode.CLOSED,
+        expected_version=0,
+    )
+
+    assert result.control_mode == "closed"
+    assert result.status == "closed"
+
+
+@pytest.mark.asyncio
+async def test_reassignment_rejects_an_operator_without_management_permission():
+    agent_id = uuid4()
+    current_owner_id = uuid4()
+    target_operator_id = uuid4()
+    conversation = _conversation(
+        agent_id=agent_id,
+        mode=ConversationControlMode.HUMAN,
+        version=3,
+        assigned_admin_id=current_owner_id,
+    )
+    target_operator = SimpleNamespace(
+        id=target_operator_id,
+        role="conversation_viewer",
+    )
+    db = _SequenceDb(
+        _Result(conversation),
+        _Result(target_operator),
+        _Result(["conversations.read"]),
+    )
+    service = ConversationControlService()
+
+    with pytest.raises(
+        InvalidControlTransitionError,
+        match="cannot manage conversations",
+    ):
+        await service.transition(
+            db,
+            conversation_id=conversation.id,
+            agent_id=agent_id,
+            actor_admin_id=current_owner_id,
+            target_mode=ConversationControlMode.HUMAN,
+            expected_version=3,
+            assigned_admin_id=target_operator_id,
+        )
+
+    assert conversation.control_version == 3
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_reassignment_accepts_an_active_conversation_operator():
+    agent_id = uuid4()
+    current_owner_id = uuid4()
+    target_operator_id = uuid4()
+    conversation = _conversation(
+        agent_id=agent_id,
+        mode=ConversationControlMode.HUMAN,
+        version=3,
+        assigned_admin_id=current_owner_id,
+    )
+    target_operator = SimpleNamespace(id=target_operator_id, role="operator")
+    db = _SequenceDb(
+        _Result(conversation),
+        _Result(target_operator),
+        _Result(["conversations.manage"]),
+    )
+    service = ConversationControlService()
+
+    result = await service.transition(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent_id,
+        actor_admin_id=current_owner_id,
+        target_mode=ConversationControlMode.HUMAN,
+        expected_version=3,
+        assigned_admin_id=target_operator_id,
+    )
+
+    assert result.control_version == 4
+    assert result.assigned_admin_id == target_operator_id
+    assert db.added[0].event_type == "reassigned"
+
+
+@pytest.mark.asyncio
 async def test_operator_message_requires_current_owner():
     agent_id = uuid4()
     owner_id = uuid4()
@@ -214,7 +312,7 @@ async def test_operator_message_and_outbound_command_are_persisted_together(
         enqueue,
     )
 
-    result, message, outbound = await service.record_operator_message(
+    result, message, delivery = await service.record_operator_message(
         db,
         conversation_id=conversation.id,
         agent_id=agent_id,
@@ -229,11 +327,64 @@ async def test_operator_message_and_outbound_command_are_persisted_together(
     assert message.status == "completed"
     assert message.metadata_json["origin"] == "operator"
     assert message.metadata_json["control_version"] == 2
-    assert outbound is queued
+    assert delivery.delivery_status == "queued"
+    assert delivery.duplicate is False
     assert enqueue.await_args.kwargs["chat_message_id"] == message.id
     assert enqueue.await_args.kwargs["idempotency_key"] == "operator:manual-reply-1"
     assert not any(isinstance(item, ConversationControlEvent) for item in db.added)
     assert db.flush_count == 1
+
+
+@pytest.mark.asyncio
+async def test_web_operator_message_publishes_safe_public_event_without_outbox(
+    monkeypatch,
+):
+    agent_id = uuid4()
+    operator_id = uuid4()
+    conversation = _conversation(
+        agent_id=agent_id,
+        mode=ConversationControlMode.HUMAN,
+        version=2,
+        assigned_admin_id=operator_id,
+        channel="web",
+    )
+    db = _SequenceDb(_Result(conversation))
+    service = ConversationControlService()
+    published_event = SimpleNamespace(id=uuid4())
+    publish = AsyncMock(return_value=published_event)
+    enqueue = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.conversation_control.conversation_event_service.publish",
+        publish,
+    )
+    monkeypatch.setattr(
+        "app.services.conversation_control.outbound_delivery_service.enqueue",
+        enqueue,
+    )
+
+    result, message, delivery = await service.record_operator_message(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent_id,
+        actor_admin_id=operator_id,
+        content="I can help with that.",
+        expected_version=2,
+        idempotency_key="manual-web-reply-1",
+    )
+
+    assert result.control_version == 2
+    assert delivery.delivery_status == "published"
+    assert delivery.duplicate is False
+    assert message.metadata_json["public_event_id"] == str(published_event.id)
+    assert publish.await_args.kwargs["event_type"] == "chat.message.completed"
+    assert publish.await_args.kwargs["payload"] == {
+        "message_id": str(message.id),
+        "content": "I can help with that.",
+        "status": "completed",
+        "actor": "human",
+    }
+    assert "actor_admin_id" not in publish.await_args.kwargs["payload"]
+    enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio

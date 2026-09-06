@@ -9,11 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI, HTTPException
 
-from app.routers.admin.conversations import (
-    delete_conversation,
-    get_conversation_history,
-    list_conversations,
-)
+from app.routers.admin.conversations import get_conversation_history, list_conversations
 from app.routers.admin.conversations import (
     router as conversations_router,
 )
@@ -101,7 +97,6 @@ def test_all_admin_conversation_contracts_require_agent_id():
     expected = {
         ("/api/admin/conversations/", "GET"),
         ("/api/admin/conversations/{conversation_id}/messages", "GET"),
-        ("/api/admin/conversations/{conversation_id}", "DELETE"),
         ("/api/admin/promptlab/search-conversations", "GET"),
     }
     schema = app.openapi()
@@ -114,6 +109,12 @@ def test_all_admin_conversation_contracts_require_agent_id():
             if item["name"] == "agent_id" and item["in"] == "query"
         )
         assert agent_param["required"] is True
+
+    assert not any(
+        "delete" in methods
+        for path, methods in schema["paths"].items()
+        if path.startswith("/api/admin/conversations")
+    )
 
 
 @pytest.mark.asyncio
@@ -151,22 +152,6 @@ async def test_messages_return_404_for_another_agent():
     _assert_agent_filter(db_a.statements[0], agent_a)
     _assert_agent_filter(db_b.statements[0], agent_b)
     assert [item.content for item in result] == ["message a"]
-    assert exc.value.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_delete_returns_404_for_another_agent():
-    agent_a, agent_b = uuid4(), uuid4()
-    conversation_id = uuid4()
-    db_a = _SequenceDb(_Result(rowcount=1))
-    db_b = _SequenceDb(_Result(rowcount=0))
-
-    assert await delete_conversation(str(conversation_id), agent_a, db_a) is None
-    with pytest.raises(HTTPException) as exc:
-        await delete_conversation(str(conversation_id), agent_b, db_b)
-
-    _assert_agent_filter(db_a.statements[0], agent_a)
-    _assert_agent_filter(db_b.statements[0], agent_b)
     assert exc.value.status_code == 404
 
 

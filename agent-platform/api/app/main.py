@@ -26,6 +26,7 @@ from app.routers.admin.conversation_control import (
 from app.routers.admin.conversations import router as admin_conversations_router
 from app.routers.admin.documents import router as admin_documents_router
 from app.routers.admin.knowledge_blocks import router as admin_kb_router
+from app.routers.admin.operator_inbox import router as admin_operator_inbox_router
 from app.routers.admin.panel_users import router as admin_panel_users_router
 from app.routers.admin.profiles import router as admin_profiles_router
 from app.routers.admin.promptlab import router as admin_promptlab_router
@@ -229,4 +230,7 @@ app.include_router(admin_documents_router, prefix="/api/admin/documents")
 app.include_router(admin_panel_users_router, prefix="/api/admin/panel-users")
 app.include_router(admin_sources_router, prefix="/api/admin/sources")
 app.include_router(admin_agent_resources_router, prefix="/api/admin/agents")
+app.include_router(
+    admin_operator_inbox_router, prefix="/api/admin/agents/{agent_id}/inbox"
+)
 app.include_router(admin_agent_runtime_router, prefix="/api/admin")

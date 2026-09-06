@@ -5,7 +5,6 @@ const AGENT_B = "00000000-0000-0000-0000-0000000000b2";
 const USER_ID = "10000000-0000-0000-0000-0000000000a1";
 const CREATED_USER_ID = "10000000-0000-0000-0000-0000000000b2";
 const AREA_ID = "20000000-0000-0000-0000-0000000000a1";
-const CONVERSATION_ID = "30000000-0000-0000-0000-0000000000a1";
 
 const admin = {
   id: "40000000-0000-0000-0000-000000000001",
@@ -126,49 +125,6 @@ test("reusing and unassigning an identity changes only the selected agent bindin
   await page.getByRole("button", { name: "Quitar acceso" }).click();
   await expect.poll(() => removed).toBe(true);
   expect(assigned).toBe(true);
-});
-
-test("conversation list, history, and deletion always include the selected agent", async ({ page }) => {
-  await prepare(page);
-  const calls: { operation: string; agentId: string | null }[] = [];
-  let deleted = false;
-  await page.route("**/api/admin/**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const path = url.pathname;
-    const handled = common(path, route);
-    if (handled) return handled;
-    if (path.endsWith("/conversations/") && request.method() === "GET") {
-      calls.push({ operation: "list", agentId: url.searchParams.get("agent_id") });
-      const agentId = url.searchParams.get("agent_id");
-      if (agentId === AGENT_B || deleted) return json(route, []);
-      return json(route, [{ id: CONVERSATION_ID, agent_slug: "alpha", principal_id: USER_ID, display_name: "Visitante web", channel: "web", route_key: "landing:principal", external_thread_id: "thread-public", status: "active", message_count: 1, last_message_at: "2026-08-27T10:00:00Z", transcript_consent: true, consent_version: "v1" }]);
-    }
-    if (path.endsWith(`/conversations/${CONVERSATION_ID}/messages`)) {
-      calls.push({ operation: "messages", agentId: url.searchParams.get("agent_id") });
-      return json(route, [{ id: "message-1", role: "user", content: "Hola", status: "complete", tool_names: [], metadata: {}, created_at: "2026-08-27T10:00:00Z" }]);
-    }
-    if (path.endsWith(`/conversations/${CONVERSATION_ID}`) && request.method() === "DELETE") {
-      calls.push({ operation: "delete", agentId: url.searchParams.get("agent_id") });
-      deleted = true;
-      return route.fulfill({ status: 204 });
-    }
-    return json(route, { detail: `Mock missing: ${request.method()} ${path}` }, 500);
-  });
-
-  await page.goto(`/agents/${AGENT_A}/conversations`);
-  await page.getByRole("button", { name: /Visitante web/ }).click();
-  await expect(page.getByText("Hola")).toBeVisible();
-  await expect(page.getByText("landing:principal").first()).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Eliminar" }).click();
-  await expect.poll(() => deleted).toBe(true);
-  expect(calls.filter((call) => ["list", "messages", "delete"].includes(call.operation)).every((call) => call.agentId === AGENT_A)).toBe(true);
-
-  await page.getByLabel("Agente de trabajo").selectOption(AGENT_B);
-  await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_B}/conversations$`));
-  await expect(page.getByText("Seleccioná una conversación para revisar su historial.")).toBeVisible();
-  await expect.poll(() => calls.some((call) => call.operation === "list" && call.agentId === AGENT_B)).toBe(true);
 });
 
 test("audit remains inside the selected agent and filters server-side", async ({ page }) => {

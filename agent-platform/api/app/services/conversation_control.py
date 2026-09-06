@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -10,11 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.admin_user import AdminUser
 from app.models.conversation_control import ConversationControlEvent
+from app.models.conversation_event import ConversationEvent
 from app.models.platform import ChatConversation, ChatMessage
 from app.schemas.conversation_control import ConversationControlMode
+from app.services.admin_rbac import AdminPermission, admin_rbac_service
+from app.services.conversation_events import (
+    ConversationEventError,
+    ConversationEventVisibility,
+    conversation_event_service,
+)
 from app.services.outbound_delivery import (
     OutboundDeliveryError,
-    OutboundEnqueueResult,
     OutboundKind,
     OutboundSenderType,
     outbound_delivery_service,
@@ -54,6 +61,14 @@ class OperatorMessagePersistenceError(ConversationControlError):
 
 class AutomationBlockedError(ConversationControlError):
     """Automation is not allowed for the current control epoch."""
+
+
+@dataclass(frozen=True)
+class OperatorMessageDeliveryResult:
+    """Channel-neutral outcome for one durable operator response."""
+
+    delivery_status: str
+    duplicate: bool
 
 
 class ConversationControlService:
@@ -206,7 +221,7 @@ class ConversationControlService:
         content: str,
         expected_version: int,
         idempotency_key: str,
-    ) -> tuple[ChatConversation, ChatMessage, OutboundEnqueueResult]:
+    ) -> tuple[ChatConversation, ChatMessage, OperatorMessageDeliveryResult]:
         conversation = await self._get_conversation(
             db,
             conversation_id=conversation_id,
@@ -235,6 +250,7 @@ class ConversationControlService:
             f"operator:{actor_admin_id}:{normalized_key}",
         )
         message = await db.get(ChatMessage, message_id)
+        duplicate = message is not None
         if message is None:
             message = ChatMessage(
                 id=message_id,
@@ -257,6 +273,46 @@ class ConversationControlService:
                 "operator idempotency key belongs to another message"
             )
 
+        if conversation.channel == "web":
+            try:
+                if not message.metadata_json.get("public_event_id"):
+                    event = None
+                    if duplicate:
+                        event = await self._find_public_operator_event(
+                            db,
+                            conversation=conversation,
+                            message=message,
+                        )
+                    if event is None:
+                        event = await conversation_event_service.publish(
+                            db,
+                            conversation_id=conversation.id,
+                            agent_id=agent_id,
+                            event_type="chat.message.completed",
+                            visibility=ConversationEventVisibility.PUBLIC,
+                            payload={
+                                "message_id": str(message.id),
+                                "content": message.content,
+                                "status": "completed",
+                                "actor": "human",
+                            },
+                        )
+                    message.metadata_json = {
+                        **message.metadata_json,
+                        "public_event_id": str(event.id),
+                    }
+                    await db.flush()
+            except ConversationEventError as exc:
+                raise OperatorMessagePersistenceError(str(exc)) from exc
+            return (
+                conversation,
+                message,
+                OperatorMessageDeliveryResult(
+                    delivery_status="published",
+                    duplicate=duplicate,
+                ),
+            )
+
         try:
             outbound = await outbound_delivery_service.enqueue(
                 db,
@@ -273,7 +329,36 @@ class ConversationControlService:
             )
         except OutboundDeliveryError as exc:
             raise OperatorMessagePersistenceError(str(exc)) from exc
-        return conversation, message, outbound
+        return (
+            conversation,
+            message,
+            OperatorMessageDeliveryResult(
+                delivery_status=outbound.message.status,
+                duplicate=outbound.duplicate,
+            ),
+        )
+
+    async def _find_public_operator_event(
+        self,
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        message: ChatMessage,
+    ) -> ConversationEvent | None:
+        rows = await db.execute(
+            select(ConversationEvent)
+            .where(
+                ConversationEvent.conversation_id == conversation.id,
+                ConversationEvent.agent_id == conversation.agent_id,
+                ConversationEvent.event_type == "chat.message.completed",
+                ConversationEvent.visibility
+                == ConversationEventVisibility.PUBLIC.value,
+                ConversationEvent.payload_json["message_id"].astext == str(message.id),
+            )
+            .order_by(ConversationEvent.sequence)
+            .limit(1)
+        )
+        return rows.scalars().first()
 
     async def _get_conversation(
         self,
@@ -331,7 +416,7 @@ class ConversationControlService:
             if target_admin_id != actor_admin_id:
                 active_admin = (
                     await db.execute(
-                        select(AdminUser.id).where(
+                        select(AdminUser).where(
                             AdminUser.id == target_admin_id,
                             AdminUser.is_active.is_(True),
                         )
@@ -340,6 +425,14 @@ class ConversationControlService:
                 if active_admin is None:
                     raise InvalidControlTransitionError(
                         "assigned operator does not exist or is inactive"
+                    )
+                if not await admin_rbac_service.has_permission(
+                    db,
+                    role_key=active_admin.role,
+                    permission=AdminPermission.CONVERSATIONS_MANAGE,
+                ):
+                    raise InvalidControlTransitionError(
+                        "assigned operator cannot manage conversations"
                     )
             return target_admin_id
         if requested_admin_id is not None:
@@ -393,6 +486,8 @@ class ConversationControlService:
         conversation.assigned_admin_id = target_admin_id
         conversation.control_changed_at = changed_at
         conversation.control_reason = reason
+        if target_mode == ConversationControlMode.CLOSED:
+            conversation.status = "closed"
         db.add(
             ConversationControlEvent(
                 conversation_id=conversation.id,

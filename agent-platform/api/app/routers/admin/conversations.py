@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
@@ -112,28 +112,6 @@ async def get_conversation_history(
     )
     messages.reverse()
     return [ConversationMessageOut.from_model(item) for item in messages]
-
-
-@router.delete(
-    "/{conversation_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(AdminPermission.CONVERSATIONS_MANAGE))],
-)
-async def delete_conversation(
-    conversation_id: str,
-    agent_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    conversation_uuid = _uuid_or_404(conversation_id)
-    result = await db.execute(
-        delete(ChatConversation).where(
-            ChatConversation.id == conversation_uuid,
-            ChatConversation.agent_id == agent_id,
-        )
-    )
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return None
 
 
 def _uuid_or_404(value: str) -> uuid.UUID:

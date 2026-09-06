@@ -13,6 +13,7 @@ from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.conversation_control import ConversationControlEvent
+from app.models.conversation_event import ConversationEvent
 from app.models.outbound import OutboundMessage
 from app.models.platform import ChatConversation, ChatMessage, Principal
 from app.schemas.conversation_control import ConversationControlMode
@@ -217,7 +218,7 @@ async def test_control_epoch_is_scoped_and_preserves_manual_message_version():
             (
                 controlled,
                 operator_message,
-                operator_outbound,
+                operator_delivery,
             ) = await service.record_operator_message(
                 db,
                 conversation_id=conversation_id,
@@ -228,13 +229,21 @@ async def test_control_epoch_is_scoped_and_preserves_manual_message_version():
                 idempotency_key="control-integration-manual-1",
             )
             operator_message_id = operator_message.id
-            operator_outbound_id = operator_outbound.message.id
             assert controlled.control_version == 1
+            assert operator_delivery.delivery_status == "queued"
+            assert operator_delivery.duplicate is False
             await db.commit()
 
         async with AsyncSessionLocal() as db:
             persisted_message = await db.get(ChatMessage, operator_message_id)
-            persisted_outbound = await db.get(OutboundMessage, operator_outbound_id)
+            persisted_outbound = (
+                await db.execute(
+                    select(OutboundMessage).where(
+                        OutboundMessage.chat_message_id == operator_message_id
+                    )
+                )
+            ).scalar_one()
+            operator_outbound_id = persisted_outbound.id
             persisted_control = await db.get(ChatConversation, conversation_id)
             event_count = (
                 await db.execute(
@@ -258,7 +267,7 @@ async def test_control_epoch_is_scoped_and_preserves_manual_message_version():
             (
                 _,
                 duplicate_message,
-                duplicate_outbound,
+                duplicate_delivery,
             ) = await service.record_operator_message(
                 db,
                 conversation_id=conversation_id,
@@ -269,15 +278,23 @@ async def test_control_epoch_is_scoped_and_preserves_manual_message_version():
                 idempotency_key="control-integration-manual-1",
             )
             assert duplicate_message.id == operator_message_id
-            assert duplicate_outbound.message.id == operator_outbound_id
-            assert duplicate_outbound.duplicate is True
+            assert duplicate_delivery.delivery_status == "queued"
+            assert duplicate_delivery.duplicate is True
+            duplicate_outbound_id = (
+                await db.execute(
+                    select(OutboundMessage.id).where(
+                        OutboundMessage.chat_message_id == duplicate_message.id
+                    )
+                )
+            ).scalar_one()
+            assert duplicate_outbound_id == operator_outbound_id
             await db.commit()
 
         async with AsyncSessionLocal() as db:
             (
                 _,
                 rolled_back_message,
-                rolled_back_outbound,
+                rolled_back_delivery,
             ) = await service.record_operator_message(
                 db,
                 conversation_id=conversation_id,
@@ -288,7 +305,14 @@ async def test_control_epoch_is_scoped_and_preserves_manual_message_version():
                 idempotency_key="control-integration-rollback",
             )
             rolled_back_message_id = rolled_back_message.id
-            rolled_back_outbound_id = rolled_back_outbound.message.id
+            assert rolled_back_delivery.delivery_status == "queued"
+            rolled_back_outbound_id = (
+                await db.execute(
+                    select(OutboundMessage.id).where(
+                        OutboundMessage.chat_message_id == rolled_back_message.id
+                    )
+                )
+            ).scalar_one()
             await db.rollback()
 
         async with AsyncSessionLocal() as db:
@@ -296,53 +320,104 @@ async def test_control_epoch_is_scoped_and_preserves_manual_message_version():
             assert await db.get(OutboundMessage, rolled_back_outbound_id) is None
 
         async with AsyncSessionLocal() as db:
-            legacy_conversation = ChatConversation(
+            web_conversation = ChatConversation(
                 agent_id=agent_id,
                 principal_id=principal_id,
                 channel="web",
-                external_thread_id=f"legacy-manual-{uuid4()}",
-                route_key="legacy-manual-no-route",
+                external_thread_id=f"web-manual-{uuid4()}",
+                route_key="web-manual-public-event",
                 control_mode="human",
                 control_version=0,
                 assigned_admin_id=admin_id,
             )
-            db.add(legacy_conversation)
+            db.add(web_conversation)
             await db.commit()
-            legacy_conversation_id = legacy_conversation.id
+            web_conversation_id = web_conversation.id
 
         async with AsyncSessionLocal() as db:
+            _, web_message, web_delivery = await service.record_operator_message(
+                db,
+                conversation_id=web_conversation_id,
+                agent_id=agent_id,
+                actor_admin_id=admin_id,
+                content="Human response published to the web thread.",
+                expected_version=0,
+                idempotency_key="web-human-reply",
+            )
+            web_message_id = web_message.id
+            assert web_delivery.delivery_status == "published"
+            assert web_delivery.duplicate is False
+            await db.commit()
+
+        async with AsyncSessionLocal() as db:
+            web_event = (
+                await db.execute(
+                    select(ConversationEvent).where(
+                        ConversationEvent.conversation_id == web_conversation_id,
+                        ConversationEvent.event_type == "chat.message.completed",
+                    )
+                )
+            ).scalar_one()
+            web_outbound_count = (
+                await db.execute(
+                    select(func.count(OutboundMessage.id)).where(
+                        OutboundMessage.conversation_id == web_conversation_id
+                    )
+                )
+            ).scalar_one()
+            assert web_event.visibility == "public"
+            assert web_event.payload_json == {
+                "message_id": str(web_message_id),
+                "content": "Human response published to the web thread.",
+                "status": "completed",
+                "actor": "human",
+            }
+            assert "actor_admin_id" not in web_event.payload_json
+            assert web_outbound_count == 0
+
+            (
+                _,
+                duplicate_web_message,
+                duplicate_web_delivery,
+            ) = await service.record_operator_message(
+                db,
+                conversation_id=web_conversation_id,
+                agent_id=agent_id,
+                actor_admin_id=admin_id,
+                content="Human response published to the web thread.",
+                expected_version=0,
+                idempotency_key="web-human-reply",
+            )
+            assert duplicate_web_message.id == web_message_id
+            assert duplicate_web_delivery.delivery_status == "published"
+            assert duplicate_web_delivery.duplicate is True
+            await db.commit()
+
+        async with AsyncSessionLocal() as db:
+            web_event_count = (
+                await db.execute(
+                    select(func.count(ConversationEvent.id)).where(
+                        ConversationEvent.conversation_id == web_conversation_id,
+                        ConversationEvent.event_type == "chat.message.completed",
+                    )
+                )
+            ).scalar_one()
+            assert web_event_count == 1
+
             with pytest.raises(
                 OperatorMessagePersistenceError,
-                match="explicit channel route",
+                match="belongs to another message",
             ):
                 await service.record_operator_message(
                     db,
-                    conversation_id=legacy_conversation_id,
+                    conversation_id=web_conversation_id,
                     agent_id=agent_id,
                     actor_admin_id=admin_id,
-                    content="This message must fail closed.",
+                    content="Different content must conflict.",
                     expected_version=0,
-                    idempotency_key="legacy-route-missing",
+                    idempotency_key="web-human-reply",
                 )
             await db.rollback()
-
-        async with AsyncSessionLocal() as db:
-            legacy_message_count = (
-                await db.execute(
-                    select(func.count(ChatMessage.id)).where(
-                        ChatMessage.conversation_id == legacy_conversation_id
-                    )
-                )
-            ).scalar_one()
-            legacy_outbound_count = (
-                await db.execute(
-                    select(func.count(OutboundMessage.id)).where(
-                        OutboundMessage.conversation_id == legacy_conversation_id
-                    )
-                )
-            ).scalar_one()
-            assert legacy_message_count == 0
-            assert legacy_outbound_count == 0
 
         async with AsyncSessionLocal() as db:
             invalid_conversation = ChatConversation(

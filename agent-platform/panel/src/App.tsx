@@ -9,9 +9,9 @@ import ProfilesPage, { AgentIdentityPage } from "./pages/AgentProfile";
 import AgentRuntimePage from "./pages/AgentRuntime";
 import AuditPage from "./pages/Audit";
 import { ChannelConnectionsPage, ProviderConnectionsPage } from "./pages/Connections";
-import ConversationsPage from "./pages/Conversations";
 import DashboardPage from "./pages/Dashboard";
 import DocumentsPage from "./pages/Documents";
+import InboxPage from "./pages/Inbox";
 import KnowledgePage from "./pages/KnowledgeBlocks";
 import LoginPage from "./pages/Login";
 import PanelUsersPage from "./pages/PanelUsers";
@@ -116,6 +116,11 @@ function LegacyAgentRedirect({ section, fallback }: { section: string; fallback:
   return (
     <Navigate to={preferredAgent ? `/agents/${preferredAgent.id}/${section}` : fallback} replace />
   );
+}
+
+function ConversationRedirect() {
+  const { selectedAgent } = useAgentWorkspace();
+  return <Navigate to={selectedAgent ? `/agents/${selectedAgent.id}/inbox` : "/agents"} replace />;
 }
 
 function PanelShell() {
@@ -292,13 +297,14 @@ export default function App() {
                 }
               />
               <Route
-                path="conversations"
+                path="inbox"
                 element={
                   <PermissionRoute permission={PERMISSIONS.CONVERSATIONS_READ}>
-                    <ConversationsPage />
+                    <InboxPage />
                   </PermissionRoute>
                 }
               />
+              <Route path="conversations" element={<ConversationRedirect />} />
               <Route
                 path="audit"
                 element={
@@ -349,7 +355,7 @@ export default function App() {
             />
             <Route
               path="conversations"
-              element={<LegacyAgentRedirect section="conversations" fallback="/agents" />}
+              element={<LegacyAgentRedirect section="inbox" fallback="/agents" />}
             />
             <Route
               path="promptlab"
