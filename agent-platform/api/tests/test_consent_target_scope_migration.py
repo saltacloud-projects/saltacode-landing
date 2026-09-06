@@ -14,6 +14,7 @@ from app.core.database import engine
 
 _REVISION = "f6a0b2c4d789"
 _DOWN_REVISION = "f5d9e1f3a678"
+_HEAD_REVISION = "f7b1c3d5e890"
 
 
 def _config() -> Config:
@@ -24,7 +25,7 @@ def _config() -> Config:
 def test_target_scoped_consent_migration_is_the_single_head() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert scripts.get_heads() == [_HEAD_REVISION]
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 
@@ -35,6 +36,7 @@ def test_target_scoped_consent_migration_round_trips_without_evidence() -> None:
     try:
         command.downgrade(config, _DOWN_REVISION)
         command.upgrade(config, _REVISION)
+        command.upgrade(config, _HEAD_REVISION)
         command.check(config)
     finally:
         command.upgrade(config, "head")

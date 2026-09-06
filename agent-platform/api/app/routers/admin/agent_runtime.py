@@ -27,16 +27,30 @@ from app.schemas.agent_runtime import (
     AgentRouteUpdate,
     AgentRuntimeOut,
     AgentRuntimeUpdate,
+    ChannelAdapterCatalogOut,
+    ChannelCatalogOut,
     ChannelConnectionCreate,
     ChannelConnectionOut,
+    ChannelConnectionReadinessOut,
     ChannelConnectionUpdate,
     ConnectionTestResult,
     ProviderConnectionCreate,
     ProviderConnectionOut,
     ProviderConnectionUpdate,
+    VersionedMutation,
 )
 from app.services.admin_rbac import AdminPermission
 from app.services.agent_runtime import connection_service
+from app.services.channel_catalog import (
+    CHANNEL_ADAPTERS,
+    ChannelAdapterUnavailable,
+    ChannelCatalogError,
+    ChannelVersionConflict,
+    channel_catalog_service,
+    require_implemented_adapter,
+    require_version,
+    resolve_channel_adapter,
+)
 from app.services.credentials import (
     CredentialDecryptError,
     CredentialStoreUnavailable,
@@ -58,6 +72,25 @@ async def _get(db, model, value: str, detail: str):
     if row is None:
         raise HTTPException(status_code=404, detail=detail)
     return row
+
+
+async def _get_for_update(db, model, value: str, detail: str):
+    row = (
+        await db.execute(
+            select(model).where(model.id == _uuid(value, detail)).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=detail)
+    return row
+
+
+def _raise_channel_catalog_error(exc: ChannelCatalogError) -> None:
+    if isinstance(exc, ChannelVersionConflict):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ChannelAdapterUnavailable):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get(
@@ -186,6 +219,50 @@ async def test_provider_connection(
 
 
 @router.get(
+    "/channel-catalog",
+    response_model=ChannelCatalogOut,
+    dependencies=[Depends(require_permission(AdminPermission.CONNECTIONS_READ))],
+)
+async def get_channel_catalog(db: AsyncSession = Depends(get_db)):
+    readiness = await channel_catalog_service.list_readiness(db)
+    return ChannelCatalogOut(
+        adapters=[
+            ChannelAdapterCatalogOut(
+                adapter_key=adapter.adapter_key,
+                channel=adapter.channel,
+                implementation_status=adapter.implementation_status,
+                adapter_implemented=adapter.is_implemented,
+                capabilities=list(adapter.capabilities),
+                credentials_required=adapter.credentials_required,
+                blocking_codes=list(adapter.blocking_codes),
+            )
+            for adapter in CHANNEL_ADAPTERS
+        ],
+        connections=[
+            ChannelConnectionReadinessOut(
+                connection_id=str(item.connection.id),
+                name=item.connection.name,
+                slug=item.connection.slug,
+                channel=item.connection.channel,
+                adapter_key=item.connection.adapter_key,
+                version=item.connection.version,
+                is_active=item.connection.is_active,
+                readiness=item.readiness,
+                adapter_implemented=item.adapter_implemented,
+                settings_valid=item.settings_valid,
+                credentials_state=item.credentials_state,
+                routing_state=item.routing_state,
+                active_route_count=item.active_route_count,
+                last_inbound_at=item.last_inbound_at,
+                last_outbound_at=item.last_outbound_at,
+                blocking_codes=list(item.blocking_codes),
+            )
+            for item in readiness
+        ],
+    )
+
+
+@router.get(
     "/channel-connections",
     response_model=list[ChannelConnectionOut],
     dependencies=[Depends(require_permission(AdminPermission.CONNECTIONS_READ))],
@@ -212,6 +289,8 @@ async def create_channel(
 ):
     try:
         row = await connection_service.create_channel(db, data, actor=admin.email)
+    except ChannelCatalogError as exc:
+        _raise_channel_catalog_error(exc)
     except CredentialStoreUnavailable as exc:
         raise HTTPException(
             status_code=503, detail="Credential encryption is unavailable"
@@ -234,11 +313,13 @@ async def update_channel(
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(require_permission(AdminPermission.CONNECTIONS_MANAGE)),
 ):
-    row = await _get(
+    row = await _get_for_update(
         db, ChannelConnection, connection_id, "Channel connection not found"
     )
     try:
         await connection_service.update_channel(db, row, data, actor=admin.email)
+    except ChannelCatalogError as exc:
+        _raise_channel_catalog_error(exc)
     except CredentialStoreUnavailable as exc:
         raise HTTPException(
             status_code=503, detail="Credential encryption is unavailable"
@@ -257,12 +338,24 @@ async def deactivate_channel(
     connection_id: str,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(require_permission(AdminPermission.CONNECTIONS_MANAGE)),
+    data: VersionedMutation | None = None,
 ):
-    row = await _get(
+    row = await _get_for_update(
         db, ChannelConnection, connection_id, "Channel connection not found"
     )
-    row.is_active = False
-    row.updated_by = admin.email
+    expected_version = row.version if data is None else data.expected_version
+    try:
+        await connection_service.update_channel(
+            db,
+            row,
+            ChannelConnectionUpdate(
+                expected_version=expected_version,
+                is_active=False,
+            ),
+            actor=admin.email,
+        )
+    except ChannelCatalogError as exc:
+        _raise_channel_catalog_error(exc)
     return ChannelConnectionOut.from_model(row)
 
 
@@ -409,9 +502,22 @@ async def create_route(
         raise HTTPException(
             status_code=422, detail="Route channel must match its connection"
         )
+    try:
+        adapter = resolve_channel_adapter(
+            channel=connection.channel,
+            adapter_key=connection.adapter_key,
+        )
+        if data.is_active:
+            require_implemented_adapter(
+                channel=connection.channel,
+                adapter_key=adapter.adapter_key,
+            )
+    except ChannelCatalogError as exc:
+        _raise_channel_catalog_error(exc)
     row = ChannelAgentRoute(
         agent_id=profile.id,
         channel=data.channel,
+        version=0,
         route_key=data.route_key,
         channel_connection_id=connection.id,
         is_active=data.is_active,
@@ -441,9 +547,22 @@ async def update_route(
     admin: AdminUser = Depends(require_permission(AdminPermission.RUNTIME_MANAGE)),
 ):
     profile = await _profile(db, agent_id)
-    row = await _get(db, ChannelAgentRoute, route_id, "Channel route not found")
+    row = await _get_for_update(
+        db, ChannelAgentRoute, route_id, "Channel route not found"
+    )
     if row.agent_id != profile.id:
         raise HTTPException(status_code=404, detail="Channel route not found")
+    try:
+        require_version(
+            current=row.version,
+            expected=data.expected_version,
+            resource="channel_route",
+        )
+    except ChannelCatalogError as exc:
+        _raise_channel_catalog_error(exc)
+    connection = await db.get(ChannelConnection, row.channel_connection_id)
+    if connection is None:
+        raise HTTPException(status_code=422, detail="Route connection is unavailable")
     if data.channel_connection_id is not None:
         connection = await _get(
             db,
@@ -457,8 +576,19 @@ async def update_route(
             )
         row.channel_connection_id = connection.id
     if data.is_active is not None:
+        if data.is_active:
+            try:
+                require_implemented_adapter(
+                    channel=connection.channel,
+                    adapter_key=connection.adapter_key,
+                )
+            except ChannelCatalogError as exc:
+                _raise_channel_catalog_error(exc)
         row.is_active = data.is_active
+    row.version += 1
     row.updated_by = admin.email
+    await db.flush()
+    await db.refresh(row)
     return AgentRouteOut.from_model(row)
 
 
@@ -472,7 +602,16 @@ async def deactivate_route(
     route_id: str,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(require_permission(AdminPermission.RUNTIME_MANAGE)),
+    data: VersionedMutation | None = None,
 ):
+    row = await _get_for_update(
+        db, ChannelAgentRoute, route_id, "Channel route not found"
+    )
+    expected_version = row.version if data is None else data.expected_version
     return await update_route(
-        agent_id, route_id, AgentRouteUpdate(is_active=False), db, admin
+        agent_id,
+        route_id,
+        AgentRouteUpdate(expected_version=expected_version, is_active=False),
+        db,
+        admin,
     )

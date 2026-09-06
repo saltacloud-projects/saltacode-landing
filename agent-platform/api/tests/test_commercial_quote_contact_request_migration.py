@@ -18,7 +18,7 @@ from app.models.tool_config import ToolConfig
 
 _REVISION = "e1f5a7b9c234"
 _DOWN_REVISION = "d0e4f6a8b123"
-_HEAD_REVISION = "f6a0b2c4d789"
+_HEAD_REVISION = "f7b1c3d5e890"
 _TOOL_ID = uuid.UUID("2a0a5cc2-bf7f-4f73-a2eb-11dc7e22b075")
 _TOOL_NAME = "commercial_quote_contact_request"
 

@@ -15,6 +15,10 @@ from app.models.agent_runtime import (
     ChannelConnection,
     ProviderConnection,
 )
+from app.services.channel_catalog import (
+    require_implemented_adapter,
+    require_version,
+)
 from app.services.credentials import (
     CredentialDecryptError,
     CredentialStoreUnavailable,
@@ -80,8 +84,14 @@ class ConnectionService:
         return row
 
     async def create_channel(self, db, data, *, actor: str):
+        adapter = require_implemented_adapter(
+            channel=data.channel,
+            adapter_key=data.adapter_key,
+        )
         row = ChannelConnection(
-            **data.model_dump(exclude={"credentials", "settings"}),
+            **data.model_dump(exclude={"credentials", "settings", "adapter_key"}),
+            adapter_key=adapter.adapter_key,
+            version=0,
             settings_json=data.settings,
             created_by=actor,
             updated_by=actor,
@@ -95,8 +105,23 @@ class ConnectionService:
         return row
 
     async def update_channel(self, db, row, data, *, actor: str):
+        require_version(
+            current=row.version,
+            expected=data.expected_version,
+            resource="channel_connection",
+        )
+        adapter = require_implemented_adapter(
+            channel=row.channel,
+            adapter_key=row.adapter_key,
+        )
         values = data.model_dump(
-            exclude_none=True, exclude={"credentials", "clear_credentials", "settings"}
+            exclude_none=True,
+            exclude={
+                "credentials",
+                "clear_credentials",
+                "expected_version",
+                "settings",
+            },
         )
         for key, value in values.items():
             setattr(row, key, value)
@@ -105,13 +130,17 @@ class ConnectionService:
         if data.clear_credentials:
             row.encrypted_credentials = None
         elif data.credentials is not None:
-            if row.channel != "whatsapp":
+            if adapter.adapter_key != "meta_whatsapp_cloud":
                 raise ValueError("web connections do not accept credentials")
             row.encrypted_credentials = credential_cipher.encrypt(
                 data.credentials.model_dump()
             )
+        row.version += 1
         row.updated_by = actor
         await db.flush()
+        refresh = getattr(db, "refresh", None)
+        if refresh is not None:
+            await refresh(row)
         return row
 
 
@@ -189,6 +218,13 @@ class AgentRuntimeResolver:
         route, connection = row
         if connection.channel != route.channel:
             raise AgentRuntimeUnavailable("channel route is inconsistent")
+        try:
+            require_implemented_adapter(
+                channel=connection.channel,
+                adapter_key=connection.adapter_key,
+            )
+        except ValueError as exc:
+            raise AgentRuntimeUnavailable("channel route is unavailable") from exc
         return ResolvedChannelRoute(route, connection)
 
     async def resolve_route(

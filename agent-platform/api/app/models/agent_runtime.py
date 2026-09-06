@@ -20,6 +20,24 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import TimestampedModel
 
+_CHANNEL_ADAPTER_BY_KIND = {
+    "web": "web_builtin",
+    "whatsapp": "meta_whatsapp_cloud",
+    "email": "email",
+    "instagram_dm": "meta_instagram_graph",
+    "facebook_messenger": "meta_messenger_graph",
+}
+
+
+def _default_channel_adapter_key(context) -> str:
+    """Preserve direct ORM construction while keeping adapter identity explicit."""
+
+    channel = context.get_current_parameters()["channel"]
+    try:
+        return _CHANNEL_ADAPTER_BY_KIND[channel]
+    except KeyError as exc:
+        raise ValueError("channel has no registered adapter") from exc
+
 
 class ProviderConnection(TimestampedModel):
     __tablename__ = "provider_connections"
@@ -165,10 +183,29 @@ class ChannelConnection(TimestampedModel):
     __tablename__ = "channel_connections"
     __table_args__ = (
         CheckConstraint(
-            "channel IN ('web', 'whatsapp')", name="ck_channel_connection_channel"
+            "channel IN ('web', 'whatsapp', 'email', 'instagram_dm', "
+            "'facebook_messenger')",
+            name="ck_channel_connection_channel",
         ),
+        CheckConstraint(
+            "adapter_key IN ('web_builtin', 'meta_whatsapp_cloud', 'email', "
+            "'meta_instagram_graph', 'meta_messenger_graph')",
+            name="ck_channel_connection_adapter_key",
+        ),
+        CheckConstraint(
+            "(channel = 'web' AND adapter_key = 'web_builtin') OR "
+            "(channel = 'whatsapp' AND adapter_key = 'meta_whatsapp_cloud') OR "
+            "(channel = 'email' AND adapter_key = 'email') OR "
+            "(channel = 'instagram_dm' AND adapter_key = 'meta_instagram_graph') OR "
+            "(channel = 'facebook_messenger' AND "
+            "adapter_key = 'meta_messenger_graph')",
+            name="ck_channel_connection_adapter_channel",
+        ),
+        CheckConstraint("version >= 0", name="ck_channel_connection_version"),
         UniqueConstraint(
-            "channel", "external_account_id", name="uq_channel_connection_account"
+            "adapter_key",
+            "external_account_id",
+            name="uq_channel_connection_adapter_account",
         ),
     )
 
@@ -177,6 +214,12 @@ class ChannelConnection(TimestampedModel):
         String(100), unique=True, nullable=False, index=True
     )
     channel: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    adapter_key: Mapped[str] = mapped_column(
+        String(80), nullable=False, index=True, default=_default_channel_adapter_key
+    )
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     external_account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     settings_json: Mapped[dict] = mapped_column(
         "settings", JSONB, default=dict, nullable=False
@@ -193,8 +236,11 @@ class ChannelAgentRoute(TimestampedModel):
     __tablename__ = "channel_agent_routes"
     __table_args__ = (
         CheckConstraint(
-            "channel IN ('web', 'whatsapp')", name="ck_channel_agent_route_channel"
+            "channel IN ('web', 'whatsapp', 'email', 'instagram_dm', "
+            "'facebook_messenger')",
+            name="ck_channel_agent_route_channel",
         ),
+        CheckConstraint("version >= 0", name="ck_channel_agent_route_version"),
         CheckConstraint(
             "route_key ~ '^[a-z0-9][a-z0-9._:-]{0,119}$'",
             name="ck_channel_agent_route_key",
@@ -204,6 +250,9 @@ class ChannelAgentRoute(TimestampedModel):
     )
 
     channel: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     route_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     channel_connection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

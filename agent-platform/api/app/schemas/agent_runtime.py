@@ -9,6 +9,20 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+ChannelKind = Literal[
+    "web",
+    "whatsapp",
+    "email",
+    "instagram_dm",
+    "facebook_messenger",
+]
+ChannelAdapterKey = Literal[
+    "web_builtin",
+    "meta_whatsapp_cloud",
+    "email",
+    "meta_instagram_graph",
+    "meta_messenger_graph",
+]
 RouteKey = str
 
 
@@ -42,6 +56,24 @@ def _reject_secret_settings(value: dict[str, Any] | None) -> dict[str, Any] | No
                 visit(nested)
 
     visit(value)
+    return value
+
+
+def _reject_adapter_metadata_settings(
+    value: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    value = _reject_secret_settings(value)
+    if value is None:
+        return None
+    reserved = {
+        "adapter_implemented",
+        "adapter_key",
+        "capabilities",
+        "implementation_status",
+        "readiness",
+    }
+    if reserved.intersection(value):
+        raise ValueError("adapter capabilities and readiness are code-owned")
     return value
 
 
@@ -148,14 +180,15 @@ class ProviderConnectionOut(BaseModel):
 class ChannelConnectionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     slug: str = Field(min_length=1, max_length=100)
-    channel: Literal["web", "whatsapp"]
+    channel: ChannelKind
+    adapter_key: ChannelAdapterKey | None = None
     external_account_id: str | None = Field(default=None, max_length=255)
     settings: dict[str, Any] = Field(default_factory=dict)
     credentials: WhatsAppCredentials | None = Field(default=None, repr=False)
     is_active: bool = True
 
     _slug = field_validator("slug")(ProviderConnectionCreate.normalize_slug.__func__)
-    _settings = field_validator("settings")(_reject_secret_settings)
+    _settings = field_validator("settings")(_reject_adapter_metadata_settings)
 
     @model_validator(mode="after")
     def reject_web_credentials(self):
@@ -165,13 +198,14 @@ class ChannelConnectionCreate(BaseModel):
 
 
 class ChannelConnectionUpdate(BaseModel):
+    expected_version: int = Field(ge=0)
     name: str | None = Field(default=None, min_length=1, max_length=160)
     external_account_id: str | None = Field(default=None, max_length=255)
     settings: dict[str, Any] | None = None
     credentials: WhatsAppCredentials | None = Field(default=None, repr=False)
     clear_credentials: bool = False
     is_active: bool | None = None
-    _settings = field_validator("settings")(_reject_secret_settings)
+    _settings = field_validator("settings")(_reject_adapter_metadata_settings)
 
     @model_validator(mode="after")
     def exclusive_credential_action(self):
@@ -185,6 +219,8 @@ class ChannelConnectionOut(BaseModel):
     name: str
     slug: str
     channel: str
+    adapter_key: str
+    version: int
     external_account_id: str | None
     settings: dict[str, Any]
     has_credentials: bool
@@ -201,6 +237,8 @@ class ChannelConnectionOut(BaseModel):
             name=row.name,
             slug=row.slug,
             channel=row.channel,
+            adapter_key=row.adapter_key,
+            version=row.version,
             external_account_id=row.external_account_id,
             settings=dict(row.settings_json or {}),
             has_credentials=bool(row.encrypted_credentials),
@@ -293,7 +331,7 @@ class AgentRuntimeOut(AgentRuntimeUpdate):
 
 
 class AgentRouteCreate(BaseModel):
-    channel: Literal["web", "whatsapp"]
+    channel: ChannelKind
     route_key: str = Field(
         min_length=1, max_length=120, pattern=r"^[a-z0-9][a-z0-9._:-]{0,119}$"
     )
@@ -302,6 +340,7 @@ class AgentRouteCreate(BaseModel):
 
 
 class AgentRouteUpdate(BaseModel):
+    expected_version: int = Field(ge=0)
     channel_connection_id: str | None = None
     is_active: bool | None = None
 
@@ -310,6 +349,7 @@ class AgentRouteOut(BaseModel):
     id: str
     agent_id: str
     channel: str
+    version: int
     route_key: str
     channel_connection_id: str
     is_active: bool
@@ -322,9 +362,59 @@ class AgentRouteOut(BaseModel):
             id=str(row.id),
             agent_id=str(row.agent_id),
             channel=row.channel,
+            version=row.version,
             route_key=row.route_key,
             channel_connection_id=str(row.channel_connection_id),
             is_active=row.is_active,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
+
+
+class VersionedMutation(BaseModel):
+    expected_version: int = Field(ge=0)
+
+
+class ChannelAdapterCatalogOut(BaseModel):
+    adapter_key: ChannelAdapterKey
+    channel: ChannelKind
+    implementation_status: Literal["implemented", "planned"]
+    adapter_implemented: bool
+    capabilities: list[str]
+    credentials_required: bool
+    blocking_codes: list[str]
+
+
+class ChannelConnectionReadinessOut(BaseModel):
+    connection_id: str
+    name: str
+    slug: str
+    channel: ChannelKind
+    adapter_key: ChannelAdapterKey
+    version: int
+    is_active: bool
+    readiness: Literal[
+        "disabled",
+        "not_implemented",
+        "configuration_required",
+        "configured_unverified",
+        "traffic_observed",
+        "degraded",
+    ]
+    adapter_implemented: bool
+    settings_valid: bool
+    credentials_state: Literal[
+        "not_required",
+        "missing",
+        "stored_unverified",
+    ]
+    routing_state: Literal["not_configured", "inactive", "active", "inconsistent"]
+    active_route_count: int
+    last_inbound_at: datetime | None
+    last_outbound_at: datetime | None
+    blocking_codes: list[str]
+
+
+class ChannelCatalogOut(BaseModel):
+    adapters: list[ChannelAdapterCatalogOut]
+    connections: list[ChannelConnectionReadinessOut]
