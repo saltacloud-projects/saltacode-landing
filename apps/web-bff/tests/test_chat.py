@@ -26,6 +26,7 @@ def test_chat_exposes_typed_sse_boundary(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["cache-control"] == "no-store"
+    assert response.headers["deprecation"] == "true"
     assert response.headers["x-correlation-id"] == "test-correlation-123"
     assert "event: chat.started" in response.text
     assert "event: chat.error" in response.text
@@ -96,6 +97,7 @@ def test_openapi_describes_sse_and_problem_contracts(client: TestClient) -> None
     operation = client.get("/openapi.json").json()["paths"]["/api/v1/chat"]["post"]
     success = operation["responses"]["200"]["content"]["text/event-stream"]
 
+    assert operation["deprecated"] is True
     assert set(operation["responses"]["200"]["content"]) == {"text/event-stream"}
     assert success["schema"] == {"type": "string"}
     assert "x-sse-event-schema" in success

@@ -45,7 +45,12 @@ from app.dependencies import (
 )
 from app.errors import ApiError
 from app.ports import RateLimitBackendError, RateLimitDecision, RateLimiter
-from app.security import client_rate_limit_key, enforce_allowed_origin, rate_limit_client_identity
+from app.security import (
+    client_rate_limit_key,
+    enforce_allowed_origin,
+    rate_limit_client_identity,
+    require_allowed_origin,
+)
 from app.session import SessionResolution, SignedSessionManager
 
 router = APIRouter(prefix="/api/v2/chat", tags=["chat-v2"])
@@ -133,7 +138,7 @@ async def create_message(
     sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
     client: Annotated[WebChatV2Client, Depends(get_web_chat_v2_client)],
 ) -> MessageAccepted:
-    enforce_allowed_origin(request, settings)
+    require_allowed_origin(request, settings)
     _require_current_privacy(payload.privacy_version, settings)
     decision = await _check_rate_limit(request, rate_limiter)
     session = sessions.resolve(request.cookies.get(settings.session_cookie_v2_name))
@@ -174,7 +179,7 @@ async def create_commercial_contact(
     sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
     client: Annotated[WebChatV2Client, Depends(get_web_chat_v2_client)],
 ) -> BrowserCommercialContactAccepted:
-    enforce_allowed_origin(request, settings)
+    require_allowed_origin(request, settings)
     _require_current_privacy(payload.privacy_version, settings)
     decision = await _check_rate_limit(request, rate_limiter)
     session = _require_existing_session(request, settings, sessions)
@@ -284,7 +289,7 @@ async def reset_session(
     sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
     client: Annotated[WebChatV2Client, Depends(get_web_chat_v2_client)],
 ) -> ResetResponse:
-    enforce_allowed_origin(request, settings)
+    require_allowed_origin(request, settings)
     _require_current_privacy(payload.privacy_version, settings)
     decision = await _check_rate_limit(request, rate_limiter)
     current = _require_existing_session(request, settings, sessions)
@@ -321,7 +326,7 @@ async def upgrade_legacy_session(
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
 ) -> None:
-    enforce_allowed_origin(request, settings)
+    require_allowed_origin(request, settings)
     decision = await _check_rate_limit(request, rate_limiter)
     legacy = sessions.resolve(request.cookies.get(settings.session_cookie_name))
     if legacy.is_new:

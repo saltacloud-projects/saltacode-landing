@@ -17,6 +17,7 @@ from app.chat_v2.contracts import (
 from app.chat_v2.ports import WebChatUnavailableError
 from app.config import Settings
 from app.main import create_app
+from app.ports import RateLimitDecision
 
 ORIGIN = "https://www.saltacode.com.ar"
 PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-28"
@@ -110,6 +111,21 @@ class FakeWebChatV2Client:
             raise self.failure
 
 
+class CountingRateLimiter:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def check(self, _key: str) -> RateLimitDecision:
+        self.calls += 1
+        return RateLimitDecision(allowed=True, remaining=19, retry_after_seconds=0)
+
+    async def ready(self) -> bool:
+        return True
+
+    async def aclose(self) -> None:
+        return None
+
+
 def message_payload() -> dict[str, object]:
     return {
         "client_message_id": str(uuid4()),
@@ -120,7 +136,11 @@ def message_payload() -> dict[str, object]:
     }
 
 
-def build_client(fake: FakeWebChatV2Client) -> TestClient:
+def build_client(
+    fake: FakeWebChatV2Client,
+    *,
+    rate_limiter=None,
+) -> TestClient:
     settings = Settings(
         app_env="test",
         allowed_origins=ORIGIN,
@@ -130,7 +150,13 @@ def build_client(fake: FakeWebChatV2Client) -> TestClient:
         chat_v2_heartbeat_seconds=0.001,
         chat_v2_stream_max_seconds=0.01,
     )
-    return TestClient(create_app(settings, web_chat_v2_client=fake))
+    return TestClient(
+        create_app(
+            settings,
+            rate_limiter=rate_limiter,
+            web_chat_v2_client=fake,
+        )
+    )
 
 
 def test_message_uses_server_owned_route_and_signed_v2_cookie() -> None:
@@ -159,6 +185,20 @@ def test_message_uses_server_owned_route_and_signed_v2_cookie() -> None:
     assert "Path=/api/v2/chat" in response.headers["set-cookie"]
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-security-policy"].startswith("default-src 'none'")
+
+
+def test_message_requires_origin_before_rate_limit_or_session_creation() -> None:
+    fake = FakeWebChatV2Client()
+    rate_limiter = CountingRateLimiter()
+    with build_client(fake, rate_limiter=rate_limiter) as client:
+        response = client.post("/api/v2/chat/messages", json=message_payload())
+
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "origin_not_allowed"
+    assert rate_limiter.calls == 0
+    assert fake.message_requests == []
+    assert "set-cookie" not in response.headers
 
 
 def test_history_requires_existing_v2_session_without_creating_cookie() -> None:
@@ -194,6 +234,23 @@ def test_history_is_scoped_by_server_session_and_route() -> None:
     assert response.json()["messages"][0]["content"] == "Necesito una web."
 
 
+def test_read_only_endpoints_remain_available_without_origin() -> None:
+    fake = FakeWebChatV2Client()
+    with build_client(fake) as client:
+        client.post(
+            "/api/v2/chat/messages",
+            json=message_payload(),
+            headers={"Origin": ORIGIN},
+        )
+        history = client.get("/api/v2/chat/history")
+        events = client.get("/api/v2/chat/events")
+
+    assert history.status_code == 200
+    assert events.status_code == 200
+    assert len(fake.history_requests) == 1
+    assert len(fake.event_requests) >= 1
+
+
 def test_legacy_upgrade_is_explicit_and_preserves_signed_identity() -> None:
     fake = FakeWebChatV2Client()
     with build_client(fake) as client:
@@ -212,6 +269,18 @@ def test_legacy_upgrade_is_explicit_and_preserves_signed_identity() -> None:
     assert response.cookies.get("saltacode_chat_session_v2") == legacy.cookie_value
     assert "Path=/api/v2/chat" in response.headers["set-cookie"]
     assert fake.message_requests == []
+
+
+def test_legacy_upgrade_requires_origin_before_rate_limit_or_session_resolution() -> None:
+    fake = FakeWebChatV2Client()
+    rate_limiter = CountingRateLimiter()
+    with build_client(fake, rate_limiter=rate_limiter) as client:
+        response = client.post("/api/v1/chat/session/upgrade")
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "origin_not_allowed"
+    assert rate_limiter.calls == 0
+    assert "set-cookie" not in response.headers
 
 
 def test_invalid_legacy_cookie_does_not_create_v2_identity() -> None:
@@ -253,6 +322,21 @@ def test_reset_rotates_cookie_only_after_private_success() -> None:
     reset_request, _ = fake.reset_requests[0]
     assert reset_request.session_id == fake.message_requests[0][0].session_id
     assert reset_request.next_session_id != reset_request.session_id
+
+
+def test_reset_requires_origin_before_rate_limit_or_session_resolution() -> None:
+    fake = FakeWebChatV2Client()
+    rate_limiter = CountingRateLimiter()
+    with build_client(fake, rate_limiter=rate_limiter) as client:
+        response = client.post(
+            "/api/v2/chat/session/reset",
+            json={"transcript_consent": True, "privacy_version": PRIVACY_VERSION},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "origin_not_allowed"
+    assert rate_limiter.calls == 0
+    assert fake.reset_requests == []
 
 
 def test_reset_failure_does_not_rotate_cookie() -> None:
@@ -404,6 +488,20 @@ def test_v2_rejects_unlisted_origin_and_allows_sse_cors_header() -> None:
     assert fake.message_requests == []
     assert preflight.status_code == 200
     assert "last-event-id" in preflight.headers["access-control-allow-headers"].lower()
+
+
+def test_v2_mutation_requires_an_exact_origin_match() -> None:
+    fake = FakeWebChatV2Client()
+    with build_client(fake) as client:
+        response = client.post(
+            "/api/v2/chat/messages",
+            json=message_payload(),
+            headers={"Origin": f"{ORIGIN}/"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "origin_not_allowed"
+    assert fake.message_requests == []
 
 
 def test_v1_endpoint_remains_available() -> None:

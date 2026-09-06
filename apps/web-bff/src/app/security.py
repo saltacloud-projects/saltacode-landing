@@ -1,5 +1,6 @@
 from hashlib import sha256
 from ipaddress import ip_address
+from typing import Never
 
 from fastapi import Request
 
@@ -11,13 +12,28 @@ def enforce_allowed_origin(request: Request, settings: Settings) -> None:
     origin = request.headers.get("origin")
     if origin is None:
         return
-    if origin.rstrip("/") not in settings.allowed_origin_set:
-        raise ApiError(
-            status_code=403,
-            code="origin_not_allowed",
-            title="Origin not allowed",
-            detail="The request origin is not allowed.",
-        )
+    _reject_unlisted_origin(origin, settings)
+
+
+def require_allowed_origin(request: Request, settings: Settings) -> None:
+    origin = request.headers.get("origin")
+    if origin is None:
+        _raise_origin_not_allowed()
+    _reject_unlisted_origin(origin, settings)
+
+
+def _reject_unlisted_origin(origin: str, settings: Settings) -> None:
+    if origin not in settings.allowed_origin_set:
+        _raise_origin_not_allowed()
+
+
+def _raise_origin_not_allowed() -> Never:
+    raise ApiError(
+        status_code=403,
+        code="origin_not_allowed",
+        title="Origin not allowed",
+        detail="The request origin is not allowed.",
+    )
 
 
 def rate_limit_client_identity(request: Request) -> str:

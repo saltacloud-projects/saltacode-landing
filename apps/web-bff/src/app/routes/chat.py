@@ -51,7 +51,7 @@ async def _encoded_stream(events: AsyncIterator[ChatStreamEvent]) -> AsyncIterat
         yield _encode_sse(event)
 
 
-@router.post("", response_class=StreamingResponse, responses=_CHAT_RESPONSES)
+@router.post("", response_class=StreamingResponse, responses=_CHAT_RESPONSES, deprecated=True)
 async def create_chat_message(
     payload: ChatRequest,
     request: Request,
@@ -100,6 +100,7 @@ async def create_chat_message(
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-store",
+            "Deprecation": "true",
             "X-Content-Type-Options": "nosniff",
             "X-RateLimit-Remaining": str(decision.remaining),
         },

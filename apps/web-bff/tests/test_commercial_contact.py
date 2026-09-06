@@ -78,7 +78,11 @@ class FakeWebChatV2Client:
 
 
 class DenyingRateLimiter:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def check(self, _key: str) -> RateLimitDecision:
+        self.calls += 1
         return RateLimitDecision(allowed=False, remaining=0, retry_after_seconds=31)
 
     async def ready(self) -> bool:
@@ -181,6 +185,22 @@ def test_commercial_contact_requires_existing_valid_signed_session() -> None:
     assert fake.commercial_requests == []
 
 
+def test_commercial_contact_requires_origin_before_rate_limit_or_session() -> None:
+    fake = FakeWebChatV2Client()
+    rate_limiter = DenyingRateLimiter()
+    with build_client(fake, rate_limiter=rate_limiter) as client:
+        response = client.post(
+            "/api/v2/chat/commercial-contact",
+            json=commercial_payload(),
+        )
+
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "origin_not_allowed"
+    assert rate_limiter.calls == 0
+    assert fake.commercial_requests == []
+
+
 @pytest.mark.parametrize(
     "payload_patch",
     [
@@ -235,7 +255,8 @@ def test_commercial_contact_rejects_retired_privacy_before_private_call() -> Non
 
 def test_commercial_contact_enforces_origin_and_shared_abuse_limit() -> None:
     fake = FakeWebChatV2Client()
-    with build_client(fake, rate_limiter=DenyingRateLimiter()) as client:
+    rate_limiter = DenyingRateLimiter()
+    with build_client(fake, rate_limiter=rate_limiter) as client:
         set_signed_session(client)
         origin_rejected = client.post(
             "/api/v2/chat/commercial-contact",
@@ -252,6 +273,7 @@ def test_commercial_contact_enforces_origin_and_shared_abuse_limit() -> None:
     assert origin_rejected.json()["code"] == "origin_not_allowed"
     assert rate_rejected.status_code == 429
     assert rate_rejected.headers["retry-after"] == "31"
+    assert rate_limiter.calls == 1
     assert fake.commercial_requests == []
 
 

@@ -57,9 +57,10 @@ Local development may use the direct `SALTACODE_AGENT_INTERNAL_TOKEN` variable i
 the direct value in production or commit it to an environment file. Development without a
 configured base URL retains the safe unavailable stub.
 
-`SALTACODE_ALLOWED_ORIGINS` is a comma-separated allowlist. Requests without an `Origin` header
-remain valid for same-host and server-to-server operation; browser cross-origin POST requests are
-rejected unless their exact origin is allowlisted.
+`SALTACODE_ALLOWED_ORIGINS` is a comma-separated allowlist. Public state-changing endpoints require
+an `Origin` header whose value exactly matches that allowlist. This applies to v2 message creation,
+commercial-contact capture, session reset, and the legacy-cookie upgrade. Read-only history and SSE
+requests retain support for clients that omit `Origin`; a supplied origin must still match exactly.
 
 `SALTACODE_CHAT_PRIVACY_VERSION` is the only consent-notice version accepted by the public chat
 boundary. Unsupported versions fail with a safe `400 privacy_version_unsupported` response before
@@ -90,9 +91,16 @@ trust `X-Forwarded-For`. Keeping the origin loopback-only is therefore part of t
 
 SSE responses use `Cache-Control: no-store`, do not echo prompts, and carry a correlation ID.
 Commercial-contact responses follow the same no-store policy and expose only the accepted
-opportunity, target agent, and status. The BFF does not log or persist request bodies or contact
-values. The browser cannot choose or forge the agent session identifier because it is recovered
-only from the signed cookie.
+opportunity identifier and status. The BFF does not log or persist request bodies or contact values.
+The browser cannot choose or forge the agent session identifier because it is recovered only from
+the signed cookie.
+
+## Legacy v1 retirement gate
+
+`POST /api/v1/chat` is deprecated but remains available. Its execution route, adapter, and explicit
+`POST /api/v1/chat/session/upgrade` migration endpoint must not be removed until production evidence
+shows zero v1 use for at least one complete legacy-cookie lifetime: 30 days from the final v1 cookie
+issuance. This is an evidence gate, not a scheduled sunset date.
 
 Versioned JSON Schemas live in `../../contracts/chat/`. Regenerate them with:
 

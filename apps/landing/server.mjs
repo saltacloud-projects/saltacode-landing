@@ -268,7 +268,7 @@ async function proxyBackendRequest(request, response, requestUrl) {
     return;
   }
   const headers = {};
-  for (const name of ["content-type", "origin", "x-correlation-id", "cf-connecting-ip"]) {
+  for (const name of ["content-type", "origin", "last-event-id", "x-correlation-id", "cf-connecting-ip"]) {
     const value = request.headers[name];
     if (typeof value === "string") headers[name] = value;
   }

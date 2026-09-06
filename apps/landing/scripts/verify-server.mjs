@@ -1,13 +1,13 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
-import { request as httpRequest } from "node:http";
-import { createServer } from "node:net";
+import { createServer as createHttpServer, request as httpRequest } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { resolve } from "node:path";
 
 async function availablePort() {
   return new Promise((resolvePort, reject) => {
-    const server = createServer();
+    const server = createNetServer();
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
@@ -33,6 +33,9 @@ child.stdout.on("data", (chunk) => { output += chunk; });
 child.stderr.on("data", (chunk) => { output += chunk; });
 
 const baseUrl = `http://127.0.0.1:${port}`;
+let proxyChild;
+let proxyOutput = "";
+let testBackend;
 
 async function requestServer(path, { method = "GET", headers = {} } = {}) {
   return new Promise((resolveRequest, rejectRequest) => {
@@ -71,6 +74,58 @@ async function waitForServer() {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
   }
   throw new Error(`Static server did not start.\n${output}`);
+}
+
+async function verifyProxyPreservesLastEventId() {
+  const backendPort = await availablePort();
+  const proxyPort = await availablePort();
+  let receivedLastEventId;
+  testBackend = createHttpServer((request, response) => {
+    receivedLastEventId = request.headers["last-event-id"];
+    response.statusCode = 200;
+    response.setHeader("Content-Type", "text/event-stream");
+    response.end("event: chat.done\ndata: {}\n\n");
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    testBackend.once("error", rejectListen);
+    testBackend.listen(backendPort, "127.0.0.1", resolveListen);
+  });
+
+  proxyChild = spawn(process.execPath, [resolve(root, "server.mjs")], {
+    cwd: root,
+    env: {
+      ...process.env,
+      BACKEND_URL: `http://127.0.0.1:${backendPort}`,
+      HOST: "127.0.0.1",
+      PORT: String(proxyPort),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  proxyChild.stdout.on("data", (chunk) => { proxyOutput += chunk; });
+  proxyChild.stderr.on("data", (chunk) => { proxyOutput += chunk; });
+
+  const proxyBaseUrl = `http://127.0.0.1:${proxyPort}`;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const health = await fetch(`${proxyBaseUrl}/healthz`);
+      if (health.ok) break;
+    } catch {
+      // The isolated proxy process may still be starting.
+    }
+    if (attempt === 39) throw new Error(`Configured proxy did not start.\n${proxyOutput}`);
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+  }
+
+  const response = await fetch(`${proxyBaseUrl}/api/v2/chat/events`, {
+    headers: { "Last-Event-ID": "0007" },
+  });
+  if (
+    response.status !== 200 ||
+    !response.headers.get("content-type")?.startsWith("text/event-stream") ||
+    receivedLastEventId !== "0007"
+  ) {
+    throw new Error("The API proxy must preserve Last-Event-ID for authoritative BFF validation.");
+  }
 }
 
 try {
@@ -303,6 +358,8 @@ try {
     throw new Error("Unconfigured API proxy requests must fail closed with a safe problem response.");
   }
 
+  await verifyProxyPreservesLastEventId();
+
   const robots = await fetch(`${baseUrl}/robots.txt`);
   if (robots.status !== 200 || robots.headers.get("cache-control") !== "public, max-age=0, must-revalidate") {
     throw new Error("robots.txt must be served with revalidation.");
@@ -342,9 +399,13 @@ try {
     throw new Error("HEAD requests must return headers without a body.");
   }
 
-  console.log("Verified health, compression, nested-route redirects, all public pages, CSP hashes, real 404s, fail-closed API proxy, cache policy, security headers, and HEAD support.");
+  console.log("Verified health, compression, nested-route redirects, all public pages, CSP hashes, real 404s, fail-closed API proxy, resumable SSE cursor forwarding, cache policy, security headers, and HEAD support.");
 } finally {
   child.kill("SIGTERM");
+  proxyChild?.kill("SIGTERM");
+  if (testBackend) {
+    await new Promise((resolveClose) => testBackend.close(resolveClose));
+  }
   await new Promise((resolveExit) => {
     child.once("exit", resolveExit);
     setTimeout(resolveExit, 1_000).unref();
