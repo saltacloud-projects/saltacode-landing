@@ -59,7 +59,7 @@ async def accept_message(
     except WebChatSessionBlockedError as exc:
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
-            detail="Web chat session is not available for automation.",
+            detail="Web chat session is not available.",
         ) from exc
     except WebChatSessionNotFoundError as exc:
         raise HTTPException(

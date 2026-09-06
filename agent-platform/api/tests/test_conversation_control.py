@@ -20,6 +20,7 @@ from app.services.conversation_control import (
     InvalidControlTransitionError,
     OperatorControlRequiredError,
 )
+from app.services.conversation_events import ConversationEventVisibility
 
 
 class _Result:
@@ -62,6 +63,7 @@ def _conversation(
     return SimpleNamespace(
         id=uuid4(),
         agent_id=agent_id,
+        status="active",
         control_mode=mode.value,
         control_version=version,
         assigned_admin_id=assigned_admin_id,
@@ -106,6 +108,88 @@ async def test_takeover_locks_conversation_and_creates_one_control_epoch():
     assert event.event_type == "taken_over"
     assert event.control_version == 1
     assert event.actor_admin_id == operator_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current_mode", "target_mode", "current_owner", "expected_event"),
+    [
+        (
+            ConversationControlMode.AUTOMATED,
+            ConversationControlMode.PAUSED,
+            False,
+            "paused",
+        ),
+        (
+            ConversationControlMode.AUTOMATED,
+            ConversationControlMode.HUMAN,
+            False,
+            "taken_over",
+        ),
+        (
+            ConversationControlMode.HUMAN,
+            ConversationControlMode.HUMAN,
+            True,
+            "reassigned",
+        ),
+        (
+            ConversationControlMode.PAUSED,
+            ConversationControlMode.AUTOMATED,
+            False,
+            "resumed",
+        ),
+        (
+            ConversationControlMode.AUTOMATED,
+            ConversationControlMode.CLOSED,
+            False,
+            "closed",
+        ),
+    ],
+)
+async def test_web_control_transitions_publish_sanitized_public_state(
+    monkeypatch,
+    current_mode,
+    target_mode,
+    current_owner,
+    expected_event,
+):
+    agent_id = uuid4()
+    actor_id = uuid4()
+    conversation = _conversation(
+        agent_id=agent_id,
+        mode=current_mode,
+        version=2,
+        assigned_admin_id=uuid4() if current_owner else None,
+        channel="web",
+    )
+    db = _SequenceDb(_Result(conversation))
+    publish = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+    monkeypatch.setattr(
+        "app.services.conversation_control.conversation_event_service.publish",
+        publish,
+    )
+
+    result = await ConversationControlService().transition(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent_id,
+        actor_admin_id=actor_id,
+        target_mode=target_mode,
+        expected_version=2,
+        reason="private operator reason",
+    )
+
+    assert db.added[0].event_type == expected_event
+    assert publish.await_args.kwargs["event_type"] == "chat.control.changed"
+    assert publish.await_args.kwargs["visibility"] == ConversationEventVisibility.PUBLIC
+    assert publish.await_args.kwargs["payload"] == {
+        "mode": target_mode.value,
+        "status": result.status,
+    }
+    public_payload = publish.await_args.kwargs["payload"]
+    assert "actor_admin_id" not in public_payload
+    assert "assigned_admin_id" not in public_payload
+    assert "reason" not in public_payload
 
 
 @pytest.mark.asyncio

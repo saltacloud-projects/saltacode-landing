@@ -64,7 +64,7 @@ class WebChatConsentRequiredError(WebChatV2Error):
 
 
 class WebChatSessionBlockedError(WebChatV2Error):
-    """The session is closed or under non-automated ownership."""
+    """The session is closed or its identity is unavailable."""
 
 
 class WebChatRequestConflictError(WebChatV2Error):
@@ -114,8 +114,21 @@ class WebChatV2Service:
             session_id=request.session_id,
             consent_version=request.consent.version,
         )
-        if conversation.status != "active" or conversation.control_mode != "automated":
-            raise WebChatSessionBlockedError("web chat session is not automated")
+        if conversation.status != "active" or conversation.control_mode == "closed":
+            raise WebChatSessionBlockedError("web chat session is closed")
+        duplicate = await self._find_existing_acceptance(
+            db,
+            conversation=conversation,
+            request=request,
+        )
+        if duplicate is not None:
+            return duplicate
+        if conversation.control_mode in {"human", "paused"}:
+            return await self._accept_for_operator(
+                db,
+                conversation=conversation,
+                request=request,
+            )
         try:
             outcome = await self._queue.enqueue(
                 db,
@@ -140,6 +153,123 @@ class WebChatV2Service:
             message_id=outcome.inbound_message.id,
             event_cursor=outcome.accepted_event.sequence,
             duplicate=outcome.duplicate,
+        )
+
+    async def _accept_for_operator(
+        self,
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        request: WebMessageRequest,
+    ) -> WebMessageAccepted:
+        """Persist visitor input without scheduling automation."""
+        client_message_id = str(request.client_message_id)
+        message = ChatMessage(
+            conversation_id=conversation.id,
+            client_message_id=client_message_id,
+            role="user",
+            content=request.content,
+            status="completed",
+            metadata_json={"locale": request.locale.strip()},
+        )
+        db.add(message)
+        await db.flush()
+        accepted_event = await self._events.publish(
+            db,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            event_type="chat.message.accepted",
+            visibility=ConversationEventVisibility.PUBLIC,
+            payload={
+                "client_message_id": client_message_id,
+                "message_id": str(message.id),
+                "status": "accepted",
+            },
+        )
+        return WebMessageAccepted(
+            client_message_id=request.client_message_id,
+            message_id=message.id,
+            event_cursor=accepted_event.sequence,
+            duplicate=False,
+        )
+
+    async def _find_existing_acceptance(
+        self,
+        db: AsyncSession,
+        *,
+        conversation: ChatConversation,
+        request: WebMessageRequest,
+    ) -> WebMessageAccepted | None:
+        client_message_id = str(request.client_message_id)
+        existing = (
+            (
+                await db.execute(
+                    select(ChatMessage).where(
+                        ChatMessage.conversation_id == conversation.id,
+                        ChatMessage.client_message_id == client_message_id,
+                    )
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if existing is None:
+            return None
+        if not self._same_web_input(existing, request):
+            raise WebChatRequestConflictError(
+                "client message id belongs to different input"
+            )
+        accepted_event = await self._find_message_accepted_event(
+            db,
+            conversation_id=conversation.id,
+            message_id=existing.id,
+        )
+        if accepted_event is None:
+            raise WebChatV2Error("stored web message has no accepted event")
+        return WebMessageAccepted(
+            client_message_id=request.client_message_id,
+            message_id=existing.id,
+            event_cursor=accepted_event.sequence,
+            duplicate=True,
+        )
+
+    @staticmethod
+    def _same_web_input(
+        message: ChatMessage,
+        request: WebMessageRequest,
+    ) -> bool:
+        metadata = message.metadata_json or {}
+        return (
+            message.role == "user"
+            and message.content == request.content
+            and metadata.get("locale") == request.locale.strip()
+        )
+
+    @staticmethod
+    async def _find_message_accepted_event(
+        db: AsyncSession,
+        *,
+        conversation_id: uuid.UUID,
+        message_id: uuid.UUID,
+    ) -> ConversationEvent | None:
+        return (
+            (
+                await db.execute(
+                    select(ConversationEvent)
+                    .where(
+                        ConversationEvent.conversation_id == conversation_id,
+                        ConversationEvent.event_type == "chat.message.accepted",
+                        ConversationEvent.visibility
+                        == ConversationEventVisibility.PUBLIC.value,
+                        ConversationEvent.payload_json["message_id"].astext
+                        == str(message_id),
+                    )
+                    .order_by(ConversationEvent.sequence)
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
         )
 
     async def history(

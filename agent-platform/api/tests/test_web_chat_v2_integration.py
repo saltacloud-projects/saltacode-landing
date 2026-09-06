@@ -12,11 +12,15 @@ from sqlalchemy import delete, select
 
 from app.config import settings
 from app.core.database import AsyncSessionLocal, engine
+from app.models.admin_role import AdminRole
+from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.conversation_event import ConversationEvent
-from app.models.platform import ChatConversation, ChatExecution, Principal
+from app.models.platform import ChatConversation, ChatExecution, ChatMessage, Principal
 from app.routers.web_chat_v2 import router
+from app.schemas.conversation_control import ConversationControlMode
+from app.services.conversation_control import ConversationControlService
 from app.services.conversation_events import (
     ConversationEventService,
     ConversationEventVisibility,
@@ -28,6 +32,8 @@ pytestmark = pytest.mark.integration
 @dataclass(frozen=True)
 class _WebRouteGraph:
     agent_id: UUID
+    admin_id: UUID
+    admin_role_key: str
     connection_id: UUID
     route_ids: tuple[UUID, UUID]
     route_keys: tuple[str, str]
@@ -36,6 +42,8 @@ class _WebRouteGraph:
 @pytest.fixture
 async def web_route_graph():
     agent_id = None
+    admin_id = None
+    admin_role_key = ""
     connection_id = None
     route_ids: tuple[UUID, UUID] = ()
     route_keys: tuple[str, str] = ()
@@ -62,7 +70,24 @@ async def web_route_graph():
                 settings_json={},
                 is_active=True,
             )
-            db.add_all([profile, connection])
+            admin_role_key = f"web-chat-v2-role-{suffix}"[:40]
+            admin_role = AdminRole(
+                key=admin_role_key,
+                name="Web chat v2 operator",
+                permissions=["conversations.manage"],
+                is_active=True,
+                is_system=False,
+            )
+            db.add_all([profile, connection, admin_role])
+            await db.flush()
+            admin = AdminUser(
+                email=f"web-chat-v2-{suffix}@example.invalid",
+                hashed_password="not-used",
+                name="Web chat v2 operator",
+                role=admin_role.key,
+                is_active=True,
+            )
+            db.add(admin)
             await db.flush()
             route_keys = (f"web-v2-a-{suffix}", f"web-v2-b-{suffix}")
             routes = [
@@ -78,10 +103,13 @@ async def web_route_graph():
             db.add_all(routes)
             await db.commit()
             agent_id = profile.id
+            admin_id = admin.id
             connection_id = connection.id
             route_ids = (routes[0].id, routes[1].id)
             yield _WebRouteGraph(
                 agent_id=profile.id,
+                admin_id=admin.id,
+                admin_role_key=admin_role.key,
                 connection_id=connection.id,
                 route_ids=route_ids,
                 route_keys=route_keys,
@@ -126,6 +154,12 @@ async def web_route_graph():
             if agent_id is not None:
                 await db.execute(
                     delete(AgentProfile).where(AgentProfile.id == agent_id)
+                )
+            if admin_id is not None:
+                await db.execute(delete(AdminUser).where(AdminUser.id == admin_id))
+            if admin_role_key:
+                await db.execute(
+                    delete(AdminRole).where(AdminRole.key == admin_role_key)
                 )
             await db.commit()
         await engine.dispose()
@@ -343,3 +377,244 @@ async def test_durable_message_history_events_scope_and_reset(web_route_graph):
     assert old_conversation.control_version == 1
     assert {execution.status for execution in executions} == {"cancelled"}
     assert close_event.visibility == "public"
+
+
+@pytest.mark.asyncio
+async def test_human_and_paused_web_input_is_durable_without_execution(
+    web_route_graph,
+):
+    session_id = uuid4()
+    automated_message_id = uuid4()
+    human_message_id = uuid4()
+    paused_message_id = uuid4()
+    route_key = web_route_graph.route_keys[0]
+    headers = {"Authorization": f"Bearer {settings.fastapi_api_key}"}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app()),
+        base_url="http://test",
+        headers=headers,
+    ) as client:
+        automated = await client.post(
+            "/internal/v2/web/messages",
+            json=_message_payload(
+                session_id=session_id,
+                message_id=automated_message_id,
+                route_key=route_key,
+            ),
+        )
+        async with AsyncSessionLocal() as db:
+            conversation = (
+                (
+                    await db.execute(
+                        select(ChatConversation).where(
+                            ChatConversation.agent_id == web_route_graph.agent_id,
+                            ChatConversation.external_thread_id == str(session_id),
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            conversation.control_mode = "human"
+            conversation.control_version += 1
+            conversation.assigned_admin_id = web_route_graph.admin_id
+            await db.commit()
+
+        human_payload = _message_payload(
+            session_id=session_id,
+            message_id=human_message_id,
+            route_key=route_key,
+        )
+        human = await client.post(
+            "/internal/v2/web/messages",
+            json=human_payload,
+        )
+        duplicate = await client.post(
+            "/internal/v2/web/messages",
+            json=human_payload,
+        )
+        conflict = await client.post(
+            "/internal/v2/web/messages",
+            json={**human_payload, "content": "Different human input"},
+        )
+
+        async with AsyncSessionLocal() as db:
+            conversation = (
+                (
+                    await db.execute(
+                        select(ChatConversation).where(
+                            ChatConversation.agent_id == web_route_graph.agent_id,
+                            ChatConversation.external_thread_id == str(session_id),
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            conversation.control_mode = "paused"
+            conversation.control_version += 1
+            await db.commit()
+
+        paused = await client.post(
+            "/internal/v2/web/messages",
+            json=_message_payload(
+                session_id=session_id,
+                message_id=paused_message_id,
+                route_key=route_key,
+            ),
+        )
+        async with AsyncSessionLocal() as db:
+            conversation = (
+                (
+                    await db.execute(
+                        select(ChatConversation).where(
+                            ChatConversation.agent_id == web_route_graph.agent_id,
+                            ChatConversation.external_thread_id == str(session_id),
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            conversation.control_mode = "automated"
+            conversation.control_version += 1
+            conversation.assigned_admin_id = None
+            await db.commit()
+        duplicate_after_resume = await client.post(
+            "/internal/v2/web/messages",
+            json=human_payload,
+        )
+
+    assert automated.status_code == 202
+    assert human.status_code == 202
+    assert human.json()["status"] == "accepted"
+    assert human.json()["duplicate"] is False
+    assert duplicate.status_code == 202
+    assert duplicate.json()["duplicate"] is True
+    assert duplicate.json()["event_cursor"] == human.json()["event_cursor"]
+    assert conflict.status_code == 409
+    assert paused.status_code == 202
+    assert paused.json()["status"] == "accepted"
+    assert duplicate_after_resume.status_code == 202
+    assert duplicate_after_resume.json()["duplicate"] is True
+    assert duplicate_after_resume.json()["event_cursor"] == human.json()["event_cursor"]
+
+    async with AsyncSessionLocal() as db:
+        conversation = (
+            (
+                await db.execute(
+                    select(ChatConversation).where(
+                        ChatConversation.agent_id == web_route_graph.agent_id,
+                        ChatConversation.external_thread_id == str(session_id),
+                    )
+                )
+            )
+            .scalars()
+            .one()
+        )
+        executions = list(
+            (
+                (
+                    await db.execute(
+                        select(ChatExecution).where(
+                            ChatExecution.conversation_id == conversation.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        )
+        messages = list(
+            (
+                (
+                    await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.conversation_id == conversation.id,
+                            ChatMessage.client_message_id.in_(
+                                (str(human_message_id), str(paused_message_id))
+                            ),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        )
+
+    assert [execution.client_message_id for execution in executions] == [
+        str(automated_message_id)
+    ]
+    assert {message.client_message_id for message in messages} == {
+        str(human_message_id),
+        str(paused_message_id),
+    }
+    assert {message.status for message in messages} == {"completed"}
+
+
+@pytest.mark.asyncio
+async def test_web_takeover_publishes_only_sanitized_public_control_state(
+    web_route_graph,
+):
+    session_id = uuid4()
+    route_key = web_route_graph.route_keys[0]
+    headers = {"Authorization": f"Bearer {settings.fastapi_api_key}"}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app()),
+        base_url="http://test",
+        headers=headers,
+    ) as client:
+        accepted = await client.post(
+            "/internal/v2/web/messages",
+            json=_message_payload(
+                session_id=session_id,
+                message_id=uuid4(),
+                route_key=route_key,
+            ),
+        )
+        assert accepted.status_code == 202
+
+        async with AsyncSessionLocal() as db:
+            conversation = (
+                (
+                    await db.execute(
+                        select(ChatConversation).where(
+                            ChatConversation.agent_id == web_route_graph.agent_id,
+                            ChatConversation.external_thread_id == str(session_id),
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            await ConversationControlService().transition(
+                db,
+                conversation_id=conversation.id,
+                agent_id=web_route_graph.agent_id,
+                actor_admin_id=web_route_graph.admin_id,
+                target_mode=ConversationControlMode.HUMAN,
+                expected_version=conversation.control_version,
+                reason="private reason that must not cross the web boundary",
+            )
+            await db.commit()
+
+        events = await client.get(
+            "/internal/v2/web/events",
+            params={
+                "session_id": str(session_id),
+                "route_key": route_key,
+                "after": 0,
+            },
+        )
+
+    assert events.status_code == 200
+    control_event = next(
+        item
+        for item in events.json()["events"]
+        if item["event_type"] == "chat.control.changed"
+    )
+    assert control_event["payload"] == {"mode": "human", "status": "active"}
+    assert "admin" not in str(control_event["payload"])
+    assert "reason" not in str(control_event["payload"])

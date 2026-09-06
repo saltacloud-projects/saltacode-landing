@@ -465,8 +465,8 @@ class ConversationControlService:
             return "reassigned"
         return "taken_over"
 
-    @staticmethod
     async def _apply_control_epoch(
+        self,
         db: AsyncSession,
         *,
         conversation: ChatConversation,
@@ -504,6 +504,18 @@ class ConversationControlService:
             )
         )
         await db.flush()
+        if conversation.channel == "web":
+            await conversation_event_service.publish(
+                db,
+                conversation_id=conversation.id,
+                agent_id=conversation.agent_id,
+                event_type="chat.control.changed",
+                visibility=ConversationEventVisibility.PUBLIC,
+                payload={
+                    "mode": target_mode.value,
+                    "status": conversation.status,
+                },
+            )
         return conversation
 
 
