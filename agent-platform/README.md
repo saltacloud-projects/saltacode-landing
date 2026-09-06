@@ -5,7 +5,7 @@ Channel-neutral AI agent service for web chat, WhatsApp, and authenticated API c
 ## Architecture
 
 ```text
-web browser -> application BFF -> POST /internal/v1/executions
+web browser -> application BFF -> private web-chat v2 API
 Meta webhook ------------------> WhatsApp adapter
 trusted clients ---------------> authenticated API adapter
                                       |
@@ -29,6 +29,7 @@ The browser never receives provider keys, integration credentials, or the intern
 - Tools bound to a source, HTTP method, channel allowlist, risk level, confirmation, and idempotency policy.
 - Optional RAG worker and document administration.
 - Meta webhook signature validation and optional WhatsApp access policy.
+- Durable web execution and channel-neutral outbound workers with schema healthchecks.
 
 ## Local stack
 
@@ -55,19 +56,22 @@ Stop the stack with:
 ./scripts/platform/down.sh
 ```
 
-The outbound dispatcher is defined as a separate `outbound` Compose profile.
-It remains disabled while existing producers still send directly. After those
-producers are migrated and their cutover is approved, it can be exercised with:
+The WhatsApp inbox, outbound delivery, and web execution workers are required
+services. They run as one replica each, share the immutable API image, and have
+provider egress without publishing ports. Inspect them with:
 
 ```bash
-docker compose --env-file .env.platform.local --profile outbound up -d outbound-worker
-docker compose --env-file .env.platform.local --profile outbound exec outbound-worker \
+docker compose --env-file .env.platform.local ps
+docker compose --env-file .env.platform.local exec outbound-worker \
   python /usr/local/libexec/agent-entrypoint.py \
   python -m app.workers.outbound --healthcheck
+docker compose --env-file .env.platform.local exec web-execution-worker \
+  python /usr/local/libexec/agent-entrypoint.py \
+  python -m app.workers.web_executions --healthcheck
 ```
 
-The healthcheck verifies only the local database schema and document volume; it
-does not contact Meta or decrypt/test provider credentials.
+Worker healthchecks verify their local database schema and required storage.
+They do not contact providers or decrypt/test provider credentials.
 
 ## Host release and rollback
 
@@ -82,7 +86,12 @@ AGENT_PLATFORM_ENV_FILE=/etc/saltacode/agent-platform/production.env \
   ./scripts/platform/deploy-release.sh
 ```
 
-The deploy uses an immutable `APP_VERSION`, controlled one-shot migrations, `docker compose --wait`, internal and loopback health probes, and secret-free receipts under `/var/lib/saltacode-agent-platform`. Rollback preserves PostgreSQL, documents, conversation history, and audit data; it refuses a target whose database revision or runtime contract is incompatible.
+The deploy uses an immutable `APP_VERSION`, controlled one-shot migrations,
+`docker compose --wait`, internal and loopback health probes, and secret-free
+version 3 receipts under `/var/lib/saltacode-agent-platform`. The receipts bind
+all required workers to the API image and record their health. Rollback preserves
+PostgreSQL, documents, conversation history, and audit data; it refuses a target
+whose database revision or runtime contract is incompatible.
 
 See [`docs/operations/release-and-rollback.md`](docs/operations/release-and-rollback.md) for environment preparation, exact rollback commands, receipt fields, and the schema-change boundary.
 
@@ -118,7 +127,12 @@ npm ci
 npm run build
 ```
 
-The production API image installs only runtime dependencies and excludes tests and maintenance scripts. The dedicated `test` build target owns the test suite and development tools. A non-development container fails closed when the internal API token file is absent or the JWT secret is missing, short, or still uses the placeholder value.
+The production API image installs only runtime dependencies and excludes tests
+and maintenance scripts. The dedicated `test` build target owns the test suite
+and development tools. A non-development container fails closed when the
+internal API token file is absent, the JWT secret is weak, either contact key is
+unavailable, or the independent contact encryption and lookup keys contain the
+same material.
 
 The clean platform schema lives in `api/migrations_platform/` and is selected with `api/alembic-platform.ini`.
 The administration panel intentionally uses npm and its committed `package-lock.json`; the repository landing uses pnpm from the repository root.

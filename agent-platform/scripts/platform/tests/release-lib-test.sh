@@ -68,6 +68,34 @@ EOF
 
 [[ "$(receipt_whatsapp_worker_enabled "${RECEIPT_DIR}/legacy-release.receipt")" == "0" ]] ||
   fail "version 1 receipt did not retain its pre-worker state"
+[[ "$(receipt_outbound_worker_enabled "${RECEIPT_DIR}/legacy-release.receipt")" == "0" ]] ||
+  fail "version 1 receipt unexpectedly enabled the outbound worker"
+[[ "$(receipt_web_execution_worker_enabled "${RECEIPT_DIR}/legacy-release.receipt")" == "0" ]] ||
+  fail "version 1 receipt unexpectedly enabled the web execution worker"
+
+cat >"${RECEIPT_DIR}/version-2-release.receipt" <<'EOF'
+format_version=2
+component=agent-platform
+action=deploy
+release=version-2-release
+previous_release=legacy-release
+compose_contract_sha256=compose-contract
+environment_contract_sha256=environment-contract
+database_revision_after=worker_revision
+api_image_id=sha256:api-image
+panel_image_id=sha256:panel-image
+rag_worker_enabled=0
+whatsapp_worker_enabled=1
+whatsapp_worker_image_id=sha256:api-image
+verification=passed
+EOF
+
+[[ "$(receipt_whatsapp_worker_enabled "${RECEIPT_DIR}/version-2-release.receipt")" == "1" ]] ||
+  fail "version 2 receipt did not retain its WhatsApp worker state"
+[[ "$(receipt_outbound_worker_enabled "${RECEIPT_DIR}/version-2-release.receipt")" == "0" ]] ||
+  fail "version 2 receipt unexpectedly enabled the outbound worker"
+[[ "$(receipt_web_execution_worker_enabled "${RECEIPT_DIR}/version-2-release.receipt")" == "0" ]] ||
+  fail "version 2 receipt unexpectedly enabled the web execution worker"
 
 image_id() {
   case "$1" in
@@ -85,13 +113,21 @@ RELEASE="worker-release"
 record_deploy_receipt legacy-release worker_revision worker_revision \
   sha256:api-image sha256:panel-image
 worker_receipt="${RECEIPT_DIR}/worker-release.receipt"
-[[ "$(receipt_value "${worker_receipt}" format_version)" == "2" ]] ||
-  fail "new deploy receipt did not use format version 2"
+[[ "$(receipt_value "${worker_receipt}" format_version)" == "3" ]] ||
+  fail "new deploy receipt did not use format version 3"
 [[ "$(receipt_whatsapp_worker_enabled "${worker_receipt}")" == "1" ]] ||
   fail "new deploy receipt did not require the WhatsApp worker"
 [[ "$(receipt_value "${worker_receipt}" whatsapp_worker_image_id)" == \
    "$(receipt_value "${worker_receipt}" api_image_id)" ]] ||
   fail "new deploy receipt did not bind the WhatsApp worker to the API image"
+for worker in whatsapp outbound web_execution; do
+  [[ "$(receipt_value "${worker_receipt}" "${worker}_worker_enabled")" == "1" ]] ||
+    fail "new deploy receipt did not require the ${worker} worker"
+  [[ "$(receipt_value "${worker_receipt}" "${worker}_worker_image_id")" == "sha256:api-image" ]] ||
+    fail "new deploy receipt did not bind the ${worker} worker to the API image"
+  [[ "$(receipt_value "${worker_receipt}" "${worker}_worker_health")" == "passed" ]] ||
+    fail "new deploy receipt did not record ${worker} worker health"
+done
 assert_release_restorable worker-release worker_revision
 
 invalid_receipt="${RECEIPT_DIR}/invalid-worker.receipt"
@@ -104,12 +140,25 @@ fi
 
 record_rollback_receipt current-release worker-release worker_revision
 rollback_receipt="$(find "${ROLLBACK_RECEIPT_DIR}" -type f -name '*-to-worker-release.receipt')"
-[[ "$(receipt_value "${rollback_receipt}" format_version)" == "2" ]] ||
-  fail "rollback receipt did not use format version 2"
+[[ "$(receipt_value "${rollback_receipt}" format_version)" == "3" ]] ||
+  fail "rollback receipt did not use format version 3"
 [[ "$(receipt_value "${rollback_receipt}" whatsapp_worker_enabled)" == "1" ]] ||
   fail "rollback receipt did not preserve the target WhatsApp worker state"
 [[ "$(receipt_value "${rollback_receipt}" whatsapp_worker_image_id)" == "sha256:api-image" ]] ||
   fail "rollback receipt did not record the target WhatsApp worker image"
+[[ "$(receipt_value "${rollback_receipt}" outbound_worker_enabled)" == "1" ]] ||
+  fail "rollback receipt did not preserve the target outbound worker state"
+[[ "$(receipt_value "${rollback_receipt}" web_execution_worker_enabled)" == "1" ]] ||
+  fail "rollback receipt did not preserve the target web execution worker state"
+
+record_rollback_receipt current-release legacy-release worker_revision
+legacy_rollback_receipt="$(find "${ROLLBACK_RECEIPT_DIR}" -type f -name '*-to-legacy-release.receipt')"
+[[ "$(receipt_whatsapp_worker_enabled "${legacy_rollback_receipt}")" == "0" ]] ||
+  fail "version 3 rollback receipt did not preserve the legacy WhatsApp worker state"
+[[ "$(receipt_outbound_worker_enabled "${legacy_rollback_receipt}")" == "0" ]] ||
+  fail "version 3 rollback receipt did not preserve the legacy outbound worker state"
+[[ "$(receipt_web_execution_worker_enabled "${legacy_rollback_receipt}")" == "0" ]] ||
+  fail "version 3 rollback receipt did not preserve the legacy web execution worker state"
 
 calls="${test_root}/compose-calls"
 mock_worker_image_id="sha256:api-image"
@@ -122,10 +171,10 @@ compose_release() {
       if [[ "${release}" == "legacy-release" ]]; then
         printf '%s\n' api panel
       else
-        printf '%s\n' api panel whatsapp-worker
+        printf '%s\n' api panel whatsapp-worker outbound-worker web-execution-worker
       fi
       ;;
-    "ps -q whatsapp-worker")
+    "ps -q whatsapp-worker"|"ps -q outbound-worker"|"ps -q web-execution-worker")
       printf '%064d\n' 1
       ;;
   esac
@@ -136,28 +185,37 @@ docker() {
   case "$4" in
     '{{.Config.Image}}') image_reference api worker-release ;;
     '{{.Image}}') printf '%s' "${mock_worker_image_id}" ;;
+    '{{.State.Health.Status}}') printf healthy ;;
     *) fail "unexpected Docker inspect format: $4" ;;
   esac
 }
 
 : >"${calls}"
-start_application_services legacy-release 0 0
+start_application_services legacy-release 0 0 0 0
 ! grep -Eq '^legacy-release\|up .* whatsapp-worker$' "${calls}" ||
   fail "version 1 lifecycle unexpectedly started the WhatsApp worker"
-verify_whatsapp_worker_runtime legacy-release 0
+verify_worker_runtime legacy-release whatsapp-worker 0
+verify_worker_runtime legacy-release outbound-worker 0
+verify_worker_runtime legacy-release web-execution-worker 0
 
 : >"${calls}"
-start_application_services worker-release 0 1
+start_application_services worker-release 0 1 1 1
 grep -Fq 'worker-release|up -d --wait --no-deps whatsapp-worker' "${calls}" ||
   fail "application start did not wait for the required WhatsApp worker healthcheck"
+grep -Fq 'worker-release|up -d --wait --no-deps outbound-worker' "${calls}" ||
+  fail "application start did not wait for the required outbound worker healthcheck"
+grep -Fq 'worker-release|up -d --wait --no-deps web-execution-worker' "${calls}" ||
+  fail "application start did not wait for the required web execution worker healthcheck"
 stop_application_services worker-release
-grep -Fq 'worker-release|stop --timeout 30 panel rag-worker whatsapp-worker api' "${calls}" ||
-  fail "application stop omitted the WhatsApp worker"
-verify_whatsapp_worker_runtime worker-release 1
+grep -Fq 'worker-release|stop --timeout 30 panel rag-worker web-execution-worker outbound-worker whatsapp-worker api' "${calls}" ||
+  fail "application stop omitted a required worker"
+verify_worker_runtime worker-release whatsapp-worker 1
+verify_worker_runtime worker-release outbound-worker 1
+verify_worker_runtime worker-release web-execution-worker 1
 
 mock_worker_image_id="sha256:different-image"
-if (verify_whatsapp_worker_runtime worker-release 1 >/dev/null 2>&1); then
-  fail "runtime verification accepted a WhatsApp worker with the wrong image ID"
+if (verify_worker_runtime worker-release outbound-worker 1 >/dev/null 2>&1); then
+  fail "runtime verification accepted an outbound worker with the wrong image ID"
 fi
 
-printf 'release-lib contract, receipt, lifecycle, and WhatsApp worker tests passed\n'
+printf 'release-lib contract, receipt, lifecycle, and durable worker tests passed\n'

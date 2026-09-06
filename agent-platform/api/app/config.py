@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     outbound_worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
     outbound_worker_max_backoff_seconds: float = Field(default=30.0, ge=1, le=300)
     outbound_dispatch_stale_seconds: int = Field(default=300, ge=60, le=86_400)
+    web_execution_worker_id: str = Field(
+        default="web-execution-worker-1", min_length=1, max_length=70
+    )
+    web_execution_worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
+    web_execution_worker_max_backoff_seconds: float = Field(default=30.0, ge=1, le=300)
+    # Persisted agent runtimes permit a 900-second loop timeout. A worker must
+    # retain ownership longer than that maximum or valid results become stale.
+    web_execution_lease_seconds: int = Field(default=1200, gt=900, le=86_400)
 
     # ---------------------------------------------------------------------------
     # OpenAI

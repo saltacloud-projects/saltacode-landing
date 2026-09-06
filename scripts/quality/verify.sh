@@ -142,6 +142,8 @@ write_compose_fixture() {
   local token_file="${temporary_directory}/agent-internal-token"
   local session_file="${temporary_directory}/session-signing-secret"
   local source_master_file="${temporary_directory}/source-master-key"
+  local contact_data_file="${temporary_directory}/contact-data-key"
+  local contact_lookup_file="${temporary_directory}/contact-lookup-key"
   local site_env="${temporary_directory}/site.env"
   local agent_env="${temporary_directory}/agent.env"
   local agent_compose_override="${temporary_directory}/agent-compose.override.yml"
@@ -150,7 +152,14 @@ write_compose_fixture() {
   printf '%s\n' 'quality-gate-agent-token-at-least-32-characters' >"${token_file}"
   printf '%s\n' 'quality-gate-session-secret-at-least-32-characters' >"${session_file}"
   printf '%s\n' 'quality-gate-source-master-key-at-least-32-characters' >"${source_master_file}"
-  chmod 0640 "${token_file}" "${session_file}" "${source_master_file}"
+  printf '%s\n' 'MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=' >"${contact_data_file}"
+  printf '%s\n' 'quality-gate-contact-lookup-key-at-least-32-characters' >"${contact_lookup_file}"
+  chmod 0640 \
+    "${token_file}" \
+    "${session_file}" \
+    "${source_master_file}" \
+    "${contact_data_file}" \
+    "${contact_lookup_file}"
   mkdir -m 0750 "${agent_state_dir}"
   local secret_gid
   secret_gid="$(stat -c '%g' "${token_file}")"
@@ -182,6 +191,8 @@ AGENT_PLATFORM_DEPLOY_ENV=sandbox
 AGENT_PLATFORM_STATE_DIR=${agent_state_dir}
 AGENT_PLATFORM_INTERNAL_TOKEN_SOURCE_FILE=${token_file}
 AGENT_PLATFORM_SOURCE_MASTER_KEY_FILE=${source_master_file}
+AGENT_PLATFORM_CONTACT_DATA_KEY_FILE=${contact_data_file}
+AGENT_PLATFORM_CONTACT_LOOKUP_HMAC_KEY_FILE=${contact_lookup_file}
 AGENT_PLATFORM_ENABLE_RAG_WORKER=0
 FASTAPI_ENV=testing
 POSTGRES_DB=agent_platform
@@ -199,6 +210,10 @@ secrets:
     file: ${token_file}
   source_master_key:
     file: ${source_master_file}
+  contact_data_key:
+    file: ${contact_data_file}
+  contact_lookup_hmac_key:
+    file: ${contact_lookup_file}
 EOF
 
   site_env_fixture="${site_env}"

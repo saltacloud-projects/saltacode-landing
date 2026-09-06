@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/release-lib.sh"
 
 configure_release_environment "${1:-}"
 
-for command in awk cat chmod curl date docker flock git grep head mkdir mktemp mv rm sha256sum stat; do
+for command in awk cat chmod cmp curl date docker flock git grep head mkdir mktemp mv rm sha256sum stat; do
   require_command "${command}"
 done
 docker compose version >/dev/null
@@ -43,6 +43,43 @@ if [[ ! "${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}" =~ ^[0-9]+$ ]] ||
    (( 10#${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE} < 1 || 10#${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE} > 20 )); then
   die "WHATSAPP_INBOX_MAX_ATTEMPTS must be between 1 and 20"
 fi
+for worker_id in \
+  "${OUTBOUND_WORKER_ID_VALUE}" \
+  "${WEB_EXECUTION_WORKER_ID_VALUE}"; do
+  (( ${#worker_id} >= 1 && ${#worker_id} <= 70 )) ||
+    die "worker identifier length must be between 1 and 70"
+done
+validate_decimal_range() {
+  local value="$1"
+  local minimum="$2"
+  local maximum="$3"
+  local label="$4"
+  awk -v value="${value}" -v minimum="${minimum}" -v maximum="${maximum}" 'BEGIN {
+    valid = value ~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/ &&
+      value >= minimum && value <= maximum
+    exit !valid
+  }' || die "${label} must be between ${minimum} and ${maximum}"
+}
+validate_decimal_range "${OUTBOUND_WORKER_POLL_SECONDS_VALUE}" 0.000001 60 \
+  OUTBOUND_WORKER_POLL_SECONDS
+validate_decimal_range "${OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE}" 1 300 \
+  OUTBOUND_WORKER_MAX_BACKOFF_SECONDS
+validate_decimal_range "${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE}" 0.000001 60 \
+  WEB_EXECUTION_WORKER_POLL_SECONDS
+validate_decimal_range "${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE}" 1 300 \
+  WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS
+awk -v poll="${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE}" \
+    -v backoff="${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE}" \
+    'BEGIN { exit !(backoff >= poll) }' ||
+  die "WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS must not be below its poll interval"
+if [[ ! "${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
+   (( 10#${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE} < 60 || 10#${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE} > 86400 )); then
+  die "OUTBOUND_DISPATCH_STALE_SECONDS must be between 60 and 86400"
+fi
+if [[ ! "${WEB_EXECUTION_LEASE_SECONDS_VALUE}" =~ ^[0-9]+$ ]] ||
+   (( 10#${WEB_EXECUTION_LEASE_SECONDS_VALUE} <= 900 || 10#${WEB_EXECUTION_LEASE_SECONDS_VALUE} > 86400 )); then
+  die "WEB_EXECUTION_LEASE_SECONDS must be greater than 900 and at most 86400"
+fi
 
 env_mode="$(stat -c '%a' "${ENV_FILE}")"
 [[ "${env_mode}" == "600" || "${env_mode}" == "640" ]] ||
@@ -72,6 +109,12 @@ validate_secret_file() {
 
 validate_secret_file "${INTERNAL_TOKEN_FILE}" "internal API token" 32 4096
 validate_secret_file "${SOURCE_MASTER_FILE}" "source master key" 32 4096
+validate_secret_file "${CONTACT_DATA_FILE}" "contact data key" 44 44
+validate_secret_file "${CONTACT_LOOKUP_HMAC_FILE}" "contact lookup HMAC key" 32 4096
+grep -Eq '^[A-Za-z0-9_-]{43}=$' "${CONTACT_DATA_FILE}" ||
+  die "contact data key must be a Fernet-compatible key"
+! cmp -s "${CONTACT_DATA_FILE}" "${CONTACT_LOOKUP_HMAC_FILE}" ||
+  die "contact encryption and lookup keys must be distinct"
 
 reject_placeholder() {
   local key="$1"
@@ -117,10 +160,12 @@ grep -Fxq "$(image_reference api "${RELEASE}")" <<<"${images}" ||
 grep -Fxq "$(image_reference panel "${RELEASE}")" <<<"${images}" ||
   die "effective panel image does not use the immutable release tag"
 
-rendered_whatsapp_worker_value() {
-  local key="$1"
-  compose_release "${RELEASE}" config whatsapp-worker | awk -v wanted="${key}" '
-    $0 == "  whatsapp-worker:" {inside = 1; next}
+rendered_service_value() {
+  local service="$1"
+  local key="$2"
+  compose_release "${RELEASE}" config "${service}" | awk \
+    -v service="${service}" -v wanted="${key}" '
+    $0 == "  " service ":" {inside = 1; next}
     inside && /^  [A-Za-z0-9_-]+:$/ {exit}
     inside {
       line = $0
@@ -137,15 +182,27 @@ rendered_whatsapp_worker_value() {
   '
 }
 
-whatsapp_worker_image="$(rendered_whatsapp_worker_value image)"
-[[ "${whatsapp_worker_image}" == "$(image_reference api "${RELEASE}")" ]] ||
-  die "effective WhatsApp worker must use the immutable API image"
-for worker_setting in WORKER_ID POLL_SECONDS STALE_SECONDS MAX_ATTEMPTS; do
-  script_value_name="WHATSAPP_INBOX_${worker_setting}_VALUE"
-  rendered_value="$(rendered_whatsapp_worker_value "WHATSAPP_INBOX_${worker_setting}")"
-  [[ "${rendered_value}" == "${!script_value_name}" ]] ||
-    die "effective WHATSAPP_INBOX_${worker_setting} differs from the release contract"
+for worker_service in whatsapp-worker outbound-worker web-execution-worker; do
+  worker_image="$(rendered_service_value "${worker_service}" image)"
+  [[ "${worker_image}" == "$(image_reference api "${RELEASE}")" ]] ||
+    die "effective ${worker_service} must use the immutable API image"
+done
+for worker_contract in \
+  "whatsapp-worker:WHATSAPP_INBOX:WORKER_ID POLL_SECONDS STALE_SECONDS MAX_ATTEMPTS" \
+  "outbound-worker:OUTBOUND:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS DISPATCH_STALE_SECONDS" \
+  "web-execution-worker:WEB_EXECUTION:WORKER_ID WORKER_POLL_SECONDS WORKER_MAX_BACKOFF_SECONDS LEASE_SECONDS"; do
+  service="${worker_contract%%:*}"
+  remainder="${worker_contract#*:}"
+  prefix="${remainder%%:*}"
+  settings="${remainder#*:}"
+  for worker_setting in ${settings}; do
+    variable="${prefix}_${worker_setting}"
+    script_value_name="${variable}_VALUE"
+    rendered_value="$(rendered_service_value "${service}" "${variable}")"
+    [[ "${rendered_value}" == "${!script_value_name}" ]] ||
+      die "effective ${variable} differs from the release contract"
+  done
 done
 
-printf 'agent-platform preflight passed: environment=%s release=%s rag_worker=%s whatsapp_worker=required\n' \
+printf 'agent-platform preflight passed: environment=%s release=%s rag_worker=%s durable_workers=required\n' \
   "${DEPLOY_ENV}" "${RELEASE}" "${RAG_WORKER_ENABLED}"

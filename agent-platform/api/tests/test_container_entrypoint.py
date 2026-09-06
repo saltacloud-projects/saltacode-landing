@@ -51,6 +51,94 @@ def test_secret_copy_error_never_contains_secret_value(tmp_path):
     assert not target.exists()
 
 
+def test_runtime_secrets_are_installed_privately(monkeypatch, tmp_path):
+    source_root = tmp_path / "source"
+    target_root = tmp_path / "runtime"
+    source_root.mkdir()
+    target_root.mkdir()
+    sources = {
+        "source_master": source_root / "source-master",
+        "contact_data": source_root / "contact-data",
+        "contact_lookup": source_root / "contact-lookup",
+    }
+    sources["source_master"].write_text("source-master-key\n", encoding="utf-8")
+    sources["contact_data"].write_text("contact-data-key\n", encoding="utf-8")
+    sources["contact_lookup"].write_text("contact-lookup-key\n", encoding="utf-8")
+    environment = {
+        "CREDENTIAL_ENCRYPTION_KEY_SOURCE_FILE": str(sources["source_master"]),
+        "CREDENTIAL_ENCRYPTION_KEY_FILE": str(target_root / "source-master"),
+        "CONTACT_ENCRYPTION_KEY_SOURCE_FILE": str(sources["contact_data"]),
+        "CONTACT_ENCRYPTION_KEY_FILE": str(target_root / "contact-data"),
+        "CONTACT_LOOKUP_HMAC_KEY_SOURCE_FILE": str(sources["contact_lookup"]),
+        "CONTACT_LOOKUP_HMAC_KEY_FILE": str(target_root / "contact-lookup"),
+    }
+    monkeypatch.setattr(entrypoint, "_SECRET_TARGET_ROOT", target_root)
+
+    targets = entrypoint._prepare_runtime_secrets(
+        environment,
+        uid=os.getuid(),
+        gid=os.getgid(),
+    )
+
+    assert len(targets) == 3
+    assert all(stat.S_IMODE(target.stat().st_mode) == 0o400 for target in targets)
+    assert [target.read_text(encoding="utf-8") for target in targets] == [
+        "source-master-key\n",
+        "contact-data-key\n",
+        "contact-lookup-key\n",
+    ]
+
+
+def test_runtime_rejects_reused_contact_keys_without_exposing_value(
+    monkeypatch,
+    tmp_path,
+):
+    source_master = tmp_path / "source-master"
+    contact_data = tmp_path / "contact-data"
+    contact_lookup = tmp_path / "contact-lookup"
+    source_master.write_text("source-master-key\n", encoding="utf-8")
+    contact_data.write_text("do-not-expose-this-contact-key\n", encoding="utf-8")
+    contact_lookup.write_text("do-not-expose-this-contact-key\n", encoding="utf-8")
+    target_root = tmp_path / "runtime"
+    target_root.mkdir()
+    environment = {
+        "CREDENTIAL_ENCRYPTION_KEY_SOURCE_FILE": str(source_master),
+        "CREDENTIAL_ENCRYPTION_KEY_FILE": str(target_root / "source-master"),
+        "CONTACT_ENCRYPTION_KEY_SOURCE_FILE": str(contact_data),
+        "CONTACT_ENCRYPTION_KEY_FILE": str(target_root / "contact-data"),
+        "CONTACT_LOOKUP_HMAC_KEY_SOURCE_FILE": str(contact_lookup),
+        "CONTACT_LOOKUP_HMAC_KEY_FILE": str(target_root / "contact-lookup"),
+    }
+    monkeypatch.setattr(entrypoint, "_SECRET_TARGET_ROOT", target_root)
+
+    with pytest.raises(RuntimeError, match="must be distinct") as error:
+        entrypoint._prepare_runtime_secrets(
+            environment,
+            uid=os.getuid(),
+            gid=os.getgid(),
+        )
+
+    assert "do-not-expose" not in str(error.value)
+    assert list(target_root.iterdir()) == []
+
+
+def test_compose_mounts_independent_contact_keys_as_read_only_secrets():
+    platform_root = Path(__file__).resolve().parents[2]
+    compose = (platform_root / "docker-compose.yml").read_text(encoding="utf-8")
+    init_script = (platform_root / "scripts/platform/init-local-secrets.sh").read_text(
+        encoding="utf-8"
+    )
+
+    for secret_name in ("contact_data_key", "contact_lookup_hmac_key"):
+        secret_mount = compose[compose.index(f"    - source: {secret_name}") :]
+        assert 'mode: "0400"' in "\n".join(secret_mount.splitlines()[:4])
+    assert "write_fernet_key .secrets/contact_data.key" in init_script
+    assert "write_secret .secrets/contact_lookup_hmac.key" in init_script
+    assert "cmp -s .secrets/contact_data.key .secrets/contact_lookup_hmac.key" in (
+        init_script
+    )
+
+
 def test_privilege_drop_environment_does_not_retain_root_home(monkeypatch):
     monkeypatch.setenv("HOME", "/root")
     monkeypatch.setenv("USER", "root")

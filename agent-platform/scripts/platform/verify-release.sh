@@ -13,6 +13,10 @@ current_database_revision="$(database_revision "${RELEASE}")"
 assert_release_restorable "${RELEASE}" "${current_database_revision}"
 release_receipt="$(deploy_receipt_path "${RELEASE}")"
 whatsapp_worker_enabled="$(receipt_whatsapp_worker_enabled "${release_receipt}")"
-verify_release_runtime "${RELEASE}" "${whatsapp_worker_enabled}"
+outbound_worker_enabled="$(receipt_outbound_worker_enabled "${release_receipt}")"
+web_execution_worker_enabled="$(receipt_web_execution_worker_enabled "${release_receipt}")"
+verify_release_runtime \
+  "${RELEASE}" "${whatsapp_worker_enabled}" \
+  "${outbound_worker_enabled}" "${web_execution_worker_enabled}"
 printf 'agent-platform release %s matches its receipt and is healthy on internal and loopback probes\n' \
   "${RELEASE}"

@@ -21,6 +21,18 @@ write_secret() {
     openssl rand -hex 32 > "$file"
   fi
 }
+write_fernet_key() {
+  local file="$1"
+  [[ -s "$file" ]] && return
+  python - "$file" <<'PY'
+import base64
+import secrets
+import sys
+from pathlib import Path
+
+Path(sys.argv[1]).write_bytes(base64.urlsafe_b64encode(secrets.token_bytes(32)) + b"\n")
+PY
+}
 assert_secret_matches_env() {
   local env_key="$1"
   local file="$2"
@@ -49,6 +61,12 @@ import base64, hashlib, os
 from pathlib import Path
 Path('.secrets/source_master.key').write_bytes(base64.urlsafe_b64encode(hashlib.sha256(os.environ['SOURCE_SEED'].encode()).digest()))
 PY
+fi
+write_fernet_key .secrets/contact_data.key
+write_secret .secrets/contact_lookup_hmac.key
+if cmp -s .secrets/contact_data.key .secrets/contact_lookup_hmac.key; then
+  echo "Contact encryption and lookup keys must be distinct." >&2
+  exit 1
 fi
 if [[ ! -f .env.platform.local ]]; then
   cat > .env.platform.local <<ENV
@@ -80,4 +98,8 @@ assert_secret_matches_env POSTGRES_PASSWORD .secrets/postgres_password
 assert_secret_matches_env ADMIN_INITIAL_PASSWORD .secrets/admin_password
 chmod 600 .env.platform.local .secrets/*
 chmod 640 .secrets/internal_api_token
+chmod 400 \
+  .secrets/source_master.key \
+  .secrets/contact_data.key \
+  .secrets/contact_lookup_hmac.key
 echo "Local agent-platform secrets are ready."

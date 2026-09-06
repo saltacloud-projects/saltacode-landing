@@ -13,6 +13,10 @@ x-agent-environment: &agent-environment
   ADMIN_FRONTEND_URL: ${ADMIN_FRONTEND_URL:-http://localhost:23000}
   CREDENTIAL_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/source_master_key
   CREDENTIAL_ENCRYPTION_KEY_FILE: /run/agent-secrets/source_master.key
+  CONTACT_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/contact_data_key
+  CONTACT_ENCRYPTION_KEY_FILE: /run/agent-secrets/contact_data.key
+  CONTACT_LOOKUP_HMAC_KEY_SOURCE_FILE: /run/secrets/contact_lookup_hmac_key
+  CONTACT_LOOKUP_HMAC_KEY_FILE: /run/agent-secrets/contact_lookup_hmac.key
   DEFAULT_AGENT_SLUG: ${DEFAULT_AGENT_SLUG:-saltacode}
   RETENTION_SWEEP_INTERVAL_SECONDS: ${RETENTION_SWEEP_INTERVAL_SECONDS:-21600}
   DOMAIN: ${DOMAIN:-localhost}
@@ -31,6 +35,10 @@ x-agent-environment: &agent-environment
   OUTBOUND_WORKER_POLL_SECONDS: ${OUTBOUND_WORKER_POLL_SECONDS:-1}
   OUTBOUND_WORKER_MAX_BACKOFF_SECONDS: ${OUTBOUND_WORKER_MAX_BACKOFF_SECONDS:-30}
   OUTBOUND_DISPATCH_STALE_SECONDS: ${OUTBOUND_DISPATCH_STALE_SECONDS:-300}
+  WEB_EXECUTION_WORKER_ID: ${WEB_EXECUTION_WORKER_ID:-web-execution-worker-1}
+  WEB_EXECUTION_WORKER_POLL_SECONDS: ${WEB_EXECUTION_WORKER_POLL_SECONDS:-1}
+  WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS: ${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS:-30}
+  WEB_EXECUTION_LEASE_SECONDS: ${WEB_EXECUTION_LEASE_SECONDS:-1200}
   DOCUMENT_STORAGE_ROOT: /data/documents
 
 x-api-base: &api-base
@@ -46,6 +54,12 @@ x-api-base: &api-base
     - source: source_master_key
       target: source_master_key
       mode: "0400"
+    - source: contact_data_key
+      target: contact_data_key
+      mode: "0400"
+    - source: contact_lookup_hmac_key
+      target: contact_lookup_hmac_key
+      mode: "0400"
   volumes:
     - document_data:/data/documents
   networks:
@@ -55,8 +69,8 @@ x-api-base: &api-base
   cap_drop:
     - ALL
   cap_add:
-    # Entrypoint-only capabilities: read the host-owned 0600 source, install an
-    # appuser-owned copy, then drop uid/gid before the long-running command.
+    # Entrypoint-only capabilities: read protected sources, install appuser-owned
+    # copies, then drop uid/gid before the long-running command.
     - CHOWN
     - DAC_READ_SEARCH
     - SETGID
@@ -122,6 +136,7 @@ services:
       integration:
         aliases:
           - agent-platform
+      egress:
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -146,6 +161,9 @@ services:
     command: ["python", "-m", "app.workers.rag"]
     healthcheck:
       disable: true
+    networks:
+      - private
+      - egress
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -174,6 +192,9 @@ services:
       timeout: 8s
       retries: 3
       start_period: 20s
+    networks:
+      - private
+      - egress
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -189,9 +210,6 @@ services:
 
   outbound-worker:
     <<: *api-base
-    # Producers still send directly. Activate this profile only after their
-    # migration to the transactional outbox is reviewed and released.
-    profiles: ["outbound"]
     restart: unless-stopped
     command: ["python", "-m", "app.workers.outbound"]
     healthcheck:
@@ -209,14 +227,52 @@ services:
       timeout: 8s
       retries: 3
       start_period: 20s
+    networks:
+      - private
+      - egress
     depends_on:
       bootstrap:
         condition: service_completed_successfully
     deploy:
+      # Provider delivery is fail-closed and ordered per conversation.
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
           memory: 384M
+
+  web-execution-worker:
+    <<: *api-base
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.web_executions"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "/usr/local/libexec/agent-entrypoint.py",
+          "python",
+          "-m",
+          "app.workers.web_executions",
+          "--healthcheck",
+        ]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
+    networks:
+      - private
+      - egress
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    deploy:
+      # Claim leases and FIFO execution currently require one active replica.
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
 
   integration-tests:
     image: localhost/saltacode/agent-platform-api-tests:${APP_VERSION:-dev}
@@ -272,6 +328,10 @@ networks:
     ipam:
       config:
         - subnet: 10.248.242.16/28
+  egress:
+    ipam:
+      config:
+        - subnet: 10.248.242.96/28
 
 volumes:
   postgres_data:
@@ -286,3 +346,7 @@ secrets:
     file: ./.secrets/internal_api_token
   source_master_key:
     file: ./.secrets/source_master.key
+  contact_data_key:
+    file: ./.secrets/contact_data.key
+  contact_lookup_hmac_key:
+    file: ./.secrets/contact_lookup_hmac.key

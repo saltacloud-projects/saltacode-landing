@@ -110,17 +110,43 @@ configure_release_environment() {
   WHATSAPP_INBOX_STALE_SECONDS_VALUE="${WHATSAPP_INBOX_STALE_SECONDS_VALUE:-1200}"
   WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE="$(effective_env_value WHATSAPP_INBOX_MAX_ATTEMPTS "${ENV_FILE}")"
   WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE="${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE:-5}"
+  OUTBOUND_WORKER_ID_VALUE="$(effective_env_value OUTBOUND_WORKER_ID "${ENV_FILE}")"
+  OUTBOUND_WORKER_ID_VALUE="${OUTBOUND_WORKER_ID_VALUE:-outbound-worker-1}"
+  OUTBOUND_WORKER_POLL_SECONDS_VALUE="$(effective_env_value OUTBOUND_WORKER_POLL_SECONDS "${ENV_FILE}")"
+  OUTBOUND_WORKER_POLL_SECONDS_VALUE="${OUTBOUND_WORKER_POLL_SECONDS_VALUE:-1}"
+  OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE="$(effective_env_value OUTBOUND_WORKER_MAX_BACKOFF_SECONDS "${ENV_FILE}")"
+  OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE="${OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE:-30}"
+  OUTBOUND_DISPATCH_STALE_SECONDS_VALUE="$(effective_env_value OUTBOUND_DISPATCH_STALE_SECONDS "${ENV_FILE}")"
+  OUTBOUND_DISPATCH_STALE_SECONDS_VALUE="${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE:-300}"
+  WEB_EXECUTION_WORKER_ID_VALUE="$(effective_env_value WEB_EXECUTION_WORKER_ID "${ENV_FILE}")"
+  WEB_EXECUTION_WORKER_ID_VALUE="${WEB_EXECUTION_WORKER_ID_VALUE:-web-execution-worker-1}"
+  WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE="$(effective_env_value WEB_EXECUTION_WORKER_POLL_SECONDS "${ENV_FILE}")"
+  WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE="${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE:-1}"
+  WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE="$(effective_env_value WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS "${ENV_FILE}")"
+  WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE="${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE:-30}"
+  WEB_EXECUTION_LEASE_SECONDS_VALUE="$(effective_env_value WEB_EXECUTION_LEASE_SECONDS "${ENV_FILE}")"
+  WEB_EXECUTION_LEASE_SECONDS_VALUE="${WEB_EXECUTION_LEASE_SECONDS_VALUE:-1200}"
 
   INTERNAL_TOKEN_FILE="${AGENT_PLATFORM_INTERNAL_TOKEN_SOURCE_FILE:-$(env_value AGENT_PLATFORM_INTERNAL_TOKEN_SOURCE_FILE "${ENV_FILE}")}"
   SOURCE_MASTER_FILE="${AGENT_PLATFORM_SOURCE_MASTER_KEY_FILE:-$(env_value AGENT_PLATFORM_SOURCE_MASTER_KEY_FILE "${ENV_FILE}")}"
+  CONTACT_DATA_FILE="${AGENT_PLATFORM_CONTACT_DATA_KEY_FILE:-$(env_value AGENT_PLATFORM_CONTACT_DATA_KEY_FILE "${ENV_FILE}")}"
+  CONTACT_LOOKUP_HMAC_FILE="${AGENT_PLATFORM_CONTACT_LOOKUP_HMAC_KEY_FILE:-$(env_value AGENT_PLATFORM_CONTACT_LOOKUP_HMAC_KEY_FILE "${ENV_FILE}")}"
   [[ -n "${INTERNAL_TOKEN_FILE}" && -r "${INTERNAL_TOKEN_FILE}" ]] ||
     die "the internal API token source file is missing or unreadable"
   [[ -n "${SOURCE_MASTER_FILE}" && -r "${SOURCE_MASTER_FILE}" ]] ||
     die "the source master key file is missing or unreadable"
+  [[ -n "${CONTACT_DATA_FILE}" && -r "${CONTACT_DATA_FILE}" ]] ||
+    die "the contact data key file is missing or unreadable"
+  [[ -n "${CONTACT_LOOKUP_HMAC_FILE}" && -r "${CONTACT_LOOKUP_HMAC_FILE}" ]] ||
+    die "the contact lookup HMAC key file is missing or unreadable"
   [[ "${INTERNAL_TOKEN_FILE}" =~ ^/[A-Za-z0-9._/-]+$ ]] ||
     die "the internal API token source path must be an absolute safe path"
   [[ "${SOURCE_MASTER_FILE}" =~ ^/[A-Za-z0-9._/-]+$ ]] ||
     die "the source master key path must be an absolute safe path"
+  [[ "${CONTACT_DATA_FILE}" =~ ^/[A-Za-z0-9._/-]+$ ]] ||
+    die "the contact data key path must be an absolute safe path"
+  [[ "${CONTACT_LOOKUP_HMAC_FILE}" =~ ^/[A-Za-z0-9._/-]+$ ]] ||
+    die "the contact lookup HMAC key path must be an absolute safe path"
 
   COMPOSE_OVERRIDE_FILE="$(mktemp "${TMPDIR:-/tmp}/saltacode-agent-compose.XXXXXX.yml")"
   chmod 0600 "${COMPOSE_OVERRIDE_FILE}"
@@ -130,6 +156,10 @@ secrets:
     file: ${INTERNAL_TOKEN_FILE}
   source_master_key:
     file: ${SOURCE_MASTER_FILE}
+  contact_data_key:
+    file: ${CONTACT_DATA_FILE}
+  contact_lookup_hmac_key:
+    file: ${CONTACT_LOOKUP_HMAC_FILE}
 EOF
   trap cleanup_release_files EXIT
 
@@ -154,6 +184,14 @@ EOF
     printf 'WHATSAPP_INBOX_POLL_SECONDS=%s\n' "${WHATSAPP_INBOX_POLL_SECONDS_VALUE}"
     printf 'WHATSAPP_INBOX_STALE_SECONDS=%s\n' "${WHATSAPP_INBOX_STALE_SECONDS_VALUE}"
     printf 'WHATSAPP_INBOX_MAX_ATTEMPTS=%s\n' "${WHATSAPP_INBOX_MAX_ATTEMPTS_VALUE}"
+    printf 'OUTBOUND_WORKER_ID=%s\n' "${OUTBOUND_WORKER_ID_VALUE}"
+    printf 'OUTBOUND_WORKER_POLL_SECONDS=%s\n' "${OUTBOUND_WORKER_POLL_SECONDS_VALUE}"
+    printf 'OUTBOUND_WORKER_MAX_BACKOFF_SECONDS=%s\n' "${OUTBOUND_WORKER_MAX_BACKOFF_SECONDS_VALUE}"
+    printf 'OUTBOUND_DISPATCH_STALE_SECONDS=%s\n' "${OUTBOUND_DISPATCH_STALE_SECONDS_VALUE}"
+    printf 'WEB_EXECUTION_WORKER_ID=%s\n' "${WEB_EXECUTION_WORKER_ID_VALUE}"
+    printf 'WEB_EXECUTION_WORKER_POLL_SECONDS=%s\n' "${WEB_EXECUTION_WORKER_POLL_SECONDS_VALUE}"
+    printf 'WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS=%s\n' "${WEB_EXECUTION_WORKER_MAX_BACKOFF_SECONDS_VALUE}"
+    printf 'WEB_EXECUTION_LEASE_SECONDS=%s\n' "${WEB_EXECUTION_LEASE_SECONDS_VALUE}"
     for key in \
       FASTAPI_ENV LOG_LEVEL POSTGRES_DB POSTGRES_USER REDIS_MAX_MEMORY \
       ADMIN_INITIAL_EMAIL ADMIN_FRONTEND_URL DEFAULT_AGENT_SLUG \
@@ -215,30 +253,58 @@ receipt_format_version() {
   local receipt="$1"
   local version
   version="$(receipt_value "${receipt}" format_version)"
-  [[ "${version}" == "1" || "${version}" == "2" ]] ||
+  [[ "${version}" == "1" || "${version}" == "2" || "${version}" == "3" ]] ||
     die "release receipt has an unsupported format version: ${receipt}"
   printf '%s' "${version}"
 }
 
-receipt_whatsapp_worker_enabled() {
+receipt_worker_enabled() {
   local receipt="$1"
-  local version worker_enabled api_image_id worker_image_id
+  local worker_name="$2"
+  local introduced_version="$3"
+  local version worker_enabled api_image_id worker_image_id worker_health action
   version="$(receipt_format_version "${receipt}")"
-  if [[ "${version}" == "1" ]]; then
-    # Version 1 predates the durable inbox worker. It remains readable so an
-    # otherwise compatible historical receipt can restore its original runtime.
+  if (( 10#${version} < 10#${introduced_version} )); then
     printf '0'
     return
   fi
 
-  worker_enabled="$(receipt_value "${receipt}" whatsapp_worker_enabled)"
-  [[ "${worker_enabled}" == "1" ]] ||
-    die "release receipt does not require the WhatsApp worker: ${receipt}"
+  worker_enabled="$(receipt_value "${receipt}" "${worker_name}_worker_enabled")"
+  [[ "${worker_enabled}" == "0" || "${worker_enabled}" == "1" ]] ||
+    die "release receipt has an invalid ${worker_name} worker state: ${receipt}"
+  if [[ "${worker_enabled}" == "0" ]]; then
+    action="$(receipt_value "${receipt}" action)"
+    worker_image_id="$(receipt_value "${receipt}" "${worker_name}_worker_image_id")"
+    worker_health="$(receipt_value "${receipt}" "${worker_name}_worker_health")"
+    [[ "${version}" == "3" && "${action}" == "rollback" ]] ||
+      die "release receipt does not require the ${worker_name} worker: ${receipt}"
+    [[ "${worker_image_id}" == "none" && "${worker_health}" == "not_applicable" ]] ||
+      die "release receipt has invalid disabled ${worker_name} evidence: ${receipt}"
+    printf '0'
+    return
+  fi
   api_image_id="$(receipt_value "${receipt}" api_image_id)"
-  worker_image_id="$(receipt_value "${receipt}" whatsapp_worker_image_id)"
+  worker_image_id="$(receipt_value "${receipt}" "${worker_name}_worker_image_id")"
   [[ -n "${api_image_id}" && "${worker_image_id}" == "${api_image_id}" ]] ||
-    die "release receipt does not bind the WhatsApp worker to the API image: ${receipt}"
+    die "release receipt does not bind the ${worker_name} worker to the API image: ${receipt}"
+  if [[ "${version}" == "3" ]]; then
+    worker_health="$(receipt_value "${receipt}" "${worker_name}_worker_health")"
+    [[ "${worker_health}" == "passed" ]] ||
+      die "release receipt does not prove ${worker_name} worker health: ${receipt}"
+  fi
   printf '1'
+}
+
+receipt_whatsapp_worker_enabled() {
+  receipt_worker_enabled "$1" whatsapp 2
+}
+
+receipt_outbound_worker_enabled() {
+  receipt_worker_enabled "$1" outbound 3
+}
+
+receipt_web_execution_worker_enabled() {
+  receipt_worker_enabled "$1" web_execution 3
 }
 
 image_reference() {
@@ -278,9 +344,9 @@ probe_host() {
 verify_release_runtime() {
   local release="$1"
   local whatsapp_worker_enabled="$2"
+  local outbound_worker_enabled="$3"
+  local web_execution_worker_enabled="$4"
   local api_host panel_host
-  [[ "${whatsapp_worker_enabled}" == "0" || "${whatsapp_worker_enabled}" == "1" ]] ||
-    die "WhatsApp worker receipt state must be 0 or 1"
   api_host="$(probe_host "${API_BIND_ADDRESS}")"
   panel_host="$(probe_host "${PANEL_BIND_ADDRESS}")"
 
@@ -290,53 +356,66 @@ verify_release_runtime() {
     wget -qO- http://127.0.0.1/ | grep -Fq '<div id="root">'
   curl -fsS --max-time 5 "http://${api_host}:${API_PORT}/ready" >/dev/null
   curl -fsS --max-time 5 "http://${panel_host}:${PANEL_PORT}/" | grep -Fq '<div id="root">'
-  verify_whatsapp_worker_runtime "${release}" "${whatsapp_worker_enabled}"
+  verify_worker_runtime "${release}" whatsapp-worker "${whatsapp_worker_enabled}"
+  verify_worker_runtime "${release}" outbound-worker "${outbound_worker_enabled}"
+  verify_worker_runtime \
+    "${release}" web-execution-worker "${web_execution_worker_enabled}"
 }
 
-verify_whatsapp_worker_runtime() {
+verify_worker_runtime() {
   local release="$1"
-  local enabled="$2"
+  local service="$2"
+  local enabled="$3"
   local running_services container_id expected_reference configured_reference
-  local expected_image_id running_image_id
+  local expected_image_id health_status running_image_id
   [[ "${enabled}" == "0" || "${enabled}" == "1" ]] ||
-    die "WhatsApp worker receipt state must be 0 or 1"
+    die "${service} receipt state must be 0 or 1"
 
   running_services="$(compose_release "${release}" ps --status running --services)"
   if [[ "${enabled}" == "0" ]]; then
-    ! grep -Fxq whatsapp-worker <<<"${running_services}" ||
-      die "WhatsApp worker is running for a release whose receipt predates it"
+    ! grep -Fxq "${service}" <<<"${running_services}" ||
+      die "${service} is running for a release whose receipt predates it"
     return
   fi
 
-  grep -Fxq whatsapp-worker <<<"${running_services}" ||
-    die "WhatsApp worker is not running"
-  container_id="$(compose_release "${release}" ps -q whatsapp-worker)"
+  grep -Fxq "${service}" <<<"${running_services}" ||
+    die "${service} is not running"
+  container_id="$(compose_release "${release}" ps -q "${service}")"
   [[ "${container_id}" =~ ^[a-f0-9]{64}$ ]] ||
-    die "WhatsApp worker container identity is invalid"
+    die "${service} container identity is invalid"
 
   expected_reference="$(image_reference api "${release}")"
   configured_reference="$(docker container inspect --format '{{.Config.Image}}' "${container_id}")"
   [[ "${configured_reference}" == "${expected_reference}" ]] ||
-    die "WhatsApp worker does not use the immutable API image reference"
+    die "${service} does not use the immutable API image reference"
   expected_image_id="$(image_id "${expected_reference}")"
   running_image_id="$(docker container inspect --format '{{.Image}}' "${container_id}")"
   [[ "${running_image_id}" == "${expected_image_id}" ]] ||
-    die "WhatsApp worker image ID does not match the immutable API image"
+    die "${service} image ID does not match the immutable API image"
+  health_status="$(docker container inspect --format '{{.State.Health.Status}}' "${container_id}")"
+  [[ "${health_status}" == "healthy" ]] || die "${service} is not healthy"
 }
 
 stop_application_services() {
   local release="$1"
-  compose_release "${release}" stop --timeout 30 panel rag-worker whatsapp-worker api >/dev/null
+  compose_release "${release}" stop --timeout 30 \
+    panel rag-worker web-execution-worker outbound-worker whatsapp-worker api >/dev/null
 }
 
 start_application_services() {
   local release="$1"
   local rag_enabled="$2"
   local whatsapp_worker_enabled="$3"
+  local outbound_worker_enabled="$4"
+  local web_execution_worker_enabled="$5"
   [[ "${rag_enabled}" == "0" || "${rag_enabled}" == "1" ]] ||
     die "RAG worker receipt state must be 0 or 1"
   [[ "${whatsapp_worker_enabled}" == "0" || "${whatsapp_worker_enabled}" == "1" ]] ||
     die "WhatsApp worker receipt state must be 0 or 1"
+  [[ "${outbound_worker_enabled}" == "0" || "${outbound_worker_enabled}" == "1" ]] ||
+    die "outbound worker receipt state must be 0 or 1"
+  [[ "${web_execution_worker_enabled}" == "0" || "${web_execution_worker_enabled}" == "1" ]] ||
+    die "web execution worker receipt state must be 0 or 1"
   compose_release "${release}" up -d --wait --no-deps api
   compose_release "${release}" up -d --wait --no-deps panel
   if [[ "${rag_enabled}" == "1" ]]; then
@@ -344,6 +423,12 @@ start_application_services() {
   fi
   if [[ "${whatsapp_worker_enabled}" == "1" ]]; then
     compose_release "${release}" up -d --wait --no-deps whatsapp-worker
+  fi
+  if [[ "${outbound_worker_enabled}" == "1" ]]; then
+    compose_release "${release}" up -d --wait --no-deps outbound-worker
+  fi
+  if [[ "${web_execution_worker_enabled}" == "1" ]]; then
+    compose_release "${release}" up -d --wait --no-deps web-execution-worker
   fi
 }
 
@@ -365,6 +450,8 @@ assert_release_restorable() {
     die "release ${release} uses a different environment contract"
   receipt_format_version "${receipt}" >/dev/null
   receipt_whatsapp_worker_enabled "${receipt}" >/dev/null
+  receipt_outbound_worker_enabled "${receipt}" >/dev/null
+  receipt_web_execution_worker_enabled "${receipt}" >/dev/null
 
   expected="$(receipt_value "${receipt}" api_image_id)"
   [[ "$(image_id "$(image_reference api "${release}")")" == "${expected}" ]] ||
@@ -389,7 +476,7 @@ record_deploy_receipt() {
 
   umask 0027
   {
-    printf 'format_version=2\n'
+    printf 'format_version=3\n'
     printf 'component=agent-platform\n'
     printf 'action=deploy\n'
     printf 'release=%s\n' "${RELEASE}"
@@ -406,6 +493,13 @@ record_deploy_receipt() {
     printf 'rag_worker_enabled=%s\n' "${RAG_WORKER_ENABLED}"
     printf 'whatsapp_worker_enabled=1\n'
     printf 'whatsapp_worker_image_id=%s\n' "${api_image_id}"
+    printf 'whatsapp_worker_health=passed\n'
+    printf 'outbound_worker_enabled=1\n'
+    printf 'outbound_worker_image_id=%s\n' "${api_image_id}"
+    printf 'outbound_worker_health=passed\n'
+    printf 'web_execution_worker_enabled=1\n'
+    printf 'web_execution_worker_image_id=%s\n' "${api_image_id}"
+    printf 'web_execution_worker_health=passed\n'
     printf 'verification=passed\n'
   } >"${temporary}"
   chmod 0640 "${temporary}"
@@ -418,6 +512,7 @@ record_rollback_receipt() {
   local target_release="$2"
   local database_revision="$3"
   local timestamp receipt temporary target_receipt target_rag target_whatsapp
+  local target_outbound target_web_execution
   local target_api_image_id target_panel_image_id
   timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   receipt="${ROLLBACK_RECEIPT_DIR}/${timestamp}-${from_release}-to-${target_release}.receipt"
@@ -427,12 +522,14 @@ record_rollback_receipt() {
   [[ "${target_rag}" == "0" || "${target_rag}" == "1" ]] ||
     die "target release receipt has an invalid RAG worker state"
   target_whatsapp="$(receipt_whatsapp_worker_enabled "${target_receipt}")"
+  target_outbound="$(receipt_outbound_worker_enabled "${target_receipt}")"
+  target_web_execution="$(receipt_web_execution_worker_enabled "${target_receipt}")"
   target_api_image_id="$(receipt_value "${target_receipt}" api_image_id)"
   target_panel_image_id="$(receipt_value "${target_receipt}" panel_image_id)"
   temporary="$(mktemp "${receipt}.tmp.XXXXXX")"
   umask 0027
   {
-    printf 'format_version=2\n'
+    printf 'format_version=3\n'
     printf 'component=agent-platform\n'
     printf 'action=rollback\n'
     printf 'from_release=%s\n' "${from_release}"
@@ -446,6 +543,13 @@ record_rollback_receipt() {
     printf 'rag_worker_enabled=%s\n' "${target_rag}"
     printf 'whatsapp_worker_enabled=%s\n' "${target_whatsapp}"
     printf 'whatsapp_worker_image_id=%s\n' "$([[ "${target_whatsapp}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
+    printf 'whatsapp_worker_health=%s\n' "$([[ "${target_whatsapp}" == "1" ]] && printf passed || printf not_applicable)"
+    printf 'outbound_worker_enabled=%s\n' "${target_outbound}"
+    printf 'outbound_worker_image_id=%s\n' "$([[ "${target_outbound}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
+    printf 'outbound_worker_health=%s\n' "$([[ "${target_outbound}" == "1" ]] && printf passed || printf not_applicable)"
+    printf 'web_execution_worker_enabled=%s\n' "${target_web_execution}"
+    printf 'web_execution_worker_image_id=%s\n' "$([[ "${target_web_execution}" == "1" ]] && printf '%s' "${target_api_image_id}" || printf none)"
+    printf 'web_execution_worker_health=%s\n' "$([[ "${target_web_execution}" == "1" ]] && printf passed || printf not_applicable)"
     printf 'verification=passed\n'
   } >"${temporary}"
   chmod 0640 "${temporary}"

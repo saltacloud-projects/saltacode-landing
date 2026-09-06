@@ -30,15 +30,16 @@ def test_outbound_worker_settings_reject_unsafe_bounds(field, value):
         )
 
 
-def test_compose_defines_a_separate_inactive_outbound_worker():
+def test_compose_defines_a_required_outbound_worker():
     compose = (Path(__file__).resolve().parents[2] / "docker-compose.yml").read_text()
     worker = compose[compose.index("  outbound-worker:") :]
 
-    assert 'profiles: ["outbound"]' in worker
+    assert 'profiles: ["outbound"]' not in worker.split("  web-execution-worker:")[0]
     assert 'command: ["python", "-m", "app.workers.outbound"]' in worker
     assert '"app.workers.outbound"' in worker
     assert '"--healthcheck"' in worker
     assert "OUTBOUND_DISPATCH_STALE_SECONDS:-300" in compose
+    assert "replicas: 1" in worker.split("  web-execution-worker:")[0]
 
 
 @pytest.mark.asyncio
