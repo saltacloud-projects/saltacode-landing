@@ -16,7 +16,7 @@ services:
     image: localhost/saltacode/frontend:${SALTACODE_RELEASE:-dev}
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: apps/landing/Dockerfile
     environment:
       BACKEND_URL: http://backend:8000
     ports:
@@ -41,7 +41,7 @@ services:
     <<: *runtime-defaults
     image: localhost/saltacode/backend:${SALTACODE_RELEASE:-dev}
     build:
-      context: ./backend
+      context: ./apps/web-bff
       dockerfile: Dockerfile
     environment:
       SALTACODE_APP_ENV: ${SALTACODE_APP_ENV:-development}

@@ -88,7 +88,7 @@ See [`docs/architecture/administration-model.md`](docs/architecture/administrati
 ## Development
 
 ```bash
-cd fastapi
+cd api
 uv sync --locked
 # Hermetic tests; integration tests are excluded by default.
 uv run pytest -q
@@ -99,14 +99,14 @@ cd ..
 # PostgreSQL integration tests run in an isolated test image with dev dependencies.
 docker compose --env-file .env.platform.local --profile test run --rm integration-tests
 
-cd frontend
+cd panel
 npm ci
 npm run build
 ```
 
 The production API image installs only runtime dependencies and excludes tests and maintenance scripts. The dedicated `test` build target owns the test suite and development tools. A non-development container fails closed when the internal API token file is absent or the JWT secret is missing, short, or still uses the placeholder value.
 
-The clean platform schema lives in `fastapi/migrations_platform/` and is selected with `fastapi/alembic-platform.ini`.
+The clean platform schema lives in `api/migrations_platform/` and is selected with `api/alembic-platform.ini`.
 The administration panel intentionally uses npm and its committed `package-lock.json`; the repository landing uses pnpm from the repository root.
 
 ## Documentation

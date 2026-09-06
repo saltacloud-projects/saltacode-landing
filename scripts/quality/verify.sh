@@ -43,7 +43,7 @@ verify_backend() {
   section "Backend"
   require_command uv
   (
-    cd backend
+    cd apps/web-bff
     uv run --locked ruff format --check .
     uv run --locked ruff check .
     uv run --locked pytest
@@ -92,7 +92,7 @@ verify_agent_api() {
   fi
 
   (
-    cd agent-platform/fastapi
+    cd agent-platform/api
     export FASTAPI_ENV=testing
     export FASTAPI_API_KEY="quality-gate-internal-token"
     export JWT_SECRET_KEY="quality-gate-jwt-secret-at-least-32-characters"
@@ -122,7 +122,7 @@ verify_agent_panel() {
   section "Agent administration panel"
   require_command npm
   (
-    cd agent-platform/frontend
+    cd agent-platform/panel
     if [[ -z "${PLAYWRIGHT_CHROME_PATH:-}" ]]; then
       local playwright_browser
       playwright_browser="$(node -e "const { chromium } = require('playwright'); process.stdout.write(chromium.executablePath())" 2>/dev/null || true)"

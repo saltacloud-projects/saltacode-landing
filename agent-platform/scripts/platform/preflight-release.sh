@@ -21,8 +21,8 @@ docker compose up --help | grep -q -- '--wait' ||
   die "AGENT_PLATFORM_STATE_DIR must be an absolute safe path"
 [[ -d "${STATE_DIR}" && ! -L "${STATE_DIR}" && -w "${STATE_DIR}" ]] ||
   die "the state directory must exist, be writable, and not be a symlink"
-[[ -f "${PLATFORM_ROOT}/fastapi/Dockerfile" ]] || die "FastAPI Dockerfile is missing"
-[[ -f "${PLATFORM_ROOT}/frontend/Dockerfile" ]] || die "panel Dockerfile is missing"
+[[ -f "${PLATFORM_ROOT}/api/Dockerfile" ]] || die "Agent API Dockerfile is missing"
+[[ -f "${PLATFORM_ROOT}/panel/Dockerfile" ]] || die "panel Dockerfile is missing"
 [[ "${POSTGRES_DB_VALUE}" =~ ^[A-Za-z0-9_-]+$ ]] || die "POSTGRES_DB is invalid"
 [[ "${POSTGRES_USER_VALUE}" =~ ^[A-Za-z0-9_-]+$ ]] || die "POSTGRES_USER is invalid"
 [[ "${API_PORT}" =~ ^[0-9]+$ && "${PANEL_PORT}" =~ ^[0-9]+$ ]] ||

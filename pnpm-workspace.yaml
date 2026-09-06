@@ -1,5 +1,5 @@
 packages:
-  - frontend
+  - apps/landing
 
 allowBuilds:
   esbuild: true

@@ -47,7 +47,7 @@ Return affected endpoints and contracts, compatibility disposition, validation/a
 
 ## References
 
-- `../../../backend/README.md`
+- `../../../apps/web-bff/README.md`
 - `../../../contracts/chat/v1/README.md`
 - `../../../docs/architecture/platform-topology.md`
 - `../../../docs/architecture/ai-chat-boundary.md`

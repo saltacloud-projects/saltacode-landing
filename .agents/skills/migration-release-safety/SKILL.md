@@ -46,7 +46,7 @@ Return revisions, compatibility evidence, backup/restore status, commands prepar
 ## References
 
 - `../../../agent-platform/docs/operations/release-and-rollback.md`
-- `../../../agent-platform/fastapi/alembic-platform.ini`
+- `../../../agent-platform/api/alembic-platform.ini`
 - `../../../infrastructure/ROLLBACK.md`
 - `../../../scripts/quality/verify.sh`
 - `../delivery-checkpoint/SKILL.md`

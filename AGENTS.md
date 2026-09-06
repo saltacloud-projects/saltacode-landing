@@ -79,9 +79,9 @@ Clean Architecture is the decision compass, not a target folder count. Improve c
 
 The repository now implements the approved platform foundation:
 
-- `frontend/`: Astro with strict TypeScript and pnpm, static-first output, and no default client hydration.
-- `backend/`: FastAPI with uv as the public same-origin BFF and SSE boundary.
-- `agent-platform/`: repository-owned agent service joined to the BFF through the private `saltacode_agent_bridge`; no public browser endpoint.
+- `apps/landing/`: Astro with strict TypeScript and pnpm, static-first output, and no default client hydration.
+- `apps/web-bff/`: FastAPI with uv as the public same-origin BFF and SSE boundary.
+- `agent-platform/`: repository-owned commercial core, with its API under `agent-platform/api/` and administration panel under `agent-platform/panel/`, joined to the BFF through the private `saltacode_agent_bridge`; no public browser endpoint.
 - `contracts/`: versioned public chat schemas.
 - `compose.yml`: locally built application containers plus a private ephemeral Redis rate limiter.
 - `infrastructure/`: host-managed `cloudflared` path routing to loopback origins, without Nginx or Caddy.

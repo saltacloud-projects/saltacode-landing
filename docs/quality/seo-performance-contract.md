@@ -39,7 +39,7 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 8 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, service shortcuts, and consent-scoped chat continuity. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, and privacy assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `frontend/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 8 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, service shortcuts, and consent-scoped chat continuity. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, and privacy assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `apps/landing/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
 | Resource or scenario | Version 8 limit | Gate |
 |---|---:|---|

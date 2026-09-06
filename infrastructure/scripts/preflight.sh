@@ -28,7 +28,7 @@ fi
   die "frontend and backend origin ports must be distinct"
 
 required_paths=()
-required_paths+=("${PROJECT_ROOT}/frontend/Dockerfile" "${PROJECT_ROOT}/backend/Dockerfile")
+required_paths+=("${PROJECT_ROOT}/apps/landing/Dockerfile" "${PROJECT_ROOT}/apps/web-bff/Dockerfile")
 [[ "${REDIS_IMAGE}" =~ ^((docker\.io/)?library/)?redis:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]] ||
   die "SALTACODE_REDIS_IMAGE must be an official Redis tag pinned to a real sha256 digest"
 redis_url="${SALTACODE_REDIS_URL:-$(env_value SALTACODE_REDIS_URL "${ENV_FILE}")}"

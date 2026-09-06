@@ -6,7 +6,7 @@ from pydantic import TypeAdapter
 
 from app.contracts import ChatRequest, ChatStreamEvent, ProblemDetails
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 CONTRACT_DIRECTORY = REPOSITORY_ROOT / "contracts" / "chat" / "v1"
 
 CONTRACTS = {

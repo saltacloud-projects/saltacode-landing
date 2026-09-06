@@ -22,10 +22,10 @@ config:
 	$(DC) config --quiet
 
 test:
-	cd fastapi && uv run pytest -q
+	cd api && uv run pytest -q
 
 lint:
-	cd fastapi && uv run ruff check .
+	cd api && uv run ruff check .
 
 panel-build:
-	cd frontend && npm ci && npm run build
+	cd panel && npm ci && npm run build

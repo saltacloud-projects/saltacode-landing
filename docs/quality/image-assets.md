@@ -13,7 +13,7 @@ This contract covers Saltacode brand images, client logos, public app icons, and
 - The hero loads one surface-specific vector lockup recovered from the historical production artwork. Each animated SVG is 26,527 raw bytes and 4,841 bytes over the local server's negotiated gzip response; reduced-motion visitors receive a static 13,627-byte vector instead of downloading or running the animation.
 - The client carousel keeps one complete, indexable logo group in static HTML. A small progressive enhancement clones that group with `aria-hidden` only when motion is allowed, so the infinite loop adds no duplicate asset transfer; reduced-motion visitors retain one horizontally scrollable group.
 
-The source-to-output mapping, dimensions, byte sizes, and SHA-256 hashes live in `frontend/src/assets/optimized/manifest.json`.
+The source-to-output mapping, dimensions, byte sizes, and SHA-256 hashes live in `apps/landing/src/assets/optimized/manifest.json`.
 
 ## Service source masters
 
@@ -27,8 +27,8 @@ The source-to-output mapping, dimensions, byte sizes, and SHA-256 hashes live in
 Run:
 
 ```bash
-pnpm --dir frontend assets:generate
-pnpm --dir frontend assets:check
+pnpm --dir apps/landing assets:generate
+pnpm --dir apps/landing assets:check
 ```
 
 `assets:generate` uses pinned Sharp transforms and lossless WebP output for surface variants. It also normalizes oversized service masters once using the documented photographic settings. `assets:check` regenerates every surface variant in memory and fails on service-source dimensions, byte drift, missing files, manifest drift, or unexpected generated files.
@@ -57,8 +57,8 @@ Generative AI is not used for logos. Verified official variants exist, and synth
 ## Adding a client
 
 1. Obtain an authorized, high-resolution transparent source.
-2. Add explicit `onLight` and `onDark` source mappings to `frontend/scripts/generate-theme-assets.mjs`.
-3. Add the generated imports and client entry to `frontend/src/data/image-assets.ts`.
+2. Add explicit `onLight` and `onDark` source mappings to `apps/landing/scripts/generate-theme-assets.mjs`.
+3. Add the generated imports and client entry to `apps/landing/src/data/image-assets.ts`.
 4. Regenerate the library, inspect both surfaces, and run the frontend test suite.
 
 Do not infer, redraw, or generate a missing company logo. Keep its status unknown until an authorized source is available.

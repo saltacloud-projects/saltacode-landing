@@ -394,7 +394,7 @@ for (const icon of appIcons) {
 const manifest = `${JSON.stringify(
   {
     schemaVersion: 1,
-    generator: "frontend/scripts/generate-theme-assets.mjs",
+    generator: "apps/landing/scripts/generate-theme-assets.mjs",
     themeContract: {
       onLight: "Use when the logo is rendered on a light surface.",
       onDark: "Use when the logo is rendered on a dark surface.",

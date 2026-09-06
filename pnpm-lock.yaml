@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  frontend:
+  apps/landing:
     dependencies:
       astro:
         specifier: 7.2.4

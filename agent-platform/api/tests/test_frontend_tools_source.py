@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-TOOLS_PAGE = Path(__file__).resolve().parents[2] / "frontend/src/pages/Tools/index.tsx"
+TOOLS_PAGE = Path(__file__).resolve().parents[2] / "panel/src/pages/Tools/index.tsx"
 pytestmark = pytest.mark.skipif(
     not TOOLS_PAGE.is_file(),
-    reason="El frontend no forma parte de la imagen runtime de FastAPI",
+    reason="El panel no forma parte de la imagen runtime de la API",
 )
 
 

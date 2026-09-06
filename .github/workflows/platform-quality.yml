@@ -82,10 +82,10 @@ jobs:
         with:
           version: "0.11.23"
           enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          cache-dependency-glob: apps/web-bff/uv.lock
 
       - name: Install locked dependencies
-        working-directory: backend
+        working-directory: apps/web-bff
         run: uv sync --locked --all-groups
 
       - name: Verify backend
@@ -109,10 +109,10 @@ jobs:
         with:
           version: "0.11.23"
           enable-cache: true
-          cache-dependency-glob: agent-platform/fastapi/uv.lock
+          cache-dependency-glob: agent-platform/api/uv.lock
 
       - name: Install locked dependencies
-        working-directory: agent-platform/fastapi
+        working-directory: agent-platform/api
         run: uv sync --locked --all-groups
 
       - name: Verify agent API
@@ -131,14 +131,14 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: agent-platform/frontend/package-lock.json
+          cache-dependency-path: agent-platform/panel/package-lock.json
 
       - name: Install locked dependencies
-        working-directory: agent-platform/frontend
+        working-directory: agent-platform/panel
         run: npm ci
 
       - name: Install Playwright Chromium
-        working-directory: agent-platform/frontend
+        working-directory: agent-platform/panel
         run: npx playwright install --with-deps chromium
 
       - name: Verify agent panel

@@ -47,7 +47,7 @@ pnpm install --frozen-lockfile
 pnpm check
 pnpm test
 
-(cd backend && uv sync --locked --all-groups && uv run ruff format --check . \
+(cd apps/web-bff && uv sync --locked --all-groups && uv run ruff format --check . \
   && uv run ruff check . && uv run pytest \
   && uv run python scripts/export_contracts.py --check)
 

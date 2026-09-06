@@ -9,4 +9,4 @@ HTTP failures before streaming starts use `application/problem+json` and
 followed by `chat.done`.
 
 These files are generated from the Python models. Run `uv run python scripts/export_contracts.py`
-from `backend/` after changing a contract and commit model and schema changes together.
+from `apps/web-bff/` after changing a contract and commit model and schema changes together.

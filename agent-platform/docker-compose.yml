@@ -32,7 +32,7 @@ x-agent-environment: &agent-environment
 x-api-base: &api-base
   image: localhost/saltacode/agent-platform-api:${APP_VERSION:-dev}
   build:
-    context: ./fastapi
+    context: ./api
     dockerfile: Dockerfile
   environment: *agent-environment
   secrets:
@@ -186,7 +186,7 @@ services:
   integration-tests:
     image: localhost/saltacode/agent-platform-api-tests:${APP_VERSION:-dev}
     build:
-      context: ./fastapi
+      context: ./api
       dockerfile: Dockerfile
       target: test
     profiles: ["test"]
@@ -205,7 +205,7 @@ services:
   panel:
     image: localhost/saltacode/agent-platform-panel:${APP_VERSION:-dev}
     build:
-      context: ./frontend
+      context: ./panel
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:

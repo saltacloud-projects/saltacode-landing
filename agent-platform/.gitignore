@@ -9,8 +9,8 @@
 .env.local
 .env.*.local
 
-frontend/test-results/
-frontend/playwright-report/
+panel/test-results/
+panel/playwright-report/
 *.tsbuildinfo
 
 # Python

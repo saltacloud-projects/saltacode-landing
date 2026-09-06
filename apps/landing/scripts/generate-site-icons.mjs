@@ -19,7 +19,8 @@ const output = `<svg xmlns="http://www.w3.org/2000/svg">\n${Object.entries(icons
 
 if (checkOnly) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
-  if (current !== output) throw new Error("The generated site icon sprite is stale. Run pnpm --dir frontend icons:generate.");
+  if (current !== output)
+    throw new Error("The generated site icon sprite is stale. Run pnpm --dir apps/landing icons:generate.");
   console.log("Verified the deterministic site icon sprite.");
 } else {
   await mkdir(dirname(outputPath), { recursive: true });

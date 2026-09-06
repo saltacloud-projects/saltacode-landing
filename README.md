@@ -60,9 +60,9 @@ Install each deployable's locked dependencies once, then run the complete reposi
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
-(cd backend && uv sync --locked --all-groups)
-(cd agent-platform/fastapi && uv sync --locked --all-groups)
-(cd agent-platform/frontend && npm ci && npx playwright install chromium)
+(cd apps/web-bff && uv sync --locked --all-groups)
+(cd agent-platform/api && uv sync --locked --all-groups)
+(cd agent-platform/panel && npm ci && npx playwright install chromium)
 pnpm verify
 ```
 
@@ -81,9 +81,10 @@ The doctor fails only for required local capabilities. Recommended tools and ext
 
 | Path | Purpose |
 |---|---|
-| `frontend/` | Astro, TypeScript, static SEO surface, optimized assets, lazy chat client, and same-origin proxy. |
-| `backend/` | Public FastAPI BFF, signed session, SSE contract, origin checks, correlation, and shared rate limiting. |
-| `agent-platform/` | Neutral agent API, administration panel, sources, tools, histories, migrations, and its container stack. |
+| `apps/landing/` | Astro, TypeScript, static SEO surface, optimized assets, lazy chat client, and same-origin proxy. |
+| `apps/web-bff/` | Public FastAPI BFF, signed session, SSE contract, origin checks, correlation, and shared rate limiting. |
+| `agent-platform/api/` | Channel-neutral commercial runtime, sources, tools, histories, orchestration, and migrations. |
+| `agent-platform/panel/` | Administration and operator interface for the agent platform. |
 | `contracts/chat/v1/` | Versioned browser-to-BFF JSON Schemas. |
 | `compose.yml` | Site/BFF/Redis topology connected to the private agent service network. |
 | `infrastructure/` | Host-managed Tunnel templates and site release verification. |

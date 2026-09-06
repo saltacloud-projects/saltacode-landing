@@ -140,12 +140,12 @@ def test_rag_tool_registers_as_native_runtime_capability():
 
 
 def test_frontend_and_compose_expose_complete_rag_surface():
-    app_path = REPO_ROOT / "frontend/src/App.tsx"
+    app_path = REPO_ROOT / "panel/src/App.tsx"
     if not app_path.is_file():
-        pytest.skip("El frontend no forma parte de la imagen runtime de FastAPI")
+        pytest.skip("El panel no forma parte de la imagen runtime de la API")
     app = app_path.read_text()
-    page = (REPO_ROOT / "frontend/src/pages/Documents/index.tsx").read_text()
-    client = (REPO_ROOT / "frontend/src/api/client.ts").read_text()
+    page = (REPO_ROOT / "panel/src/pages/Documents/index.tsx").read_text()
+    client = (REPO_ROOT / "panel/src/api/client.ts").read_text()
     compose = (REPO_ROOT / "docker-compose.yml").read_text()
     assert 'path="documents"' in app
     assert "webkitdirectory" in page and ".zip" in page
@@ -175,8 +175,8 @@ def test_admin_roles_are_permission_driven_and_persisted():
     assert "AdminRole.permissions" in rbac
     assert 'ADMIN_PERMISSIONS = ["*"]' in bootstrap
     assert 'DOCUMENTS_MANAGE = "documents.manage"' in rbac
-    layout_path = REPO_ROOT / "frontend/src/components/AdminLayout.tsx"
+    layout_path = REPO_ROOT / "panel/src/components/AdminLayout.tsx"
     if not layout_path.is_file():
-        pytest.skip("El frontend no forma parte de la imagen runtime de FastAPI")
+        pytest.skip("El panel no forma parte de la imagen runtime de la API")
     layout = layout_path.read_text()
     assert "hasPermission(user, item.permission)" in layout

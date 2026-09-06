@@ -9,10 +9,10 @@ Do not use this guide as a reason to reformat unrelated files.
 
 | Scope | Authority | Line width | Notes |
 |---|---|---:|---|
-| `backend/` Python | Ruff from `backend/pyproject.toml` | 100 | Ruff format and import sorting are authoritative. |
-| `agent-platform/fastapi/` Python | Ruff from `agent-platform/fastapi/pyproject.toml` | 88 | Keep this module-local width; do not normalize it to the BFF. |
-| `agent-platform/frontend/` | Biome from `agent-platform/frontend/biome.jsonc` | 100 | Biome owns formatting, linting, and import organization under `src/`. |
-| `frontend/` Astro and TypeScript | Astro/TypeScript checks plus neighboring style | No automated formatter | The public frontend has no formatter or linter configured. Preserve local style and report this automation gap during review. |
+| `apps/web-bff/` Python | Ruff from `apps/web-bff/pyproject.toml` | 100 | Ruff format and import sorting are authoritative. |
+| `agent-platform/api/` Python | Ruff from `agent-platform/api/pyproject.toml` | 88 | Keep this module-local width; do not normalize it to the BFF. |
+| `agent-platform/panel/` | Biome from `agent-platform/panel/biome.jsonc` | 100 | Biome owns formatting, linting, and import organization under `src/`. |
+| `apps/landing/` Astro and TypeScript | Astro/TypeScript checks plus neighboring style | No automated formatter | The public frontend has no formatter or linter configured. Preserve local style and report this automation gap during review. |
 | Shell | `bash -n`; ShellCheck when available | N/A | CI pins ShellCheck; local availability is not guaranteed, so report when it could not run. |
 
 `.editorconfig` establishes only portable whitespace defaults. It does not replace Ruff, Biome,
@@ -137,9 +137,9 @@ delivery checkpoint.
 | Scope | Style command | Complete scope gate |
 |---|---|---|
 | Public frontend | No formatter is configured; inspect the diff and run Astro checks | `pnpm verify:frontend` |
-| BFF | `cd backend && uv run --locked ruff format . && uv run --locked ruff check .` | `pnpm verify:backend` |
-| Agent API | `cd agent-platform/fastapi && uv run --locked ruff format app tests scripts && uv run --locked ruff check app tests scripts` | `pnpm verify:agent-api` |
-| Agent panel | `cd agent-platform/frontend && npm run check:write` | `pnpm verify:agent-panel` |
+| BFF | `cd apps/web-bff && uv run --locked ruff format . && uv run --locked ruff check .` | `pnpm verify:backend` |
+| Agent API | `cd agent-platform/api && uv run --locked ruff format app tests scripts && uv run --locked ruff check app tests scripts` | `pnpm verify:agent-api` |
+| Agent panel | `cd agent-platform/panel && npm run check:write` | `pnpm verify:agent-panel` |
 | Infrastructure and shell | Run `bash -n` on every changed Bash file and `shellcheck <changed-files>` when available | `pnpm verify:infrastructure` |
 | Agentic contracts | Inspect Markdown/YAML diffs and validate references | `pnpm verify:agentic` |
 | Cross-cutting change | Run each affected scope first | `pnpm verify` |
