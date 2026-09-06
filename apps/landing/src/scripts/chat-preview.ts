@@ -54,6 +54,16 @@ let acceptedForPage = false;
 let resettingPrivacy = false;
 let hasServerSession = false;
 
+interface CommercialContactController {
+  clearSensitiveValue: () => void;
+  handleEvent: (event: ChatEvent) => void;
+  reset: () => void;
+}
+
+let commercialController: CommercialContactController | undefined;
+let commercialControllerLoading: Promise<CommercialContactController> | undefined;
+let commercialControllerGeneration = 0;
+
 function applyStyles(): Promise<void> {
   if (stylesApplied) return Promise.resolve();
   stylesReady ??= new Promise((resolve) => {
@@ -233,6 +243,34 @@ function applyEvent(event: ChatEvent): void {
   if (event.event_type?.includes("control")) void synchronizeHistory().catch(() => undefined);
   persistTranscript();
   renderTranscript();
+  if (event.event_type === "commercial.contact.requested" || event.event_type === "commercial.opportunity.created") {
+    void handleCommercialEvent(event);
+  }
+}
+
+async function handleCommercialEvent(event: ChatEvent): Promise<void> {
+  if (commercialController) {
+    commercialController.handleEvent(event);
+    return;
+  }
+  const generation = commercialControllerGeneration;
+  commercialControllerLoading ??= import("./chat-commercial-ui").then(async (module) => {
+    await module.loadCommercialStyles();
+    if (generation !== commercialControllerGeneration || !dialog?.open) throw new DOMException("", "AbortError");
+    return module.createCommercialContactController({
+      log,
+      privacyVersion: PRIVACY_VERSION,
+      setChatStatus: (message) => { status.textContent = message; },
+    });
+  }).finally(() => { commercialControllerLoading = undefined; });
+  try {
+    commercialController ??= await commercialControllerLoading;
+    commercialController.handleEvent(event);
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === "AbortError")) {
+      status.textContent = "No fue posible mostrar la solicitud de contacto.";
+    }
+  }
 }
 
 function startEventStream(): void {
@@ -476,6 +514,7 @@ function createDialog(): HTMLDialogElement {
     streamController = undefined;
     pendingLaunch = undefined;
     hideConsent();
+    commercialController?.clearSensitiveValue();
     if (!resettingPrivacy && resumeLauncher) ensureResumeButton(resumeLauncher).hidden = false;
     returnFocus?.focus();
   });
@@ -513,6 +552,10 @@ function resetChatPrivacy(): void {
   pendingLaunch = undefined;
   streamController?.abort();
   streamController = undefined;
+  commercialControllerGeneration += 1;
+  commercialController?.reset();
+  commercialController = undefined;
+  commercialControllerLoading = undefined;
   clearChatTranscript(localStorage);
   transcript = emptyChatTranscript();
   hasServerSession = false;

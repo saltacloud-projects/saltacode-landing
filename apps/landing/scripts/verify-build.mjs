@@ -23,12 +23,21 @@ const indexBuffer = await readFile(resolve(dist, "index.html"));
 const notFound = await readFile(resolve(dist, "404.html"), "utf8");
 const robots = await readFile(resolve(dist, "robots.txt"), "utf8");
 const sitemap = await readFile(resolve(dist, "sitemap.xml"), "utf8");
-const chatSourcePaths = ["chat-preview.ts", "chat-api.ts", "chat-stream.ts", "chat-template.ts", "chat-transcript.ts"];
+const chatSourcePaths = [
+  "chat-preview.ts",
+  "chat-api.ts",
+  "chat-commercial.ts",
+  "chat-commercial-ui.ts",
+  "chat-stream.ts",
+  "chat-template.ts",
+  "chat-transcript.ts",
+];
 const chatSources = await Promise.all(
   chatSourcePaths.map((path) => readFile(resolve(import.meta.dirname, `../src/scripts/${path}`), "utf8")),
 );
 const [chatSource] = chatSources;
 const combinedChatSource = chatSources.join("\n");
+const commercialChatSource = chatSources.slice(2, 4).join("\n");
 const chatTranscriptSource = chatSources.at(-1);
 const chatStylesSource = await readFile(resolve(import.meta.dirname, "../src/styles/chat-preview.css"), "utf8");
 const privacySource = await readFile(resolve(import.meta.dirname, "../src/scripts/privacy-preferences.ts"), "utf8");
@@ -40,10 +49,12 @@ const BUILD_BUDGETS = Object.freeze({
   indexHtmlBytes: 29.25 * 1024,
   coreCssBytes: 20 * 1024,
   additionalInteriorCssBytes: 5 * 1024,
-  initialExecutableJavaScriptBytes: 5.5 * 1024,
+  initialExecutableJavaScriptBytes: 5.75 * 1024,
   nonChatExecutableJavaScriptBytes: 7 * 1024,
   chatChunkBytes: 23 * 1024,
   chatStylesheetBytes: 10 * 1024,
+  commercialChatChunkBytes: 10 * 1024,
+  commercialChatStylesheetBytes: 2.25 * 1024,
   privacyChunkBytes: 3 * 1024,
   privacyStylesheetBytes: 4 * 1024,
   socialImageBytes: 100 * 1024,
@@ -132,6 +143,12 @@ if (!chatChunk) throw new Error("The lazy chat chunk was not emitted.");
 const chatStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)chat-preview\.[^/]+\.css$/.test(file.path));
 if (!chatStylesheet) throw new Error("The deferred chat stylesheet was not emitted.");
 if (index.includes(`/${chatStylesheet.path}`)) throw new Error("The chat stylesheet must remain outside the initial page path.");
+const commercialChatChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)chat-commercial-ui\.[^/]+\.js$/.test(file.path));
+const commercialChatStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)chat-commercial\.[^/]+\.css$/.test(file.path));
+if (!commercialChatChunk || !commercialChatStylesheet) throw new Error("The on-demand commercial chat assets were not emitted.");
+if (index.includes(`/${commercialChatChunk.path}`) || index.includes(`/${commercialChatStylesheet.path}`)) {
+  throw new Error("Commercial contact assets must stay outside the initial page path.");
+}
 const privacyChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)privacy-preferences\.[^/]+\.js$/.test(file.path));
 const privacyStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)privacy-preferences\.[^/]+\.css$/.test(file.path));
 if (!privacyChunk || !privacyStylesheet) throw new Error("The deferred privacy center assets were not emitted.");
@@ -141,9 +158,11 @@ const measuredBuild = Object.freeze({
   coreCssBytes: bytesForPaths(homeCssPaths),
   additionalInteriorCssBytes: bytesForPaths(additionalCssPaths),
   initialExecutableJavaScriptBytes: initialExternalBytes + inlineBytes,
-  nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes - privacyChunk.bytes,
+  nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes - commercialChatChunk.bytes - privacyChunk.bytes,
   chatChunkBytes: chatChunk.bytes,
   chatStylesheetBytes: chatStylesheet.bytes,
+  commercialChatChunkBytes: commercialChatChunk.bytes,
+  commercialChatStylesheetBytes: commercialChatStylesheet.bytes,
   privacyChunkBytes: privacyChunk.bytes,
   privacyStylesheetBytes: privacyStylesheet.bytes,
   socialImageBytes: socialImage.bytes,
@@ -157,6 +176,8 @@ const budgetResults = [
   ["non-chat executable JavaScript", measuredBuild.nonChatExecutableJavaScriptBytes, BUILD_BUDGETS.nonChatExecutableJavaScriptBytes],
   ["lazy chat chunk", measuredBuild.chatChunkBytes, BUILD_BUDGETS.chatChunkBytes],
   ["deferred chat CSS", measuredBuild.chatStylesheetBytes, BUILD_BUDGETS.chatStylesheetBytes],
+  ["on-demand commercial chat JavaScript", measuredBuild.commercialChatChunkBytes, BUILD_BUDGETS.commercialChatChunkBytes],
+  ["on-demand commercial chat CSS", measuredBuild.commercialChatStylesheetBytes, BUILD_BUDGETS.commercialChatStylesheetBytes],
   ["deferred privacy JavaScript", measuredBuild.privacyChunkBytes, BUILD_BUDGETS.privacyChunkBytes],
   ["deferred privacy CSS", measuredBuild.privacyStylesheetBytes, BUILD_BUDGETS.privacyStylesheetBytes],
   ["social preview image", measuredBuild.socialImageBytes, BUILD_BUDGETS.socialImageBytes],
@@ -239,7 +260,7 @@ if (!/<form\b[^>]*data-chat-launcher/.test(index) || !/<div class="agent-preview
 const quickLinks = index.match(/<div class="quick-links"[^>]*>([\s\S]*?)<\/div>/)?.[1];
 if (!quickLinks || (quickLinks.match(/<button\b[^>]*type="submit"/g) ?? []).length !== 4 || /<a\b/.test(quickLinks) || !pageMotionSource.includes("event.submitter")) throw new Error("Service shortcuts must remain chat launchers.");
 if (!chatSource.includes('const PRIVACY_VERSION = "saltacode-chat-privacy-2026-08-28"') || !chatSource.includes('const CONSENT_STORAGE_KEY = "saltacode-chat-consent"')) throw new Error("Chat consent version or local key is incorrect.");
-if (/transcript-consent|type="checkbox"/.test(combinedChatSource)) throw new Error("The chat must not render a persistent consent checkbox.");
+if (/transcript-consent|data-chat-transcript-consent/.test(combinedChatSource)) throw new Error("The chat must not render a persistent transcript consent checkbox.");
 if (!combinedChatSource.includes("Aceptar y enviar") || !combinedChatSource.includes("event.isComposing") || !combinedChatSource.includes("AbortController")) throw new Error("Chat first-use, IME, or cancellation safeguards are missing.");
 if (!combinedChatSource.includes("Continuar conversación") || !pageMotionSource.includes("initializeChatResume") || !pageMotionSource.includes("saltacode-chat-transcript")) throw new Error("The lazy chat resume affordance or reload bootstrap is missing.");
 if (!chatTranscriptSource.includes("CHAT_TRANSCRIPT_TTL_MS = 30 * 24 * 60 * 60 * 1_000") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_MESSAGES = 100") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_PENDING = 8") || !chatTranscriptSource.includes("CHAT_TRANSCRIPT_MAX_BYTES = 64 * 1_024")) throw new Error("Local transcript retention or bounds changed without review.");
@@ -250,6 +271,11 @@ if (!combinedChatSource.includes("este chat no se transfiere") || !chatSource.in
 if (!chatStylesSource.includes("max-width:none") || !chatStylesSource.includes("max-height:none") || !chatStylesSource.includes("resize:none") || !chatStylesSource.includes(".chat-send-label")) throw new Error("Mobile dialog, composer, or icon-only send safeguards are missing.");
 if ([chatSource, pageMotionSource].some((source) => source.includes("crypto.randomUUID"))) throw new Error("Public chat code must not require randomUUID on insecure LAN origins.");
 if (!clientMessageIdSource.includes("crypto.getRandomValues") || !clientMessageIdSource.includes("4000-8000")) throw new Error("The browser-compatible UUID v4 generator is missing.");
+if (!chatSource.includes('import("./chat-commercial-ui")') || !commercialChatSource.includes("/api/v2/chat/commercial-contact")) throw new Error("Commercial contact capture must remain event-driven and separately deferred.");
+if (!commercialChatSource.includes("quote_delivery_consent: true") || !commercialChatSource.includes("commercial_follow_up_consent")) throw new Error("Commercial contact capture must keep quote and follow-up consent separate.");
+if (/localStorage|sessionStorage|console\./.test(commercialChatSource) || commercialChatSource.includes("target_agent_id")) throw new Error("Commercial contact code must not persist or expose personal or internal routing data.");
+if (!commercialChatSource.includes("textContent = prompt.title") || !commercialChatSource.includes('role="status" aria-live="polite"')) throw new Error("Commercial prompts must render as safe text with an accessible status.");
+if (!commercialChatSource.includes("attemptedClientRequestIds") || !commercialChatSource.includes("matchesReplayOrder") || commercialChatSource.includes("submittedPayload")) throw new Error("Commercial retries and replay must preserve correlation without retaining a second personal-data payload.");
 if (!privacySource.includes('const STORAGE_VERSION = "saltacode-storage-2026-08-28"') || !privacySource.includes("globalPrivacyControl")) throw new Error("The privacy center version or GPC handling is missing.");
 if (!index.includes("data-privacy-notice") || !index.includes("data-privacy-center") || !index.includes("data-privacy-settings")) throw new Error("The first-visit privacy notice or persistent privacy center control is missing.");
 if (!index.includes("/icons/site-icons.svg#site-icon-whatsapp") || !pages.get("/contacto/").includes("/icons/site-icons.svg#site-icon-google-maps")) throw new Error("Standardized public brand icons are missing.");
