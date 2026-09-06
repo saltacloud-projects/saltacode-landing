@@ -31,3 +31,18 @@ def request_id():
 @pytest.fixture
 def phone_number():
     return "5493875296587"
+
+
+@pytest.fixture(autouse=True)
+async def _isolate_integration_database_engine(request):
+    """Release loop-bound asyncpg connections after each integration test."""
+    if request.node.get_closest_marker("integration") is None:
+        yield
+        return
+
+    from app.core.database import engine
+
+    try:
+        yield
+    finally:
+        await engine.dispose()
