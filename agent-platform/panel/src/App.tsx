@@ -27,6 +27,7 @@ const DocumentsPage = lazy(() => import("./pages/Documents"));
 const FollowUpsPage = lazy(() => import("./pages/FollowUps"));
 const HandoffsPage = lazy(() => import("./pages/Handoffs"));
 const InboxPage = lazy(() => import("./pages/Inbox"));
+const InboundJobsPage = lazy(() => import("./pages/InboundJobs"));
 const KnowledgePage = lazy(() => import("./pages/KnowledgeBlocks"));
 const LoginPage = lazy(() => import("./pages/Login"));
 const MeetingsPage = lazy(() => import("./pages/Meetings"));
@@ -345,6 +346,14 @@ export default function App() {
                 element={
                   <PermissionRoute permission={PERMISSIONS.FOLLOW_UPS_READ}>
                     <FollowUpsPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="inbound-jobs"
+                element={
+                  <PermissionRoute permission={PERMISSIONS.INBOUND_READ}>
+                    <InboundJobsPage />
                   </PermissionRoute>
                 }
               />

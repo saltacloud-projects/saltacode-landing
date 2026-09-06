@@ -23,6 +23,7 @@ import {
   Send,
   ShieldCheck,
   Target,
+  Webhook,
   Wrench,
   X,
 } from "lucide-react";
@@ -165,6 +166,12 @@ const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
         label: "Seguimientos",
         icon: ListChecks,
         permission: PERMISSIONS.FOLLOW_UPS_READ,
+      },
+      {
+        segment: "inbound-jobs",
+        label: "Ingresos externos",
+        icon: Webhook,
+        permission: PERMISSIONS.INBOUND_READ,
       },
       {
         segment: "deliveries",

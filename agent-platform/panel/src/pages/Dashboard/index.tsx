@@ -19,6 +19,7 @@ import {
   Settings2,
   ShieldCheck,
   Target,
+  Webhook,
   Wrench,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -80,6 +81,13 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
         segment: "follow-ups",
         icon: ListChecks,
         permission: PERMISSIONS.FOLLOW_UPS_READ,
+      },
+      {
+        label: "Ingresos externos",
+        description: "Revisá el ingreso multicanal y resolvé excepciones antes de procesarlas.",
+        segment: "inbound-jobs",
+        icon: Webhook,
+        permission: PERMISSIONS.INBOUND_READ,
       },
       {
         label: "Entregas",

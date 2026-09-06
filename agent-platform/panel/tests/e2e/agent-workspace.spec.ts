@@ -121,6 +121,10 @@ test("dashboard separates operations, automation, agent settings, and global lib
     "href",
     `/agents/${AGENT_A}/follow-ups`,
   );
+  await expect(content.getByRole("link", { name: /^Ingresos externos/ })).toHaveAttribute(
+    "href",
+    `/agents/${AGENT_A}/inbound-jobs`,
+  );
   await expect(content.getByRole("link", { name: /^Entregas/ })).toHaveAttribute(
     "href",
     `/agents/${AGENT_A}/deliveries`,

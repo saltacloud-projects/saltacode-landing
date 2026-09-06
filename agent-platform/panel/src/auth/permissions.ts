@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   FOLLOW_UPS_READ: "follow_ups.read",
   FOLLOW_UPS_MANAGE: "follow_ups.manage",
   FOLLOW_UPS_REVIEW: "follow_ups.review",
+  INBOUND_READ: "inbound.read",
+  INBOUND_REVIEW: "inbound.review",
   QUOTES_APPROVE: "quotes.approve",
   DELIVERIES_READ: "deliveries.read",
   DELIVERIES_REVIEW: "deliveries.review",
