@@ -34,6 +34,7 @@ from app.routers.admin.identity_link_claims import (
     router as admin_identity_link_claims_router,
 )
 from app.routers.admin.knowledge_blocks import router as admin_kb_router
+from app.routers.admin.meetings import router as admin_meetings_router
 from app.routers.admin.operator_inbox import router as admin_operator_inbox_router
 from app.routers.admin.panel_users import router as admin_panel_users_router
 from app.routers.admin.profiles import router as admin_profiles_router
@@ -254,6 +255,10 @@ app.include_router(
 app.include_router(
     admin_commercial_router,
     prefix="/api/admin/agents/{agent_id}/opportunities",
+)
+app.include_router(
+    admin_meetings_router,
+    prefix="/api/admin/agents/{agent_id}/meetings",
 )
 app.include_router(
     admin_identity_link_claims_router,

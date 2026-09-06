@@ -37,6 +37,7 @@ from app.models.follow_up import FollowUpTask, FollowUpTaskEvent
 from app.models.identity_link_claim import IdentityLinkClaim, IdentityLinkClaimEvent
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
+from app.models.meeting import Meeting, MeetingEvent, MeetingSlot
 from app.models.message_status import MessageStatus
 from app.models.opportunity import (
     Opportunity,

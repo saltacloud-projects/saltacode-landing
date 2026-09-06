@@ -10,7 +10,10 @@ from fastapi import HTTPException
 from app.bootstrap import bootstrap_admin_agent_grant
 from app.models.admin_agent_grant import AdminAgentGrant
 from app.routers.admin.auth import require_agent_permission
-from app.services.admin_agent_access import AdminAgentAccessService
+from app.services.admin_agent_access import (
+    AGENT_SCOPED_PERMISSIONS,
+    AdminAgentAccessService,
+)
 from app.services.admin_rbac import AdminPermission
 
 
@@ -28,6 +31,18 @@ class RowsResult:
 
     def all(self):
         return self.rows
+
+
+def test_meeting_permissions_are_explicit_and_not_added_to_legacy_grants():
+    legacy_grant = ["opportunities.read", "opportunities.manage"]
+
+    assert AdminPermission.MEETINGS_READ in AGENT_SCOPED_PERMISSIONS
+    assert AdminPermission.MEETINGS_MANAGE in AGENT_SCOPED_PERMISSIONS
+    assert not AdminAgentAccessService._allows(
+        legacy_grant,
+        AdminPermission.MEETINGS_READ,
+    )
+    assert AdminAgentAccessService._allows(["*"], AdminPermission.MEETINGS_MANAGE)
 
 
 @pytest.mark.asyncio

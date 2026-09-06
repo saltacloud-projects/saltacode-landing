@@ -60,6 +60,7 @@ from app.models.identity_link_claim import (  # noqa: F401
 )
 from app.models.integration_source import IntegrationSource  # noqa: F401
 from app.models.knowledge_block import KnowledgeBlock  # noqa: F401
+from app.models.meeting import Meeting, MeetingEvent, MeetingSlot  # noqa: F401
 from app.models.message_status import MessageStatus  # noqa: F401
 from app.models.opportunity import (  # noqa: F401
     Opportunity,
