@@ -6,10 +6,10 @@ from typing import Protocol
 from uuid import UUID
 
 from app.chat_v2.contracts import (
-    CommercialContactAccepted,
     EventsResponse,
     HistoryResponse,
     MessageAccepted,
+    PrivateCommercialContactAccepted,
     PrivateCommercialContactRequest,
     PrivateMessageRequest,
     PrivateResetRequest,
@@ -58,7 +58,7 @@ class WebChatV2Client(Protocol):
         request: PrivateCommercialContactRequest,
         *,
         correlation_id: str,
-    ) -> CommercialContactAccepted: ...
+    ) -> PrivateCommercialContactAccepted: ...
 
     async def history(
         self,

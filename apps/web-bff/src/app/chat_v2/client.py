@@ -11,10 +11,10 @@ import httpx2
 from pydantic import ValidationError
 
 from app.chat_v2.contracts import (
-    CommercialContactAccepted,
     EventsResponse,
     HistoryResponse,
     MessageAccepted,
+    PrivateCommercialContactAccepted,
     PrivateCommercialContactRequest,
     PrivateMessageRequest,
     PrivateResetRequest,
@@ -40,7 +40,9 @@ class UnavailableWebChatV2Client:
     async def accept_message(self, *_args, **_kwargs) -> MessageAccepted:
         raise WebChatUnavailableError("web chat is not configured")
 
-    async def accept_commercial_contact(self, *_args, **_kwargs) -> CommercialContactAccepted:
+    async def accept_commercial_contact(
+        self, *_args, **_kwargs
+    ) -> PrivateCommercialContactAccepted:
         raise WebChatUnavailableError("web chat is not configured")
 
     async def history(self, **_kwargs) -> HistoryResponse:
@@ -112,12 +114,12 @@ class HttpWebChatV2Client:
         request: PrivateCommercialContactRequest,
         *,
         correlation_id: str,
-    ) -> CommercialContactAccepted:
+    ) -> PrivateCommercialContactAccepted:
         self._require_route(request.route_key)
         return await self._request(
             "POST",
             "/internal/v2/web/commercial-contact",
-            response_type=CommercialContactAccepted,
+            response_type=PrivateCommercialContactAccepted,
             expected_status=202,
             correlation_id=correlation_id,
             map_unprocessable=True,

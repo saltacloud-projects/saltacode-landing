@@ -123,9 +123,14 @@ class PrivateCommercialContactRequest(StrictContract):
     policy_version: PrivacyVersion
 
 
-class CommercialContactAccepted(StrictContract):
+class PrivateCommercialContactAccepted(StrictContract):
     opportunity_id: UUID
     target_agent_id: UUID
+    status: Literal["accepted"]
+
+
+class BrowserCommercialContactAccepted(StrictContract):
+    opportunity_id: UUID
     status: Literal["accepted"]
 
 

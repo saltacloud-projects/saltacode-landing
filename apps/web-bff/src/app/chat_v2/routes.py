@@ -11,10 +11,10 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.chat_v2.contracts import (
+    BrowserCommercialContactAccepted,
     BrowserCommercialContactRequest,
     BrowserMessageRequest,
     BrowserResetRequest,
-    CommercialContactAccepted,
     ConversationEvent,
     EventsResponse,
     HistoryResponse,
@@ -161,7 +161,7 @@ async def create_message(
 
 @router.post(
     "/commercial-contact",
-    response_model=CommercialContactAccepted,
+    response_model=BrowserCommercialContactAccepted,
     status_code=status.HTTP_202_ACCEPTED,
     responses=_COMMERCIAL_CONTACT_RESPONSES,
 )
@@ -173,7 +173,7 @@ async def create_commercial_contact(
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
     client: Annotated[WebChatV2Client, Depends(get_web_chat_v2_client)],
-) -> CommercialContactAccepted:
+) -> BrowserCommercialContactAccepted:
     enforce_allowed_origin(request, settings)
     _require_current_privacy(payload.privacy_version, settings)
     decision = await _check_rate_limit(request, rate_limiter)
@@ -199,7 +199,10 @@ async def create_commercial_contact(
     except WebChatClientError as error:
         _raise_commercial_contact_error(error)
     _set_response_headers(response, rate_limit=decision)
-    return accepted
+    return BrowserCommercialContactAccepted(
+        opportunity_id=accepted.opportunity_id,
+        status=accepted.status,
+    )
 
 
 @router.get("/history", response_model=HistoryResponse, responses=_HISTORY_RESPONSES)

@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.chat_v2.contracts import (
-    CommercialContactAccepted,
     EventsResponse,
     HistoryResponse,
     MessageAccepted,
+    PrivateCommercialContactAccepted,
     PrivateCommercialContactRequest,
     PrivateMessageRequest,
     PrivateResetRequest,
@@ -41,11 +41,11 @@ class FakeWebChatV2Client:
         request: PrivateCommercialContactRequest,
         *,
         correlation_id: str,
-    ) -> CommercialContactAccepted:
+    ) -> PrivateCommercialContactAccepted:
         self.commercial_requests.append((request, correlation_id))
         if self.failure is not None:
             raise self.failure
-        return CommercialContactAccepted(
+        return PrivateCommercialContactAccepted(
             opportunity_id=uuid4(),
             target_agent_id=uuid4(),
             status="accepted",
@@ -144,7 +144,7 @@ def test_commercial_contact_uses_server_owned_session_route_and_policy() -> None
         )
 
     assert response.status_code == 202
-    assert response.json().keys() == {"opportunity_id", "target_agent_id", "status"}
+    assert response.json().keys() == {"opportunity_id", "status"}
     private_request, correlation_id = fake.commercial_requests[0]
     assert private_request.session_id == session_id
     assert private_request.route_key == "saltacode-landing"
@@ -294,5 +294,7 @@ def test_openapi_documents_commercial_contact_contract_and_failures() -> None:
         ]
 
     assert operation["responses"]["202"]["content"]["application/json"]
+    response_schema = operation["responses"]["202"]["content"]["application/json"]["schema"]
+    assert response_schema == {"$ref": "#/components/schemas/BrowserCommercialContactAccepted"}
     for status_code in ("400", "403", "404", "409", "422", "423", "429", "503"):
         assert set(operation["responses"][status_code]["content"]) == {"application/problem+json"}
