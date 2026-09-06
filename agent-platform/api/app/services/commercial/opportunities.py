@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
 from app.models.contact import Contact
+from app.models.follow_up import FollowUpTask, FollowUpTaskEvent
 from app.models.opportunity import (
-    FollowUpTask,
     Opportunity,
     OpportunityConversation,
     OpportunityOwnershipEvent,
@@ -24,6 +24,12 @@ from app.models.platform import ChatConversation
 from app.services.commercial._command_policy import CommercialCommandPolicy
 
 _TERMINAL_STAGES = {"won", "lost"}
+_OPPORTUNITY_REASSIGNED = "opportunity_reassigned"
+_REASSIGNABLE_FOLLOW_UP_STATUSES = (
+    "scheduled",
+    "dispatch_queued",
+    "in_progress",
+)
 
 
 class OpportunityStage(StrEnum):
@@ -353,32 +359,90 @@ class OpportunityService:
         from_agent_id = opportunity.assigned_agent_id
         from_operator_id = opportunity.assigned_operator_id
         opportunity.control_version += 1
-        opportunity.assigned_agent_id = assigned_agent_id
-        opportunity.assigned_operator_id = assigned_operator_id
-        pending_tasks = list(
+        ownership_event_id = uuid.uuid5(
+            opportunity.id,
+            f"ownership:{opportunity.control_version}",
+        )
+        event_time = datetime.now(UTC)
+        active_follow_ups = list(
             (
                 await db.execute(
-                    select(FollowUpTask)
+                    select(FollowUpTask, ChatConversation)
+                    .join(
+                        ChatConversation,
+                        ChatConversation.id == FollowUpTask.conversation_id,
+                    )
                     .where(
                         FollowUpTask.opportunity_id == opportunity.id,
-                        FollowUpTask.status.not_in(["completed", "cancelled"]),
+                        FollowUpTask.status.in_(_REASSIGNABLE_FOLLOW_UP_STATUSES),
                     )
-                    .with_for_update()
+                    .order_by(FollowUpTask.id)
+                    .with_for_update(of=FollowUpTask)
+                )
+            ).all()
+        )
+        for task, conversation in active_follow_ups:
+            from_status = task.status
+            task.state_version += 1
+            task.status = "review_required"
+            task.review_required_at = event_time
+            task.lease_owner = None
+            task.lease_expires_at = None
+            task.last_safe_code = _OPPORTUNITY_REASSIGNED
+            follow_up_event_key = f"opportunity-reassigned:{ownership_event_id}"
+            db.add(
+                FollowUpTaskEvent(
+                    id=uuid.uuid5(
+                        task.id,
+                        f"follow-up-event:{follow_up_event_key}",
+                    ),
+                    task_id=task.id,
+                    opportunity_id=opportunity.id,
+                    event_type="transitioned",
+                    from_status=from_status,
+                    to_status="review_required",
+                    state_version=task.state_version,
+                    actor_type=(
+                        "operator" if actor_operator_id is not None else "agent"
+                    ),
+                    actor_agent_id=(
+                        None if actor_operator_id is not None else actor_agent_id
+                    ),
+                    actor_admin_id=actor_operator_id,
+                    actor_worker_id=None,
+                    routing_agent_id=conversation.agent_id,
+                    automation_agent_id=task.assigned_agent_id,
+                    target_channel=task.target_channel,
+                    control_version=task.scheduled_control_version,
+                    automation_version=task.scheduled_automation_version,
+                    scheduled_policy_version=task.scheduled_policy_version,
+                    executed_policy_version=task.executed_policy_version,
+                    consent_record_id=task.consent_record_id,
+                    executed_consent_record_id=task.executed_consent_record_id,
+                    caused_by_consent_record_id=None,
+                    chat_message_id=task.chat_message_id,
+                    outbound_message_id=task.outbound_message_id,
+                    safe_code=_OPPORTUNITY_REASSIGNED,
+                    correlation_id=correlation,
+                    idempotency_key=follow_up_event_key,
+                    command_hash=_policy.command_hash(
+                        {
+                            "from_status": from_status,
+                            "opportunity_ownership_event_id": str(ownership_event_id),
+                            "safe_code": _OPPORTUNITY_REASSIGNED,
+                            "task_id": str(task.id),
+                            "to_status": "review_required",
+                        }
+                    ),
+                    created_at=event_time,
                 )
             )
-            .scalars()
-            .all()
-        )
-        for task in pending_tasks:
-            task.assigned_agent_id = assigned_agent_id
-            task.assigned_operator_id = assigned_operator_id
-            task.state_version += 1
+
+        opportunity.assigned_agent_id = assigned_agent_id
+        opportunity.assigned_operator_id = assigned_operator_id
 
         event = OpportunityOwnershipEvent(
-            id=uuid.uuid5(
-                opportunity.id,
-                f"ownership:{opportunity.control_version}",
-            ),
+            id=ownership_event_id,
             opportunity_id=opportunity.id,
             actor_agent_id=actor_agent_id,
             actor_operator_id=actor_operator_id,
@@ -392,6 +456,7 @@ class OpportunityService:
             correlation_id=correlation,
             idempotency_key=key,
             command_hash=command_hash,
+            created_at=event_time,
         )
         db.add(event)
         await db.flush()

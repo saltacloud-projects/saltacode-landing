@@ -366,6 +366,287 @@ async def test_opportunity_handoff_is_versioned_without_rewriting_chat_owner(
 
 
 @pytest.mark.asyncio
+async def test_reassignment_quarantines_active_follow_ups_until_explicit_requeue(
+    commercial_dossier: CommercialDossierContext,
+) -> None:
+    context = commercial_dossier
+    opportunities = OpportunityService()
+    follow_ups = FollowUpService()
+    assignments = ConversationAutomationAssignmentService()
+    now = datetime.now(UTC)
+
+    async with AsyncSessionLocal() as db:
+        admin = AdminUser(
+            email=f"follow-up-reassignment-{uuid4().hex}@example.test",
+            hashed_password="not-used",
+            name="Follow-up reassignment operator",
+            role="admin",
+            is_active=True,
+            must_change_password=False,
+        )
+        db.add(admin)
+        await db.flush()
+        admin_id = admin.id
+        opportunity = (
+            await opportunities.create(
+                db,
+                contact_id=context.contact_id,
+                source_conversation_id=context.conversation_id,
+                created_by_agent_id=context.intake_agent_id,
+                assigned_agent_id=context.intake_agent_id,
+                assigned_operator_id=None,
+                title="Follow-up ownership handoff",
+                summary=None,
+                correlation_id="reassignment-follow-up-create",
+                idempotency_key="reassignment-follow-up-create",
+            )
+        ).opportunity
+        consent = ConsentRecord(
+            id=uuid4(),
+            principal_id=context.principal_id,
+            contact_id=context.contact_id,
+            contact_point_id=context.contact_point_id,
+            agent_id=context.intake_agent_id,
+            purpose="commercial_follow_up",
+            action="grant",
+            policy_version="commercial-v1",
+            channel="web",
+            target_channel="email",
+            locale="es-AR",
+            source_conversation_id=context.conversation_id,
+            source_channel_identity_id=context.identity_id,
+            correlation_id="reassignment-follow-up-consent",
+            idempotency_key="reassignment-follow-up-consent",
+            command_hash="e" * 64,
+            occurred_at=now,
+        )
+        db.add(consent)
+        await db.flush()
+
+        tasks: dict[str, FollowUpTask] = {}
+        for index, status_name in enumerate(
+            (
+                "scheduled",
+                "dispatch_queued",
+                "in_progress",
+                "review_required",
+                "completed",
+                "cancelled",
+            ),
+            start=1,
+        ):
+            scheduled = await follow_ups.schedule(
+                db,
+                opportunity_id=opportunity.id,
+                actor_agent_id=context.intake_agent_id,
+                actor_operator_id=None,
+                contact_point_id=context.contact_point_id,
+                conversation_id=context.conversation_id,
+                target_channel="email",
+                kind=FollowUpKind.COMMERCIAL_FOLLOW_UP,
+                due_at=now + timedelta(days=index),
+                note=None,
+                correlation_id=f"reassignment-follow-up-{status_name}",
+                idempotency_key=f"reassignment-follow-up-{status_name}",
+                now=now,
+            )
+            tasks[status_name] = scheduled.task
+
+        tasks["dispatch_queued"].status = FollowUpStatus.DISPATCH_QUEUED
+        tasks["in_progress"].status = FollowUpStatus.IN_PROGRESS
+        tasks["in_progress"].lease_owner = "test-worker"
+        tasks["in_progress"].lease_expires_at = now + timedelta(minutes=5)
+        reviewed = await follow_ups.transition(
+            db,
+            task_id=tasks["review_required"].id,
+            actor_agent_id=context.intake_agent_id,
+            actor_operator_id=None,
+            target_status=FollowUpStatus.REVIEW_REQUIRED,
+            expected_version=0,
+            correlation_id="reassignment-existing-review",
+            idempotency_key="reassignment-existing-review",
+            safe_code="operator_requested_review",
+            occurred_at=now + timedelta(minutes=1),
+        )
+        tasks["completed"].status = FollowUpStatus.COMPLETED
+        tasks["completed"].completed_at = now + timedelta(minutes=1)
+        tasks["cancelled"].status = FollowUpStatus.CANCELLED
+        tasks["cancelled"].cancelled_at = now + timedelta(minutes=1)
+        await db.flush()
+
+        reassigned = await opportunities.reassign(
+            db,
+            opportunity_id=opportunity.id,
+            actor_agent_id=context.intake_agent_id,
+            actor_operator_id=admin_id,
+            assigned_agent_id=context.opportunity_agent_id,
+            assigned_operator_id=admin_id,
+            expected_version=0,
+            reason="Opportunity ownership changed.",
+            correlation_id="reassignment-with-follow-ups",
+            idempotency_key="reassignment-with-follow-ups",
+        )
+        assert reassigned.created is True
+        assert reassigned.opportunity.assigned_agent_id == context.opportunity_agent_id
+        assert reassigned.opportunity.assigned_operator_id == admin_id
+
+        for status_name in ("scheduled", "dispatch_queued", "in_progress"):
+            task = tasks[status_name]
+            assert task.status == FollowUpStatus.REVIEW_REQUIRED
+            assert task.state_version == 1
+            assert task.assigned_agent_id == context.intake_agent_id
+            assert task.assigned_operator_id is None
+            assert task.lease_owner is None
+            assert task.lease_expires_at is None
+            assert task.review_required_at is not None
+            assert task.last_safe_code == "opportunity_reassigned"
+            event = (
+                await db.execute(
+                    select(FollowUpTaskEvent).where(
+                        FollowUpTaskEvent.task_id == task.id,
+                        FollowUpTaskEvent.state_version == 1,
+                    )
+                )
+            ).scalar_one()
+            assert event.event_type == "transitioned"
+            assert event.from_status == status_name
+            assert event.to_status == FollowUpStatus.REVIEW_REQUIRED
+            assert event.actor_type == "operator"
+            assert event.actor_admin_id == admin_id
+            assert event.actor_agent_id is None
+            assert event.routing_agent_id == context.intake_agent_id
+            assert event.automation_agent_id == context.intake_agent_id
+            assert event.control_version == 0
+            assert event.automation_version == 0
+            assert event.scheduled_policy_version == 0
+            assert event.safe_code == "opportunity_reassigned"
+
+        assert reviewed.status == FollowUpStatus.REVIEW_REQUIRED
+        assert reviewed.state_version == 1
+        assert reviewed.last_safe_code == "operator_requested_review"
+        assert tasks["completed"].status == FollowUpStatus.COMPLETED
+        assert tasks["completed"].state_version == 0
+        assert tasks["cancelled"].status == FollowUpStatus.CANCELLED
+        assert tasks["cancelled"].state_version == 0
+        await db.commit()
+        opportunity_id = opportunity.id
+        requeue_task_id = tasks["scheduled"].id
+
+    async with AsyncSessionLocal() as db:
+        replay = await opportunities.reassign(
+            db,
+            opportunity_id=opportunity_id,
+            actor_agent_id=context.intake_agent_id,
+            actor_operator_id=admin_id,
+            assigned_agent_id=context.opportunity_agent_id,
+            assigned_operator_id=admin_id,
+            expected_version=0,
+            reason="Opportunity ownership changed.",
+            correlation_id="reassignment-with-follow-ups-retry",
+            idempotency_key="reassignment-with-follow-ups",
+        )
+        assert replay.created is False
+        events_before_requeue = (
+            await db.execute(
+                select(func.count(FollowUpTaskEvent.id)).where(
+                    FollowUpTaskEvent.opportunity_id == opportunity_id
+                )
+            )
+        ).scalar_one()
+        assert events_before_requeue == 10
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(InvalidFollowUpCommandError, match="acting agent"):
+            await follow_ups.transition(
+                db,
+                task_id=requeue_task_id,
+                actor_agent_id=context.opportunity_agent_id,
+                actor_operator_id=admin_id,
+                target_status=FollowUpStatus.SCHEDULED,
+                expected_version=1,
+                correlation_id="requeue-before-acting-assignment",
+                idempotency_key="requeue-before-acting-assignment",
+                occurred_at=now + timedelta(minutes=2),
+            )
+        await db.rollback()
+
+    async with AsyncSessionLocal() as db:
+        task_before_assignment = await db.get(FollowUpTask, requeue_task_id)
+        conversation_before_assignment = await db.get(
+            ChatConversation,
+            context.conversation_id,
+        )
+        assert task_before_assignment is not None
+        assert task_before_assignment.status == FollowUpStatus.REVIEW_REQUIRED
+        assert task_before_assignment.state_version == 1
+        assert task_before_assignment.assigned_agent_id == context.intake_agent_id
+        assert conversation_before_assignment is not None
+        assert conversation_before_assignment.agent_id == context.intake_agent_id
+        assert (
+            conversation_before_assignment.automation_agent_id
+            == context.intake_agent_id
+        )
+        assert conversation_before_assignment.control_version == 0
+        await assignments.assign(
+            db,
+            conversation_id=context.conversation_id,
+            routing_agent_id=context.intake_agent_id,
+            target_agent_id=context.opportunity_agent_id,
+            expected_automation_version=0,
+            actor_agent_id=context.intake_agent_id,
+            actor_admin_id=None,
+            trigger="opportunity_reassignment_review",
+            opportunity_id=opportunity_id,
+            correlation_id="requeue-acting-assignment",
+            idempotency_key="requeue-acting-assignment",
+        )
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        requeued = await follow_ups.transition(
+            db,
+            task_id=requeue_task_id,
+            actor_agent_id=context.opportunity_agent_id,
+            actor_operator_id=admin_id,
+            target_status=FollowUpStatus.SCHEDULED,
+            expected_version=1,
+            correlation_id="requeue-after-acting-assignment",
+            idempotency_key="requeue-after-acting-assignment",
+            occurred_at=now + timedelta(minutes=3),
+        )
+        assert requeued.status == FollowUpStatus.SCHEDULED
+        assert requeued.state_version == 2
+        assert requeued.assigned_agent_id == context.opportunity_agent_id
+        assert requeued.assigned_operator_id == admin_id
+        assert requeued.scheduled_control_version == 0
+        assert requeued.scheduled_automation_version == 1
+        assert requeued.scheduled_policy_version == 0
+        assert requeued.review_required_at is None
+        assert requeued.last_safe_code is None
+        requeue_event = (
+            await db.execute(
+                select(FollowUpTaskEvent).where(
+                    FollowUpTaskEvent.task_id == requeue_task_id,
+                    FollowUpTaskEvent.state_version == 2,
+                )
+            )
+        ).scalar_one()
+        assert requeue_event.from_status == FollowUpStatus.REVIEW_REQUIRED
+        assert requeue_event.to_status == FollowUpStatus.SCHEDULED
+        assert requeue_event.actor_type == "operator"
+        assert requeue_event.actor_admin_id == admin_id
+        assert requeue_event.routing_agent_id == context.intake_agent_id
+        assert requeue_event.automation_agent_id == context.opportunity_agent_id
+        assert requeue_event.automation_version == 1
+        conversation = await db.get(ChatConversation, context.conversation_id)
+        assert conversation is not None
+        assert conversation.agent_id == context.intake_agent_id
+        assert conversation.control_version == 0
+        await db.commit()
+
+
+@pytest.mark.asyncio
 async def test_follow_up_needs_consent_and_quote_needs_authoritative_evidence(
     commercial_dossier: CommercialDossierContext,
 ) -> None:

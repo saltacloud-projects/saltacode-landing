@@ -497,6 +497,19 @@ class FollowUpService:
                     "legacy follow-up requires an explicit replacement task"
                 )
             await acquire_consent_scope_lock(db, scope=scope)
+        opportunity_id = (
+            await db.execute(
+                select(FollowUpTask.opportunity_id).where(FollowUpTask.id == task_id)
+            )
+        ).scalar_one_or_none()
+        if opportunity_id is None:
+            raise FollowUpNotFoundError("follow-up task not found")
+        opportunity = await self._opportunities.lock_owned(
+            db,
+            opportunity_id=opportunity_id,
+            actor_agent_id=actor_agent_id,
+            actor_operator_id=actor_operator_id,
+        )
         task = (
             await db.execute(
                 select(FollowUpTask).where(FollowUpTask.id == task_id).with_for_update()
@@ -504,12 +517,6 @@ class FollowUpService:
         ).scalar_one_or_none()
         if task is None:
             raise FollowUpNotFoundError("follow-up task not found")
-        opportunity = await self._opportunities.lock_owned(
-            db,
-            opportunity_id=task.opportunity_id,
-            actor_agent_id=actor_agent_id,
-            actor_operator_id=actor_operator_id,
-        )
         existing = (
             await db.execute(
                 select(FollowUpTaskEvent).where(
@@ -596,6 +603,8 @@ class FollowUpService:
                 db,
                 agent_id=opportunity.assigned_agent_id,
             )
+            task.assigned_agent_id = opportunity.assigned_agent_id
+            task.assigned_operator_id = opportunity.assigned_operator_id
             task.scheduled_policy_version = automation_policy.version
             task.executed_policy_version = None
             task.available_at = max(task.due_at, event_time)
