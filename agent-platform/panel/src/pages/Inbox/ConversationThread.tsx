@@ -1,5 +1,12 @@
 import { LoaderCircle } from "lucide-react";
-import type { ControlTransition, InboxOperator, InboxThread } from "../../inbox/types";
+import type { AgentProfile } from "../../agents/types";
+import type {
+  AutomationAssignmentEvent,
+  ControlTransition,
+  InboxOperator,
+  InboxThread,
+} from "../../inbox/types";
+import { AutomationAssignmentPanel } from "./AutomationAssignmentPanel";
 import { MessageComposer } from "./MessageComposer";
 import { formatDate } from "./presentation";
 import { ThreadHeader } from "./ThreadHeader";
@@ -9,16 +16,28 @@ interface ConversationThreadProps {
   operators: InboxOperator[];
   currentAdminId: string;
   canManage: boolean;
+  canAssignAutomation: boolean;
+  automationAgents: AgentProfile[];
   ownsConversation: boolean;
   loading: boolean;
   busy: boolean;
   draft: string;
   reassignTo: string;
+  automationAgentTo: string;
+  automationAssignmentNotice: string;
+  assignmentHistoryVisible: boolean;
+  assignmentHistoryLoading: boolean;
+  assignmentHistoryItems: AutomationAssignmentEvent[];
+  assignmentHistoryTotal: number;
   onDraftChange: (value: string) => void;
   onReassignChange: (value: string) => void;
+  onAutomationAgentChange: (value: string) => void;
   onBack: () => void;
   onSend: () => void;
   onTransition: (transition: Omit<ControlTransition, "expected_version">) => void;
+  onAssignAutomation: () => void;
+  onToggleAssignmentHistory: () => void;
+  onLoadMoreAssignmentHistory: () => void;
 }
 
 export function ConversationThread({
@@ -26,16 +45,28 @@ export function ConversationThread({
   operators,
   currentAdminId,
   canManage,
+  canAssignAutomation,
+  automationAgents,
   ownsConversation,
   loading,
   busy,
   draft,
   reassignTo,
+  automationAgentTo,
+  automationAssignmentNotice,
+  assignmentHistoryVisible,
+  assignmentHistoryLoading,
+  assignmentHistoryItems,
+  assignmentHistoryTotal,
   onDraftChange,
   onReassignChange,
+  onAutomationAgentChange,
   onBack,
   onSend,
   onTransition,
+  onAssignAutomation,
+  onToggleAssignmentHistory,
+  onLoadMoreAssignmentHistory,
 }: ConversationThreadProps) {
   return (
     <section
@@ -59,6 +90,31 @@ export function ConversationThread({
             onBack={onBack}
             onTransition={onTransition}
           />
+          <AutomationAssignmentPanel
+            automationAgent={thread.conversation.automation_agent}
+            automationVersion={thread.conversation.automation_version}
+            controlMode={thread.conversation.control_mode}
+            agents={automationAgents}
+            selectedAgentId={automationAgentTo}
+            canAssign={canAssignAutomation}
+            busy={busy}
+            historyVisible={assignmentHistoryVisible}
+            historyLoading={assignmentHistoryLoading}
+            historyItems={assignmentHistoryItems}
+            historyTotal={assignmentHistoryTotal}
+            onAgentChange={onAutomationAgentChange}
+            onAssign={onAssignAutomation}
+            onToggleHistory={onToggleAssignmentHistory}
+            onLoadMoreHistory={onLoadMoreAssignmentHistory}
+          />
+          {automationAssignmentNotice && (
+            <p
+              role="status"
+              className="border-b border-[var(--border-color)] bg-emerald-500/10 px-4 py-2 text-xs text-emerald-300"
+            >
+              {automationAssignmentNotice}
+            </p>
+          )}
           <div
             className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4"
             role="log"

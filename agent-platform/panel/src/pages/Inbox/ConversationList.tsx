@@ -56,6 +56,23 @@ export function ConversationList({
                   </span>
                 )}
               </div>
+              <dl className="mt-2 grid gap-1 text-xs">
+                <div className="flex min-w-0 gap-1.5">
+                  <dt className="shrink-0 text-[var(--text-muted)]">Canal / routing:</dt>
+                  <dd className="truncate text-[var(--text-secondary)]">
+                    <span className="uppercase">{item.channel}</span> · {item.routing_agent.name}
+                  </dd>
+                </div>
+                <div className="flex min-w-0 gap-1.5">
+                  <dt className="shrink-0 text-[var(--text-muted)]">Responde:</dt>
+                  <dd className="truncate text-[var(--text-secondary)]">
+                    {item.automation_agent.name}
+                    <span className="ml-1 text-[10px] text-[var(--text-muted)]">
+                      v{item.automation_version}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
               <p className="mt-2 text-xs text-[var(--text-muted)]">
                 {item.message_count} mensajes · {formatDate(item.last_activity_at)}
               </p>

@@ -53,9 +53,6 @@ export function ThreadHeader({
           <h3 className="truncate font-semibold">
             {conversation.display_name || `Visitante ${conversation.principal_id.slice(0, 8)}`}
           </h3>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">
-            <span className="uppercase">{conversation.channel}</span> · {conversation.route_key}
-          </p>
         </div>
         <span
           className={`shrink-0 rounded border px-2 py-1 text-xs ${controlTone(conversation.control_mode)}`}
@@ -63,6 +60,29 @@ export function ThreadHeader({
           {CONTROL_LABELS[conversation.control_mode]}
         </span>
       </div>
+
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="min-w-0 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]/50 p-2.5">
+          <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+            Canal / agente de routing
+          </dt>
+          <dd className="mt-1 truncate text-sm font-medium">{conversation.routing_agent.name}</dd>
+          <dd className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
+            <span className="uppercase">{conversation.channel}</span> · {conversation.route_key}
+          </dd>
+        </div>
+        <div className="min-w-0 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]/50 p-2.5">
+          <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+            Responde automáticamente
+          </dt>
+          <dd className="mt-1 truncate text-sm font-medium">
+            {conversation.automation_agent.name}
+          </dd>
+          <dd className="mt-0.5 text-xs text-[var(--text-muted)]">
+            Versión {conversation.automation_version}
+          </dd>
+        </div>
+      </dl>
 
       {conversation.assigned_operator && (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">

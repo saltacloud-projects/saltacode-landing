@@ -14,7 +14,12 @@ const admin = {
   role: "admin",
   is_active: true,
   must_change_password: false,
-  permissions: ["profiles.read", "conversations.read", "conversations.manage"],
+  permissions: [
+    "profiles.read",
+    "conversations.read",
+    "conversations.manage",
+    "runtime.manage",
+  ],
 };
 
 const profile = (id: string, name: string, slug: string) => ({
@@ -39,6 +44,9 @@ interface InboxState {
   mode: "automated" | "paused" | "human" | "closed";
   version: number;
   ownerId: string | null;
+  automationAgentId: string;
+  automationVersion: number;
+  assignmentHistory: Array<Record<string, unknown>>;
   messages: Array<Record<string, unknown>>;
 }
 
@@ -47,6 +55,10 @@ function operator(id: string, name: string) {
 }
 
 function conversation(state: InboxState) {
+  const automationAgent =
+    state.automationAgentId === AGENT_B
+      ? { id: AGENT_B, name: "Agent Beta" }
+      : { id: AGENT_A, name: "Agent Alpha" };
   return {
     id: CONVERSATION_ID,
     principal_id: PRINCIPAL_ID,
@@ -56,6 +68,9 @@ function conversation(state: InboxState) {
     status: "active",
     control_mode: state.mode,
     control_version: state.version,
+    routing_agent: { id: AGENT_A, name: "Agent Alpha" },
+    automation_agent: automationAgent,
+    automation_version: state.automationVersion,
     assigned_operator:
       state.ownerId === ADMIN_ID
         ? operator(ADMIN_ID, "Operator")
@@ -87,6 +102,10 @@ function registerInboxMocks(
   state: InboxState,
   onTransition?: (route: Route, body: Record<string, unknown>) => Promise<void>,
   onMessage?: (route: Route, body: Record<string, unknown>) => Promise<void>,
+  onAutomationAssignment?: (
+    route: Route,
+    body: Record<string, unknown>,
+  ) => Promise<void>,
 ) {
   return page.route("**/api/admin/**", async (route) => {
     const request = route.request();
@@ -116,6 +135,54 @@ function registerInboxMocks(
         conversation: conversation(state),
         messages: state.messages,
         control_events: [],
+      });
+    }
+    if (
+      path.endsWith(`/inbox/${CONVERSATION_ID}/automation-assignments`) &&
+      request.method() === "GET"
+    ) {
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      const limit = Number(url.searchParams.get("limit") ?? 10);
+      return json(route, {
+        items: state.assignmentHistory.slice(offset, offset + limit),
+        total: state.assignmentHistory.length,
+        limit,
+        offset,
+      });
+    }
+    if (
+      path.endsWith(`/inbox/${CONVERSATION_ID}/automation-assignments`) &&
+      request.method() === "POST"
+    ) {
+      const body = request.postDataJSON();
+      if (onAutomationAssignment) return onAutomationAssignment(route, body);
+      const previousAgent =
+        state.automationAgentId === AGENT_B
+          ? { id: AGENT_B, name: "Agent Beta" }
+          : { id: AGENT_A, name: "Agent Alpha" };
+      state.automationAgentId = String(body.target_agent_id);
+      state.automationVersion += 1;
+      const nextAgent =
+        state.automationAgentId === AGENT_B
+          ? { id: AGENT_B, name: "Agent Beta" }
+          : { id: AGENT_A, name: "Agent Alpha" };
+      state.assignmentHistory.unshift({
+        event_id: "assignment-event",
+        from_automation_agent: previousAgent,
+        to_automation_agent: nextAgent,
+        automation_version: state.automationVersion,
+        applied: true,
+        trigger: body.trigger,
+        actor_admin_id: ADMIN_ID,
+        reason: body.reason,
+        created_at: "2026-09-06T10:03:00Z",
+      });
+      return json(route, {
+        event_id: "assignment-event",
+        applied: true,
+        duplicate: false,
+        automation_agent_id: state.automationAgentId,
+        automation_version: state.automationVersion,
       });
     }
     if (path.endsWith(`/inbox/${CONVERSATION_ID}/control-transitions`)) {
@@ -167,6 +234,9 @@ test("operator takes control and responds with the current ownership version", a
     mode: "automated",
     version: 0,
     ownerId: null,
+    automationAgentId: AGENT_A,
+    automationVersion: 0,
+    assignmentHistory: [],
     messages: [
       {
         id: "message-user",
@@ -243,6 +313,9 @@ test("a stale control command refreshes the thread and disables the composer", a
     mode: "human",
     version: 3,
     ownerId: ADMIN_ID,
+    automationAgentId: AGENT_A,
+    automationVersion: 0,
+    assignmentHistory: [],
     messages: [],
   };
   let attempts = 0;
@@ -267,6 +340,214 @@ test("a stale control command refreshes the thread and disables the composer", a
   await expect(page.getByLabel("Respuesta del operador")).toHaveCount(0);
 });
 
+test("operator prepares a different acting agent without resuming a paused conversation", async ({
+  page,
+}) => {
+  await prepare(page);
+  const state: InboxState = {
+    mode: "paused",
+    version: 4,
+    ownerId: ADMIN_ID,
+    automationAgentId: AGENT_A,
+    automationVersion: 0,
+    assignmentHistory: [],
+    messages: [],
+  };
+  const assignments: Array<{
+    body: Record<string, unknown>;
+    idempotencyKey?: string;
+    correlationId?: string;
+  }> = [];
+  await registerInboxMocks(page, state, undefined, undefined, async (route, body) => {
+    assignments.push({
+      body,
+      idempotencyKey: route.request().headers()["idempotency-key"],
+      correlationId: route.request().headers()["x-correlation-id"],
+    });
+    const previousAgent = { id: AGENT_A, name: "Agent Alpha" };
+    state.automationAgentId = AGENT_B;
+    state.automationVersion = 1;
+    state.assignmentHistory = [
+      {
+        event_id: "assignment-event",
+        from_automation_agent: previousAgent,
+        to_automation_agent: { id: AGENT_B, name: "Agent Beta" },
+        automation_version: 1,
+        applied: true,
+        trigger: body.trigger,
+        actor_admin_id: ADMIN_ID,
+        reason: body.reason,
+        created_at: "2026-09-06T10:03:00Z",
+      },
+    ];
+    await json(route, {
+      event_id: "assignment-event",
+      applied: true,
+      duplicate: false,
+      automation_agent_id: AGENT_B,
+      automation_version: 1,
+    });
+  });
+
+  await page.goto(`/agents/${AGENT_A}/inbox`);
+  await page.getByRole("button", { name: /Lead web/ }).click();
+
+  await expect(page.getByText("Canal / agente de routing")).toBeVisible();
+  await expect(page.getByText("Responde automáticamente", { exact: true })).toBeVisible();
+  await page.getByLabel("Agente que responde automáticamente").selectOption(AGENT_B);
+  await page.getByRole("button", { name: "Asignar respuesta automática" }).click();
+
+  await expect.poll(() => assignments).toHaveLength(1);
+  expect(assignments[0].body).toEqual({
+    target_agent_id: AGENT_B,
+    expected_automation_version: 0,
+    trigger: "operator_reassignment",
+    reason: "Assigned from operator inbox",
+  });
+  expect(assignments[0].idempotencyKey).toMatch(/^automation-assignment-/);
+  expect(assignments[0].correlationId).toMatch(/^inbox-correlation-/);
+  expect(assignments[0].idempotencyKey).not.toBe(assignments[0].correlationId);
+  await expect(page.getByRole("status")).toContainText("la automatización sigue detenida");
+  await expect(
+    page.getByLabel("Detalle de conversación").getByText("Pausado", { exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Ver historial" }).click();
+  await expect(page.getByText("Agent Alpha → Agent Beta")).toBeVisible();
+  await expect(page.locator("#automation-assignment-history").getByText(/Versión 1/)).toBeVisible();
+});
+
+test("acting-agent history loads on demand and paginates without exposing event ids", async ({
+  page,
+}) => {
+  await prepare(page);
+  const state: InboxState = {
+    mode: "automated",
+    version: 0,
+    ownerId: null,
+    automationAgentId: AGENT_A,
+    automationVersion: 11,
+    assignmentHistory: Array.from({ length: 11 }, (_, index) => ({
+      event_id: `private-event-${index + 1}`,
+      from_automation_agent: { id: AGENT_A, name: "Agent Alpha" },
+      to_automation_agent: { id: AGENT_B, name: "Agent Beta" },
+      automation_version: 11 - index,
+      applied: true,
+      trigger: "operator_reassignment",
+      actor_admin_id: ADMIN_ID,
+      reason: `Cambio auditado ${index + 1}`,
+      created_at: `2026-09-06T10:${String(index).padStart(2, "0")}:00Z`,
+    })),
+    messages: [],
+  };
+  const historyOffsets: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname.endsWith(`/inbox/${CONVERSATION_ID}/automation-assignments`)
+    ) {
+      historyOffsets.push(url.searchParams.get("offset") ?? "");
+    }
+  });
+  await registerInboxMocks(page, state);
+
+  await page.goto(`/agents/${AGENT_A}/inbox`);
+  await page.getByRole("button", { name: /Lead web/ }).click();
+  expect(historyOffsets).toEqual([]);
+
+  await page.getByRole("button", { name: "Ver historial" }).click();
+  await expect.poll(() => historyOffsets).toEqual(["0"]);
+  await expect(page.getByText("Cambio auditado 10")).toBeVisible();
+  await expect(page.getByText("Cambio auditado 11")).toHaveCount(0);
+  await expect(page.getByText(/private-event-/)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Cargar más" }).click();
+  await expect.poll(() => historyOffsets).toEqual(["0", "10"]);
+  await expect(page.getByText("Cambio auditado 11")).toBeVisible();
+});
+
+test("a stale acting-agent assignment refreshes its independent version", async ({ page }) => {
+  await prepare(page);
+  const state: InboxState = {
+    mode: "human",
+    version: 7,
+    ownerId: ADMIN_ID,
+    automationAgentId: AGENT_A,
+    automationVersion: 2,
+    assignmentHistory: [],
+    messages: [],
+  };
+  let attempts = 0;
+  await registerInboxMocks(page, state, undefined, undefined, async (route) => {
+    attempts += 1;
+    state.automationAgentId = AGENT_B;
+    state.automationVersion = 3;
+    await json(route, { detail: "automation version changed" }, 409);
+  });
+
+  await page.goto(`/agents/${AGENT_A}/inbox`);
+  await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByLabel("Agente que responde automáticamente").selectOption(AGENT_B);
+  await page.getByRole("button", { name: "Asignar respuesta automática" }).click();
+
+  await expect.poll(() => attempts).toBe(1);
+  await expect(page.getByRole("alert")).toContainText("Actualizamos el agente automático");
+  await expect(
+    page.getByRole("definition").filter({ hasText: /^Agent Beta$/ }),
+  ).toBeVisible();
+  await expect(page.getByText("Versión 3", { exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel("Detalle de conversación").getByText("Atención manual", { exact: true }),
+  ).toBeVisible();
+});
+
+test("an unavailable acting-agent target is reported without enumerating it", async ({ page }) => {
+  await prepare(page);
+  const state: InboxState = {
+    mode: "automated",
+    version: 0,
+    ownerId: null,
+    automationAgentId: AGENT_A,
+    automationVersion: 0,
+    assignmentHistory: [],
+    messages: [],
+  };
+  await registerInboxMocks(page, state, undefined, undefined, async (route) => {
+    await json(route, { detail: "Conversation or agent not found" }, 404);
+  });
+
+  await page.goto(`/agents/${AGENT_A}/inbox`);
+  await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByLabel("Agente que responde automáticamente").selectOption(AGENT_B);
+  await page.getByRole("button", { name: "Asignar respuesta automática" }).click();
+
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("permisos disponibles");
+  await expect(alert).not.toContainText("Agent Beta");
+});
+
+test("closed conversations expose acting-agent history but disable reassignment", async ({ page }) => {
+  await prepare(page);
+  const state: InboxState = {
+    mode: "closed",
+    version: 9,
+    ownerId: null,
+    automationAgentId: AGENT_A,
+    automationVersion: 2,
+    assignmentHistory: [],
+    messages: [],
+  };
+  await registerInboxMocks(page, state);
+
+  await page.goto(`/agents/${AGENT_A}/inbox`);
+  await page.getByRole("button", { name: /Lead web/ }).click();
+
+  await expect(page.getByLabel("Agente que responde automáticamente")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Asignar respuesta automática" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Ver historial" })).toBeEnabled();
+});
+
 test("mobile inbox opens one thread without horizontal overflow", async ({ page }) => {
   await prepare(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -274,6 +555,9 @@ test("mobile inbox opens one thread without horizontal overflow", async ({ page 
     mode: "automated",
     version: 0,
     ownerId: null,
+    automationAgentId: AGENT_A,
+    automationVersion: 0,
+    assignmentHistory: [],
     messages: [],
   };
   await registerInboxMocks(page, state);

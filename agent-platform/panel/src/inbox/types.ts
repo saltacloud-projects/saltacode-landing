@@ -6,6 +6,11 @@ export interface InboxOperator {
   email: string;
 }
 
+export interface InboxAgent {
+  id: string;
+  name: string;
+}
+
 export interface InboxConversation {
   id: string;
   principal_id: string;
@@ -15,6 +20,9 @@ export interface InboxConversation {
   status: string;
   control_mode: ConversationControlMode;
   control_version: number;
+  routing_agent: InboxAgent;
+  automation_agent: InboxAgent;
+  automation_version: number;
   assigned_operator: InboxOperator | null;
   control_changed_at: string;
   control_reason: string | null;
@@ -71,4 +79,38 @@ export interface ControlTransition {
   expected_version: number;
   assigned_admin_id?: string;
   reason?: string;
+}
+
+export type AutomationAssignmentTrigger = "operator_assignment" | "operator_reassignment";
+
+export interface AutomationAssignmentRequest {
+  target_agent_id: string;
+  expected_automation_version: number;
+  trigger: AutomationAssignmentTrigger;
+  reason?: string;
+}
+
+export interface AutomationAssignmentReceipt {
+  applied: boolean;
+  duplicate: boolean;
+  automation_agent_id: string;
+  automation_version: number;
+}
+
+export interface AutomationAssignmentEvent {
+  event_id: string;
+  from_automation_agent: InboxAgent;
+  to_automation_agent: InboxAgent;
+  automation_version: number;
+  applied: boolean;
+  trigger: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface AutomationAssignmentHistoryPage {
+  items: AutomationAssignmentEvent[];
+  total: number;
+  limit: number;
+  offset: number;
 }

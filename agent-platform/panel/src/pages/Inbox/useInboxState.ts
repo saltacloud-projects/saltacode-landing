@@ -2,19 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
 import type { AdminUser } from "../../auth/AuthContext";
 import {
+  assignInboxAutomationAgent,
   getInboxThread,
+  listInboxAutomationAssignments,
   listInboxConversations,
   listInboxOperators,
   sendInboxOperatorMessage,
   transitionInboxConversation,
 } from "../../inbox/api";
 import type {
+  AutomationAssignmentEvent,
   ControlTransition,
   InboxConversation,
   InboxFilters,
   InboxOperator,
   InboxThread,
 } from "../../inbox/types";
+
+const ASSIGNMENT_HISTORY_PAGE_SIZE = 10;
 
 const EMPTY_FILTERS: InboxFilters = {
   channel: "",
@@ -31,9 +36,13 @@ interface UseInboxStateOptions {
 }
 
 function idempotencyKey(): string {
-  if (typeof crypto.randomUUID === "function") return `operator-${crypto.randomUUID()}`;
+  return requestIdentity("operator");
+}
+
+function requestIdentity(prefix: string): string {
+  if (typeof crypto.randomUUID === "function") return `${prefix}-${crypto.randomUUID()}`;
   const bytes = crypto.getRandomValues(new Uint32Array(4));
-  return `operator-${Array.from(bytes, (value) => value.toString(16)).join("-")}`;
+  return `${prefix}-${Array.from(bytes, (value) => value.toString(16)).join("-")}`;
 }
 
 function errorMessage(value: unknown, fallback: string): string {
@@ -51,8 +60,17 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [reassignTo, setReassignTo] = useState("");
+  const [automationAgentTo, setAutomationAgentTo] = useState("");
+  const [automationAssignmentNotice, setAutomationAssignmentNotice] = useState("");
+  const [assignmentHistoryVisible, setAssignmentHistoryVisible] = useState(false);
+  const [assignmentHistoryLoading, setAssignmentHistoryLoading] = useState(false);
+  const [assignmentHistoryItems, setAssignmentHistoryItems] = useState<AutomationAssignmentEvent[]>(
+    [],
+  );
+  const [assignmentHistoryTotal, setAssignmentHistoryTotal] = useState(0);
   const activeAgentId = useRef<string | null>(agentId ?? null);
   const selectedConversationId = useRef<string | null>(null);
+  const automationSelectionDirty = useRef(false);
   activeAgentId.current = agentId ?? null;
   selectedConversationId.current = thread?.conversation.id ?? null;
 
@@ -84,6 +102,9 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
       ) {
         setThread(nextThread);
         setReassignTo(nextThread.conversation.assigned_operator?.id ?? "");
+        if (!automationSelectionDirty.current) {
+          setAutomationAgentTo(nextThread.conversation.automation_agent.id);
+        }
       }
     } catch (value) {
       if (activeAgentId.current === requestedAgentId) {
@@ -100,6 +121,12 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     setOperators([]);
     setError("");
     setDraft("");
+    setAutomationAgentTo("");
+    setAutomationAssignmentNotice("");
+    setAssignmentHistoryVisible(false);
+    setAssignmentHistoryItems([]);
+    setAssignmentHistoryTotal(0);
+    automationSelectionDirty.current = false;
     if (!agentId) {
       setLoadingList(false);
       return;
@@ -132,6 +159,12 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     if (!agentId) return;
     setError("");
     setThread({ conversation, messages: [], control_events: [] });
+    setAutomationAgentTo(conversation.automation_agent.id);
+    setAutomationAssignmentNotice("");
+    setAssignmentHistoryVisible(false);
+    setAssignmentHistoryItems([]);
+    setAssignmentHistoryTotal(0);
+    automationSelectionDirty.current = false;
     selectedConversationId.current = conversation.id;
     void loadThread(agentId, conversation.id);
   };
@@ -193,6 +226,106 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     }
   };
 
+  const loadAssignmentHistory = useCallback(
+    async (offset: number, append: boolean) => {
+      const conversationId = selectedConversationId.current;
+      if (!agentId || !conversationId || assignmentHistoryLoading) return;
+      setAssignmentHistoryLoading(true);
+      try {
+        const page = await listInboxAutomationAssignments(
+          agentId,
+          conversationId,
+          ASSIGNMENT_HISTORY_PAGE_SIZE,
+          offset,
+        );
+        if (
+          activeAgentId.current === agentId &&
+          selectedConversationId.current === conversationId
+        ) {
+          setAssignmentHistoryItems((current) =>
+            append ? [...current, ...page.items] : page.items,
+          );
+          setAssignmentHistoryTotal(page.total);
+        }
+      } catch (value) {
+        if (activeAgentId.current === agentId) {
+          setError(errorMessage(value, "No se pudo cargar el historial de agentes."));
+        }
+      } finally {
+        if (activeAgentId.current === agentId) setAssignmentHistoryLoading(false);
+      }
+    },
+    [agentId, assignmentHistoryLoading],
+  );
+
+  const toggleAssignmentHistory = async () => {
+    if (assignmentHistoryVisible) {
+      setAssignmentHistoryVisible(false);
+      return;
+    }
+    setAssignmentHistoryVisible(true);
+    if (assignmentHistoryItems.length === 0) await loadAssignmentHistory(0, false);
+  };
+
+  const selectAutomationAgent = (value: string) => {
+    automationSelectionDirty.current = true;
+    setAutomationAgentTo(value);
+    setAutomationAssignmentNotice("");
+  };
+
+  const assignAutomationAgent = async () => {
+    const conversation = thread?.conversation;
+    if (
+      !agentId ||
+      !conversation ||
+      !automationAgentTo ||
+      automationAgentTo === conversation.automation_agent.id ||
+      busy
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setAutomationAssignmentNotice("");
+    try {
+      await assignInboxAutomationAgent(
+        agentId,
+        conversation.id,
+        {
+          target_agent_id: automationAgentTo,
+          expected_automation_version: conversation.automation_version,
+          trigger: "operator_reassignment",
+          reason: "Assigned from operator inbox",
+        },
+        requestIdentity("automation-assignment"),
+        requestIdentity("inbox-correlation"),
+      );
+      automationSelectionDirty.current = false;
+      await refreshSelected();
+      setAutomationAssignmentNotice(
+        conversation.control_mode === "automated"
+          ? "Agente de respuesta automática actualizado."
+          : "Agente preparado. El control actual no cambió y la automatización sigue detenida.",
+      );
+      if (assignmentHistoryVisible) await loadAssignmentHistory(0, false);
+    } catch (value) {
+      automationSelectionDirty.current = false;
+      if (value instanceof ApiError && value.status === 409) {
+        await refreshSelected();
+        setError(
+          "La asignación cambió. Actualizamos el agente automático antes de volver a intentar.",
+        );
+      } else if (value instanceof ApiError && value.status === 404) {
+        await refreshSelected();
+        setError("No se pudo completar la asignación con los permisos disponibles.");
+      } else {
+        setError(errorMessage(value, "No se pudo actualizar el agente automático."));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const ownsConversation = useMemo(
     () =>
       Boolean(
@@ -215,14 +348,24 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     error,
     draft,
     reassignTo,
+    automationAgentTo,
+    automationAssignmentNotice,
+    assignmentHistoryVisible,
+    assignmentHistoryLoading,
+    assignmentHistoryItems,
+    assignmentHistoryTotal,
     ownsConversation,
     setFilters,
     setDraft,
     setReassignTo,
+    selectAutomationAgent,
     openConversation,
     closeThread: () => setThread(null),
     refreshList: () => (agentId ? loadList(agentId, filters) : Promise.resolve()),
     runTransition,
     sendMessage,
+    assignAutomationAgent,
+    toggleAssignmentHistory,
+    loadMoreAssignmentHistory: () => loadAssignmentHistory(assignmentHistoryItems.length, true),
   };
 }

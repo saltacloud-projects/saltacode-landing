@@ -1,5 +1,8 @@
 import { api } from "../api/client";
 import type {
+  AutomationAssignmentHistoryPage,
+  AutomationAssignmentReceipt,
+  AutomationAssignmentRequest,
   ControlTransition,
   InboxConversationPage,
   InboxFilters,
@@ -67,4 +70,36 @@ export async function sendInboxOperatorMessage(
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ content, expected_version: expectedVersion }),
   });
+}
+
+export async function assignInboxAutomationAgent(
+  agentId: string,
+  conversationId: string,
+  assignment: AutomationAssignmentRequest,
+  idempotencyKey: string,
+  correlationId: string,
+): Promise<AutomationAssignmentReceipt> {
+  return api<AutomationAssignmentReceipt>(
+    `${inboxRoot(agentId)}/${encodeURIComponent(conversationId)}/automation-assignments`,
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+        "X-Correlation-ID": correlationId,
+      },
+      body: JSON.stringify(assignment),
+    },
+  );
+}
+
+export async function listInboxAutomationAssignments(
+  agentId: string,
+  conversationId: string,
+  limit: number,
+  offset: number,
+): Promise<AutomationAssignmentHistoryPage> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return api<AutomationAssignmentHistoryPage>(
+    `${inboxRoot(agentId)}/${encodeURIComponent(conversationId)}/automation-assignments?${query}`,
+  );
 }
