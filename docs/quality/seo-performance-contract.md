@@ -39,17 +39,19 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 8 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, service shortcuts, and consent-scoped chat continuity. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, and privacy assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `apps/landing/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 9 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, service shortcuts, consent-scoped chat continuity, and the on-demand commercial-contact flow. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, privacy, and commercial-contact assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `apps/landing/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
-| Resource or scenario | Version 8 limit | Gate |
+| Resource or scenario | Version 9 limit | Gate |
 |---|---:|---|
 | Generated home HTML | <= 29.25 KiB raw | Deterministic build assertion |
 | Homepage core CSS | <= 20 KiB raw | Deterministic build assertion |
 | Additional interior-route CSS | <= 5 KiB raw | Deterministic build assertion |
-| Initial executable JavaScript | <= 5.5 KiB raw | Deterministic build assertion |
+| Initial executable JavaScript | <= 5.75 KiB raw | Deterministic build assertion |
 | Non-chat executable JavaScript | <= 7 KiB raw | Deterministic build assertion |
 | Lazy chat chunk | <= 23 KiB raw | Deterministic build assertion |
 | Deferred chat CSS | <= 10 KiB raw | Deterministic build assertion |
+| On-demand commercial-contact JavaScript | <= 10 KiB raw | Deterministic build assertion |
+| On-demand commercial-contact CSS | <= 2.25 KiB raw | Deterministic build assertion |
 | Deferred privacy JavaScript | <= 3 KiB raw | Deterministic build assertion |
 | Deferred privacy CSS | <= 4 KiB raw | Deterministic build assertion |
 | Emitted webfonts | 0 bytes | Deterministic build assertion |
@@ -84,6 +86,8 @@ The service-shortcut checkpoint attributes an additional 123 bytes of home HTML,
 The 2026-09-01 chat-continuity checkpoint keeps first-visit chat code lazy and attributes a 6,565-byte raw increase to the prior 16,244-byte chat chunk. The resulting 22,809-byte chunk adds a versioned 30-day local transcript with 80-message/64-KiB bounds, corruption and quota tolerance, interrupted-stream recovery without automatic replay, a persistent accessible reopen control, the disclosed WhatsApp channel boundary, and mobile dialog/composer corrections. The reviewed lazy-chat limit moves from 16 to 23 KiB for that isolated functionality. Initial executable JavaScript remains within its existing 5.5-KiB cap at 5,589 bytes because returning-session detection only schedules the dynamic chat import when the transcript key exists. No initial-page transfer or field-performance improvement is inferred from these raw build figures.
 
 The durable chat-v2 checkpoint replaces the browser-authoritative transcript with server history, explicit legacy-session upgrade, persistent client message identifiers, and resumable SSE with cursor recovery. Its emitted assets are 20,828 bytes of deferred JavaScript and 9,582 bytes of deferred chat CSS; both remain outside the first-visit rendering path. The initial JavaScript remains 5,589 bytes. The CSS now has its own 10-KiB deferred-chat allowance so growth cannot be hidden inside the homepage or privacy budgets. These are deterministic build measurements, not public transfer, field Core Web Vitals, indexing, or ranking evidence.
+
+The commercial-contact checkpoint converts a server-authored chat event into an accessible email or WhatsApp contact form with explicit quote-delivery consent, optional follow-up consent, idempotent retries, safe close cleanup, and replay recovery without storing contact data in browser persistence. Its separately deferred assets measure 8,172 bytes of JavaScript and 2,057 bytes of CSS; neither enters the initial rendering path. The nested import adds 214 bytes of loader metadata, bringing initial executable JavaScript to 5,803 bytes, so the reviewed initial cap moves from 5.5 to 5.75 KiB. The commercial JavaScript ceiling is 10 KiB rather than the measured 8 KiB boundary to preserve a useful regression margin without moving any code into the critical path. No SEO ranking or field-performance improvement is inferred from these local raw build measurements.
 
 The last complete Chrome 150 mobile lab before that markup-only cleanup used 390x844, 150 ms latency, 1.6 Mbps download, 750 Kbps upload, 4x CPU throttling, disabled cache, and three cold runs per explicit theme. Light mode transferred 67,656 bytes in every run with 480/484/564 ms LCP, 21/28/48 ms TBT, and 0 CLS; dark mode transferred 66,642 bytes in every run with 476/488/564 ms LCP, 20/24/47 ms TBT, and 0 CLS. Functional checks at 320px, 390px, and 1440px found no horizontal document overflow, wrong theme variant, duplicate accessible client group, or runtime exception. The cleanup was verified against the rebuilt served HTML and static budgets, but the full throttled lab was not rerun. These remain local lab results, not public field evidence.
 
