@@ -8,6 +8,7 @@ import AgentChannelsPage from "./pages/AgentChannels";
 import ProfilesPage, { AgentIdentityPage } from "./pages/AgentProfile";
 import AgentRuntimePage from "./pages/AgentRuntime";
 import AuditPage from "./pages/Audit";
+import CommercialAutomationPolicyPage from "./pages/CommercialAutomationPolicy";
 import { ChannelConnectionsPage, ProviderConnectionsPage } from "./pages/Connections";
 import DashboardPage from "./pages/Dashboard";
 import DeliveriesPage from "./pages/Deliveries";
@@ -329,6 +330,14 @@ export default function App() {
                 element={
                   <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_MANAGE}>
                     <HandoffsPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="automation-policy"
+                element={
+                  <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_READ}>
+                    <CommercialAutomationPolicyPage />
                   </PermissionRoute>
                 }
               />

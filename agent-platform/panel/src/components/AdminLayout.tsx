@@ -3,6 +3,7 @@ import {
   Bot,
   Brain,
   Cable,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -168,6 +169,12 @@ const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
     id: "workspace-automate",
     label: "Automatizar",
     items: [
+      {
+        segment: "automation-policy",
+        label: "Política comercial",
+        icon: CalendarClock,
+        permission: PERMISSIONS.OPPORTUNITIES_READ,
+      },
       {
         segment: "handoffs",
         label: "Handoffs",

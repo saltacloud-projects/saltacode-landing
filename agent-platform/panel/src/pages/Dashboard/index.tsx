@@ -2,6 +2,7 @@ import {
   ArrowRightLeft,
   Brain,
   Cable,
+  CalendarClock,
   CheckCircle2,
   CircleOff,
   ClipboardList,
@@ -85,6 +86,13 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
     title: "Automatizar",
     description: "Definí derivaciones y probá el comportamiento antes de habilitarlo.",
     links: [
+      {
+        label: "Política comercial",
+        description: "Limitá qué seguimientos puede ejecutar y cuándo puede hacerlo.",
+        segment: "automation-policy",
+        icon: CalendarClock,
+        permission: PERMISSIONS.OPPORTUNITIES_READ,
+      },
       {
         label: "Handoffs",
         description: "Configurá reglas explícitas para derivar oportunidades entre agentes.",
