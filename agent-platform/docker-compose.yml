@@ -82,7 +82,7 @@ x-api-base: &api-base
 
 services:
   postgres:
-    image: pgvector/pgvector:0.8.3-pg16-trixie
+    image: pgvector/pgvector:0.8.6-pg16-trixie
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -101,7 +101,7 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:7.4.2-alpine
+    image: redis:7.4.11-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "${REDIS_MAX_MEMORY:-256mb}", "--maxmemory-policy", "noeviction", "--loglevel", "warning"]
     volumes:
