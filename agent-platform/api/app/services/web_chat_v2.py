@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -611,6 +612,24 @@ class WebChatV2Service:
             if key in cls._public_event_fields
             and isinstance(value, (str, int, float, bool, type(None)))
         }
+        if event.event_type == "commercial.contact.requested":
+            # The native tool publishes these sanitized form descriptors, not
+            # contact data or consent. Other event types must not expose them.
+            for key, max_length in (
+                ("request_id", 120),
+                ("title", 120),
+                ("summary", 600),
+            ):
+                value = event.payload_json.get(key)
+                if not isinstance(value, str) or not 0 < len(value) <= max_length:
+                    continue
+                if not value.strip():
+                    continue
+                if key == "request_id" and not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9._:-]{0,119}", value
+                ):
+                    continue
+                payload[key] = value
         if event.event_type == "chat.message.completed":
             if event.payload_json.get("actor") == "human":
                 payload["author_type"] = "operator"

@@ -20,10 +20,14 @@ from app.models.conversation_event import ConversationEvent
 from app.models.platform import ChatConversation, ChatExecution, ChatMessage, Principal
 from app.routers.web_chat_v2 import router
 from app.schemas.conversation_control import ConversationControlMode
+from app.schemas.tools import ToolExecutionContext
 from app.services.conversation_control import ConversationControlService
 from app.services.conversation_events import (
     ConversationEventService,
     ConversationEventVisibility,
+)
+from app.services.tools.adapters.commercial_quote_contact_request import (
+    CommercialQuoteContactRequestTool,
 )
 
 pytestmark = pytest.mark.integration
@@ -180,6 +184,76 @@ def _message_payload(*, session_id: UUID, message_id: UUID, route_key: str) -> d
         "locale": "es-AR",
         "consent": {"granted": True, "version": "privacy-v1"},
     }
+
+
+@pytest.mark.asyncio
+async def test_native_contact_request_survives_the_public_events_endpoint(
+    web_route_graph,
+):
+    session_id = uuid4()
+    route_key = web_route_graph.route_keys[0]
+    request_id = f"synthetic-quote:{uuid4()}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app()),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {settings.fastapi_api_key}"},
+    ) as client:
+        accepted = await client.post(
+            "/internal/v2/web/messages",
+            json=_message_payload(
+                session_id=session_id, message_id=uuid4(), route_key=route_key
+            ),
+        )
+        assert accepted.status_code == 202
+        async with AsyncSessionLocal() as db:
+            conversation = (
+                await db.execute(
+                    select(ChatConversation).where(
+                        ChatConversation.agent_id == web_route_graph.agent_id,
+                        ChatConversation.external_thread_id == str(session_id),
+                    )
+                )
+            ).scalar_one()
+            context = ToolExecutionContext(
+                request_id=request_id,
+                channel="web",
+                agent_id=str(conversation.automation_agent_id),
+                routing_agent_id=str(conversation.agent_id),
+                conversation_id=str(conversation.id),
+                principal_id=str(conversation.principal_id),
+                external_subject=str(session_id),
+                control_version=conversation.control_version,
+                automation_version=conversation.automation_version,
+            )
+        result = await CommercialQuoteContactRequestTool().invoke(
+            {
+                "title": "Website estimate",
+                "summary": "A company site for lead@example.invalid.",
+                "preferred_delivery_channel": "email",
+            },
+            request_id,
+            context,
+        )
+        assert result.status == "success"
+        assert result.result["consent_status"] == "not_captured"
+        response = await client.get(
+            "/internal/v2/web/events",
+            params={"session_id": str(session_id), "route_key": route_key, "after": 0},
+        )
+
+    assert response.status_code == 200
+    contact_event = next(
+        event
+        for event in response.json()["events"]
+        if event["event_type"] == "commercial.contact.requested"
+    )
+    assert contact_event["payload"] == {
+        "request_id": request_id,
+        "title": "Website estimate",
+        "summary": "A company site for [redacted].",
+        "preferred_delivery_channel": "email",
+    }
+    assert contact_event["cursor"] == result.result["event_sequence"]
 
 
 @pytest.mark.asyncio

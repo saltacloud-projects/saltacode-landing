@@ -17,6 +17,9 @@ from app.schemas.web_chat_v2 import (
     WebMessageAccepted,
     WebSessionResetResponse,
 )
+from app.services.tools.adapters.commercial_quote_contact_request import (
+    CommercialQuoteContactRequestTool,
+)
 from app.services.web_chat_v2 import (
     WebChatRequestConflictError,
     WebChatSessionBlockedError,
@@ -73,6 +76,80 @@ def test_public_event_projection_does_not_expose_target_agent_identity():
     projected = WebChatV2Service._public_event(event)
 
     assert projected.payload.keys() == {"opportunity_id", "status"}
+
+
+def test_native_contact_request_projection_preserves_the_form_parser_contract():
+    request = CommercialQuoteContactRequestTool._validate_params(
+        {
+            "title": "Website estimate",
+            "summary": "A company site. Contact lead@example.invalid for details.",
+            "preferred_delivery_channel": "email",
+        }
+    )
+    public_payload = request.event_payload(request_id="web-execution:request-1")
+    event = SimpleNamespace(
+        sequence=8,
+        event_type="commercial.contact.requested",
+        created_at=datetime.now(timezone.utc),
+        payload_json={
+            **public_payload,
+            "target_agent_id": str(uuid4()),
+            "principal_id": str(uuid4()),
+            "contact_value": "private@example.invalid",
+            "command_fingerprint": "internal-receipt-fingerprint",
+            "tool_arguments": {"private": "value"},
+        },
+    )
+
+    projected = WebChatV2Service._public_event(event)
+
+    # parseCommercialContactPrompt requires these four nonempty fields; losing
+    # one makes a successfully published native request invisible to the user.
+    assert projected.payload == public_payload
+    assert (
+        projected.payload["summary"]
+        == "A company site. Contact [redacted] for details."
+    )
+    assert projected.event_type == "commercial.contact.requested"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("request_id", "a" * 121),
+        ("request_id", "../../private"),
+        ("request_id", "with space"),
+        ("request_id", {"nested": "value"}),
+        ("title", "t" * 121),
+        ("summary", "s" * 601),
+        ("summary", ["nested"]),
+        ("title", "   "),
+        ("title", None),
+    ],
+)
+def test_contact_projection_rejects_invalid_or_unbounded_form_fields(field, value):
+    event = SimpleNamespace(
+        sequence=8,
+        event_type="commercial.contact.requested",
+        created_at=datetime.now(timezone.utc),
+        payload_json={field: value},
+    )
+
+    assert WebChatV2Service._public_event(event).payload == {}
+
+
+def test_contact_projection_accepts_exact_native_bounds_only_for_contact_events():
+    fields = {"request_id": "a" * 120, "title": "t" * 120, "summary": "s" * 600}
+    event = SimpleNamespace(
+        sequence=8,
+        event_type="commercial.contact.requested",
+        created_at=datetime.now(timezone.utc),
+        payload_json=fields,
+    )
+    assert WebChatV2Service._public_event(event).payload == fields
+
+    event.event_type = "chat.control.changed"
+    assert WebChatV2Service._public_event(event).payload == {}
 
 
 @pytest.mark.asyncio
