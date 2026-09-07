@@ -510,9 +510,13 @@ class OpportunityService:
 
         conversation = await db.get(ChatConversation, conversation_id)
         contact = await _load_contact(db, opportunity.contact_id)
-        if conversation is None or conversation.principal_id != contact.principal_id:
+        if (
+            conversation is None
+            or conversation.principal_id != contact.principal_id
+            or conversation.agent_id != actor_agent_id
+        ):
             raise InvalidOpportunityCommandError(
-                "conversation does not belong to opportunity contact"
+                "conversation does not belong to the current agent and opportunity contact"
             )
         duplicate = (
             await db.execute(

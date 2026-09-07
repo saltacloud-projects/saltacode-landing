@@ -67,7 +67,7 @@ class CommercialReadService:
         self,
         db: AsyncSession,
         *,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         stage: str | None = None,
         assigned_operator_id: uuid.UUID | None = None,
         unassigned_only: bool = False,
@@ -75,7 +75,8 @@ class CommercialReadService:
         limit: int = 100,
         offset: int = 0,
     ) -> OpportunityPage:
-        await self._assert_agent_exists(db, agent_id)
+        if isinstance(agent_id, uuid.UUID):
+            await self._assert_agent_exists(db, agent_id)
         statement = self._summary_statement(agent_id)
         if stage:
             statement = statement.where(Opportunity.stage == stage)
@@ -163,9 +164,10 @@ class CommercialReadService:
                     select(ChatConversation)
                     .where(
                         ChatConversation.principal_id == contact.principal_id,
+                        ChatConversation.agent_id == agent_id,
                         ChatConversation.id.not_in(linked_ids) if linked_ids else True,
                     )
-                    .order_by(ChatConversation.updated_at.desc())
+                    .order_by(ChatConversation.updated_at.desc(), ChatConversation.id)
                     .limit(100)
                 )
             )
@@ -450,7 +452,7 @@ class CommercialReadService:
             raise CommercialReadNotFoundError("quote request not found")
 
     @staticmethod
-    def _summary_statement(agent_id: uuid.UUID) -> Select:
+    def _summary_statement(agent_id: uuid.UUID | tuple[uuid.UUID, ...]) -> Select:
         assigned_agent = aliased(AgentProfile, name="commercial_assigned_agent")
         assigned_operator = aliased(AdminUser, name="commercial_assigned_operator")
         linked_count = (
@@ -494,7 +496,11 @@ class CommercialReadService:
                 assigned_operator,
                 assigned_operator.id == Opportunity.assigned_operator_id,
             )
-            .where(Opportunity.assigned_agent_id == agent_id)
+            .where(
+                Opportunity.assigned_agent_id.in_(
+                    agent_id if isinstance(agent_id, tuple) else (agent_id,)
+                )
+            )
         )
 
     @staticmethod

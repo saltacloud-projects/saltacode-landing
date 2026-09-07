@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,7 @@ class MeetingReadNotFoundError(Exception):
 class MeetingPage:
     items: list[MeetingSummaryOut]
     total: int
+    owner_agent_ids: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
 
 
 class MeetingReadService:
@@ -34,14 +35,16 @@ class MeetingReadService:
         self,
         db: AsyncSession,
         *,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         opportunity_id: uuid.UUID | None,
         status: str | None,
         limit: int,
         offset: int,
     ) -> MeetingPage:
-        await self._assert_agent_exists(db, agent_id)
-        filters = [Opportunity.assigned_agent_id == agent_id]
+        if isinstance(agent_id, uuid.UUID):
+            await self._assert_agent_exists(db, agent_id)
+        agent_ids = agent_id if isinstance(agent_id, tuple) else (agent_id,)
+        filters = [Opportunity.assigned_agent_id.in_(agent_ids)]
         if opportunity_id is not None:
             filters.append(Meeting.opportunity_id == opportunity_id)
         if status is not None:
@@ -58,7 +61,11 @@ class MeetingReadService:
         meeting_rows = list(
             (
                 await db.execute(
-                    select(Meeting, Opportunity.control_version)
+                    select(
+                        Meeting,
+                        Opportunity.control_version,
+                        Opportunity.assigned_agent_id,
+                    )
                     .join(Opportunity, Opportunity.id == Meeting.opportunity_id)
                     .where(*filters)
                     .order_by(Meeting.updated_at.desc(), Meeting.id)
@@ -67,7 +74,7 @@ class MeetingReadService:
                 )
             ).all()
         )
-        meetings = [meeting for meeting, _ in meeting_rows]
+        meetings = [meeting for meeting, _, _ in meeting_rows]
         selected_slots = await self._selected_slots(db, meetings)
         return MeetingPage(
             items=[
@@ -76,9 +83,10 @@ class MeetingReadService:
                     opportunity_control_version,
                     selected_slots.get(meeting.selected_slot_id),
                 )
-                for meeting, opportunity_control_version in meeting_rows
+                for meeting, opportunity_control_version, _ in meeting_rows
             ],
             total=total,
+            owner_agent_ids={meeting.id: owner for meeting, _, owner in meeting_rows},
         )
 
     async def get_meeting(

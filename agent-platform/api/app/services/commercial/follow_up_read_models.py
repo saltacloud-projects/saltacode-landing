@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,7 @@ class FollowUpReadNotFoundError(Exception):
 class FollowUpQueuePage:
     items: list[FollowUpQueueItemOut]
     total: int
+    owner_agent_ids: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,13 +42,15 @@ class FollowUpReadService:
         self,
         db: AsyncSession,
         *,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         status: str | None,
         kind: str | None,
         limit: int,
         offset: int,
     ) -> FollowUpQueuePage:
-        statement = self._owned_statement(agent_id)
+        statement = self._owned_statement(agent_id).add_columns(
+            Opportunity.assigned_agent_id
+        )
         if status is not None:
             statement = statement.where(FollowUpTask.status == status)
         if kind is not None:
@@ -71,9 +74,10 @@ class FollowUpReadService:
         return FollowUpQueuePage(
             items=[
                 self._queue_item(task, outbound_status)
-                for task, outbound_status in rows
+                for task, outbound_status, _ in rows
             ],
             total=total,
+            owner_agent_ids={task.id: owner for task, _, owner in rows},
         )
 
     async def get_task(
@@ -166,7 +170,7 @@ class FollowUpReadService:
         )
 
     @staticmethod
-    def _owned_statement(agent_id: uuid.UUID):
+    def _owned_statement(agent_id: uuid.UUID | tuple[uuid.UUID, ...]):
         return (
             select(FollowUpTask, OutboundMessage.status)
             .join(Opportunity, Opportunity.id == FollowUpTask.opportunity_id)
@@ -174,7 +178,11 @@ class FollowUpReadService:
                 OutboundMessage,
                 OutboundMessage.id == FollowUpTask.outbound_message_id,
             )
-            .where(Opportunity.assigned_agent_id == agent_id)
+            .where(
+                Opportunity.assigned_agent_id.in_(
+                    agent_id if isinstance(agent_id, tuple) else (agent_id,)
+                )
+            )
         )
 
     @staticmethod

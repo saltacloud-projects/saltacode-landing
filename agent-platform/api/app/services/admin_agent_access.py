@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +47,14 @@ AGENT_SCOPED_PERMISSIONS = (
     AdminPermission.RUNTIME_READ,
     AdminPermission.RUNTIME_MANAGE,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AgentOperationAccess:
+    agent_id: uuid.UUID
+    agent_name: str
+    capabilities: frozenset[str]
+    is_active: bool
 
 
 class AdminAgentAccessService:
@@ -93,6 +102,50 @@ class AdminAgentAccessService:
             agent_id=agent_id,
         )
         return self._allows(permissions, permission)
+
+    async def list_operation_agents(
+        self,
+        db: AsyncSession,
+        *,
+        admin_user_id: uuid.UUID,
+        role_key: str,
+        permission: str | AdminPermission,
+    ) -> list[AgentOperationAccess]:
+        """Resolve an operation scope without requiring profile configuration access."""
+        role_permissions = await self._role_service.permissions_for_role(db, role_key)
+        if not self._allows(role_permissions, permission):
+            return []
+        rows = (
+            await db.execute(
+                select(
+                    AgentProfile.id,
+                    AgentProfile.name,
+                    AgentProfile.is_active,
+                    AdminAgentGrant.permissions,
+                )
+                .join(AdminAgentGrant, AdminAgentGrant.agent_id == AgentProfile.id)
+                .where(
+                    AdminAgentGrant.admin_user_id == admin_user_id,
+                    AdminAgentGrant.is_active.is_(True),
+                )
+                .order_by(AgentProfile.name, AgentProfile.id)
+            )
+        ).all()
+        return [
+            AgentOperationAccess(
+                agent_id=agent_id,
+                agent_name=name,
+                is_active=is_active,
+                capabilities=frozenset(
+                    candidate.value
+                    for candidate in AGENT_SCOPED_PERMISSIONS
+                    if self._allows(role_permissions, candidate)
+                    and self._allows(grant_permissions, candidate)
+                ),
+            )
+            for agent_id, name, is_active, grant_permissions in rows
+            if self._allows(grant_permissions, permission)
+        ]
 
     async def list_accessible_profiles(
         self,

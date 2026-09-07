@@ -29,6 +29,7 @@ from app.routers.admin.conversation_control import (
     router as admin_conversation_control_router,
 )
 from app.routers.admin.conversations import router as admin_conversations_router
+from app.routers.admin.crm import router as admin_crm_router
 from app.routers.admin.deliveries import router as admin_deliveries_router
 from app.routers.admin.documents import router as admin_documents_router
 from app.routers.admin.follow_ups import router as admin_follow_ups_router
@@ -40,6 +41,9 @@ from app.routers.admin.meetings import router as admin_meetings_router
 from app.routers.admin.operator_inbox import router as admin_operator_inbox_router
 from app.routers.admin.panel_users import router as admin_panel_users_router
 from app.routers.admin.profiles import router as admin_profiles_router
+from app.routers.admin.progression_policy import (
+    router as admin_progression_policy_router,
+)
 from app.routers.admin.promptlab import router as admin_promptlab_router
 from app.routers.admin.sources import router as admin_sources_router
 from app.routers.admin.tools import router as admin_tools_router
@@ -236,6 +240,7 @@ app.include_router(admin_kb_router, prefix="/api/admin/knowledge-blocks")
 app.include_router(admin_tools_router, prefix="/api/admin/tools")
 app.include_router(admin_users_router, prefix="/api/admin/users")
 app.include_router(admin_audit_router, prefix="/api/admin/audit")
+app.include_router(admin_crm_router, prefix="/api/admin/crm")
 app.include_router(admin_conversations_router, prefix="/api/admin/conversations")
 app.include_router(
     admin_conversation_control_router,
@@ -250,6 +255,10 @@ app.include_router(admin_agent_resources_router, prefix="/api/admin/agents")
 app.include_router(
     admin_agent_handoff_routes_router,
     prefix="/api/admin/agents/{agent_id}/handoff-routes",
+)
+app.include_router(
+    admin_progression_policy_router,
+    prefix="/api/admin/agents/{agent_id}/progression-policy",
 )
 app.include_router(
     admin_operator_inbox_router, prefix="/api/admin/agents/{agent_id}/inbox"

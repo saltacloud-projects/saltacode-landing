@@ -50,7 +50,7 @@ class OperatorInboxService:
         self,
         db: AsyncSession,
         *,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         channel: str | None = None,
         control_mode: str | None = None,
         status: str | None = None,
@@ -61,7 +61,8 @@ class OperatorInboxService:
         limit: int = 100,
         offset: int = 0,
     ) -> InboxPage:
-        await self._assert_agent_exists(db, agent_id)
+        if isinstance(agent_id, uuid.UUID):
+            await self._assert_agent_exists(db, agent_id)
         statement, message_count, last_activity = self._summary_statement(agent_id)
         statement = self._apply_filters(
             statement,
@@ -274,7 +275,7 @@ class OperatorInboxService:
 
     @staticmethod
     def _summary_statement(
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
     ) -> tuple[Select, object, object]:
         message_stats = (
             select(
@@ -317,7 +318,11 @@ class OperatorInboxService:
                 assigned_operator,
                 assigned_operator.id == ChatConversation.assigned_admin_id,
             )
-            .where(ChatConversation.agent_id == agent_id)
+            .where(
+                ChatConversation.agent_id.in_(
+                    agent_id if isinstance(agent_id, tuple) else (agent_id,)
+                )
+            )
         )
         return statement, message_count, last_activity
 

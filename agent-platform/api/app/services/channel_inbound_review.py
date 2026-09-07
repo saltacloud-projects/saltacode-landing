@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -46,6 +46,7 @@ class InvalidChannelInboundCommand(ChannelInboundReviewError):
 class ChannelInboundPage:
     items: list[ChannelInboundSummaryOut]
     total: int
+    owner_agent_ids: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
 
 
 class ChannelInboundReviewService:
@@ -53,12 +54,13 @@ class ChannelInboundReviewService:
         self,
         db: AsyncSession,
         *,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         status: str | None,
         limit: int,
         offset: int,
     ) -> ChannelInboundPage:
-        predicates = [ChannelInboundJob.routing_agent_id == agent_id]
+        agent_ids = agent_id if isinstance(agent_id, tuple) else (agent_id,)
+        predicates = [ChannelInboundJob.routing_agent_id.in_(agent_ids)]
         if status is not None:
             predicates.append(ChannelInboundJob.status == status)
         total = (
@@ -85,6 +87,7 @@ class ChannelInboundReviewService:
         return ChannelInboundPage(
             items=[self._summary(job) for job in jobs],
             total=total,
+            owner_agent_ids={job.id: job.routing_agent_id for job in jobs},
         )
 
     async def get_job(

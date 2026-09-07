@@ -40,6 +40,9 @@ class _Result:
     def scalars(self):
         return _Scalars(self._scalars)
 
+    def scalar_one(self):
+        return len(self._scalars)
+
 
 class _Db:
     def __init__(self, *results):
@@ -191,11 +194,12 @@ def test_admin_audit_contract_requires_agent_id() -> None:
 async def test_admin_audit_query_excludes_legacy_and_other_agent_rows() -> None:
     agent_id, route_id = uuid4(), uuid4()
     row = _audit_row(agent_id, route_id)
-    db = _Db(_Result(rows=[(row, "User")]))
+    db = _Db(_Result(scalars=[row]), _Result(scalars=[row]))
 
     result = await list_audit_logs(agent_id=agent_id, limit=50, offset=0, db=db)
 
-    _assert_scope_filter(db.statements[0], agent_id)
+    assert "audit_logs.agent_id" in str(db.statements[0])
+    assert [agent_id] in db.statements[0].compile().params.values()
     assert result[0].agent_id == str(agent_id)
     assert result[0].channel_route_id == str(route_id)
 

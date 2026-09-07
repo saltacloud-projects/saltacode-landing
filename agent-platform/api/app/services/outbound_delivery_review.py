@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ class DeliveryReviewNotFoundError(Exception):
 class DeliveryReviewPage:
     items: list[DeliverySummaryOut]
     total: int
+    owner_agent_ids: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
 
 
 class OutboundDeliveryReviewService:
@@ -44,7 +45,7 @@ class OutboundDeliveryReviewService:
         self,
         db: AsyncSession,
         *,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         channel: str | None = None,
         delivery_status: DeliveryStatus | None = None,
         conversation_id: uuid.UUID | None = None,
@@ -82,6 +83,7 @@ class OutboundDeliveryReviewService:
         return DeliveryReviewPage(
             items=[self._summary_out(*row) for row in rows],
             total=total,
+            owner_agent_ids={row[0].id: row[0].agent_id for row in rows},
         )
 
     async def get_delivery(
@@ -192,7 +194,7 @@ class OutboundDeliveryReviewService:
         )
 
     @staticmethod
-    def _summary_statement(agent_id: uuid.UUID) -> Select:
+    def _summary_statement(agent_id: uuid.UUID | tuple[uuid.UUID, ...]) -> Select:
         attempt_counts = (
             select(
                 OutboundAttempt.outbound_message_id.label("message_id"),
@@ -237,7 +239,9 @@ class OutboundDeliveryReviewService:
                 attempt_counts.c.message_id == OutboundMessage.id,
             )
             .where(
-                OutboundMessage.agent_id == agent_id,
+                OutboundMessage.agent_id.in_(
+                    agent_id if isinstance(agent_id, tuple) else (agent_id,)
+                ),
             )
         )
 
