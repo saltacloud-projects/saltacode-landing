@@ -1,11 +1,18 @@
 # Administration and configuration model
 
-The administration panel is a projection of one ownership hierarchy. Connections and reusable resources belong to the platform library; an agent becomes runnable only after it receives explicit bindings, runtime settings, and channel routes.
+The panel is an operator-centered multichannel CRM, not a globally selected-agent workspace.
+Independent agents retain persisted identity, runtime, grants, and explicit resource bindings.
+Record ownership is an authorization concern; it does not require placing daily work below
+an agent selector. See [ADR 0003](../../../docs/decisions/0003-crm-first-agent-platform.md).
 
 ## Ownership hierarchy
 
 ```text
 Agent Platform
+├── CRM operations: inbox, opportunities, meetings, follow-ups
+├── Supervision: deliveries, external ingress, audit
+├── Channels: connections, readiness, ingress routes
+├── Pipeline: guided progression and follow-up policy
 ├── Shared connection library
 │   ├── model provider connections
 │   ├── web and WhatsApp channel connections
@@ -20,9 +27,7 @@ Agent Platform
     ├── runtime and provider binding
     ├── source, tool, knowledge, document-area, and user assignments
     ├── channel routes and handoff rules
-    ├── conversations, human control, and acting-agent assignments
-    ├── opportunities, quotes, meetings, follow-ups, and delivery evidence
-    ├── commercial automation policy
+    ├── commercial progression and follow-up policy
     └── PromptLab validation context
 ```
 
@@ -30,12 +35,17 @@ Creating a resource in the shared library does not expose it to every agent. Ass
 
 ## Panel workflow
 
-1. Create reusable provider, channel, and API connections in the platform library.
-2. Create knowledge, document areas, and source-bound tools in the resource library.
-3. Select a routing agent and edit its profile, runtime, assignments, channel routes, access policy, handoffs, and commercial automation policy.
-4. Validate that selected agent in PromptLab.
-5. Operate its inbox, acting-agent assignments, opportunities, meetings, follow-ups, delivery evidence, and audit under agent-scoped RBAC.
-6. Review route, runtime, consent, control, and provider evidence before exposing or changing a public channel.
+1. Open **Agents** and create a named agent with its own prompt sections. New agents are inactive;
+   activation never disables another agent or creates a channel route implicitly.
+2. Configure its model runtime and explicit resource bindings. Shared resources remain opt-in.
+3. Open **Channels** to manage connections and choose the agent for each ingress route.
+   Stored credentials and an enabled agent do not prove a working provider connection.
+4. Open **Pipeline** to choose continuation or specialist handoff for quote-contact capture,
+   then inspect handoff rules and follow-up limits. Validate agent behavior in PromptLab.
+5. Operate the global CRM lists. Optional filters narrow authorized records; opening a row
+   resolves its current command owner independently from the filter.
+6. Review consent, human control, route, runtime, and provider evidence before activating an
+   external channel or automation. Configuration alone does not authorize a release.
 
 An external API source is configured in the global source library with its base URL, allowed hosts, authentication scheme, transport limits, and credentials. A tool then selects that source and defines the HTTP method, relative path, parameter placement, channel policy, risk, confirmation, and idempotency behavior. Both the source and tool must be assigned to an agent before the runtime can use them.
 
@@ -61,6 +71,7 @@ An external API source is configured in the global source library with its base 
 | Outbound deliveries | Agent | Yes | Route-snapshotted intents, attempts, receipts, safe failure codes, FIFO state, and evidence-backed resolution of uncertainty. |
 | External channel inbound | Agent | Yes | Encrypted bounded payload, deduplication, per-thread FIFO, leases, safe review model, and semantic review API. |
 | Commercial automation policy | Agent | Yes | Follow-up timing and kinds; no provider credentials or provider-specific rules. |
+| Commercial progression policy | Ingress agent | Yes | Explicit `keep_agent` or `handoff` after valid quote-contact capture; CAS updates and audit. Missing policy preserves the legacy handoff requirement. |
 | PromptLab request | Selected agent | No separate configuration record | Reads the selected persisted profile/runtime/resources; preview inputs are a validation workspace. |
 | Audit log | Agent for routed activity | Yes | New routed records persist agent and channel-route ownership; selected-agent reads require `agent_id`. |
 | Panel users and roles | Platform-wide | Yes | Administrative access, independent from end-user channel access. |
@@ -95,7 +106,9 @@ Provider and WhatsApp environment credentials are compatibility inputs for the i
 
 Authenticated channel adapters normalize provider callbacks into one bounded versioned envelope. The platform stores its payload encrypted with an integrity hash, immutable route/connection/agent snapshots, a provider deduplication key, and a per-thread FIFO key. Worker leases and append-only events make processing recoverable; uncertain effects move to review instead of triggering a blind retry.
 
-The agent-scoped administration API and selected-agent panel expose privacy-minimized list, detail, timeline, requeue, cancel, and acknowledge operations through `inbound.read` and `inbound.review`. They do not return decrypted provider payloads or personal identifiers.
+The global CRM collection and agent-scoped detail/command API expose privacy-minimized list,
+detail, timeline, requeue, cancel, and acknowledge operations through `inbound.read` and
+`inbound.review`. They do not return decrypted provider payloads or personal identifiers.
 
 Web chat v2 is deliberately separate. It uses the private BFF contract and durable web-execution queue rather than materializing an external channel job.
 
@@ -111,9 +124,29 @@ Public agents accept a provisional channel identity backed by the conversation p
 
 The browser never selects an agent ID or route. The SaltaCode BFF owns `SALTACODE_AGENT_ROUTE_KEY` and sends it on the authenticated private execution request. The agent platform resolves that persisted public web route to one active agent, provider runtime, and web connection. Changing the browser payload cannot bypass that server-owned mapping.
 
-## Current panel workspaces
+## CRM reads and scoped commands
 
-The selected-agent navigation currently provides identity, runtime, resources, channels, access, Inbox, external inbound jobs, opportunities, meetings, follow-ups, deliveries, handoffs, commercial automation policy, audit, and PromptLab. Shared navigation owns agents, model/channel connections, sources, tools, knowledge, documents, and panel users.
+`GET /api/admin/crm/{resource}` supplies authorized cross-agent inbox, opportunities, meetings,
+follow-ups, deliveries, inbound jobs, and audit collections. Permission-specific agent catalogs
+do not require `profiles.read`. SQL applies scope and filters before count, ordering, and
+pagination. Rows carry `owner_agent_id`, `owner_agent_name`, and effective capabilities (role
+permissions intersected with active agent grants).
+
+Details and commands remain under `/api/admin/agents/{owner_agent_id}/...` and reauthorize on
+every request. Reassignment or revoked access between list and detail can cause a safe rejection
+and refresh; a list response is not a durable grant.
+
+| Collection | Current authorization owner |
+|---|---|
+| Inbox | Conversation routing agent, not the acting automation agent. |
+| Opportunities | Current assigned agent. |
+| Follow-ups and meetings | Current opportunity owner, not a task's historical assignment snapshot. |
+| External ingress | Immutable routing agent snapshot. |
+| Deliveries | Outbound intent owner. |
+| Audit | Persisted event agent; unowned legacy records are not inferred. |
+
+Agent configuration remains contextual under `/agents/:id/...`. Existing operational URLs stay
+compatible, but the primary CRM navigation does not require selecting a working agent.
 
 The Inbox supports conversation-level human takeover, manual response, release, and acting-agent reassignment. Meetings and follow-ups expose semantic, version-checked operations. Deliveries provides agent-scoped inspection for `deliveries.read` and irreversible uncertainty resolution for `deliveries.review`. A read-only operator sees minimized evidence without controls.
 
@@ -122,6 +155,12 @@ Only a `delivery_unknown` item is resolvable. `confirm_delivered` requires a wri
 ### Internal pending work
 
 - complete any remaining operator data-subject/erasure workflow without treating session reset as deletion.
+- Complete transactional contact/consent capture for external channels: the WhatsApp contact-request
+  tool currently provides instructions but does not itself record confirmed consent.
+- Add event-driven commercial follow-up planning after defining its business rules. Durable task
+  execution and policy exist; scheduling is currently an explicit command, not a complete autonomous planner.
+- Arbitrary workflow graphs and stage editing are not implemented. Existing stage semantics and
+  legal transitions remain domain code; guided policy cannot override those safeguards.
 
 ### External blockers
 

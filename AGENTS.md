@@ -77,6 +77,13 @@ Follow `docs/quality/seo-performance-contract.md`. Its Lighthouse targets are la
 
 Clean Architecture is the decision compass, not a target folder count. Improve cohesion and explicit dependencies first, then introduce only the boundary justified by current policy complexity, volatility, ownership, or a valuable test seam. Every deferred layer must have an observable activation trigger. Use `.agents/skills/pragmatic-clean-architecture/SKILL.md` for changes that combine code cleanup with an architecture decision.
 
+The agent platform is CRM-first: daily operations span authorized agents; selecting an agent is
+configuration context, never a global authorization or conversation-assignment mechanism. Keep
+independent agents, channels, operations, guided pipeline policy, and shared resources distinct.
+CRM reads must filter/count/page server-side and expose the current command owner; mutations
+remain scoped and reauthorized. Preserve human-control and acting-agent epochs, consent, and
+idempotency as domain invariants. Follow `docs/decisions/0003-crm-first-agent-platform.md`.
+
 The repository now implements the approved platform foundation:
 
 - `apps/landing/`: Astro with strict TypeScript and pnpm, static-first output, and no default client hydration.

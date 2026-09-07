@@ -87,7 +87,7 @@ The doctor fails only for required local capabilities. Recommended tools and ext
 | `apps/landing/` | Astro, TypeScript, static SEO surface, optimized assets, lazy chat client, and same-origin proxy. |
 | `apps/web-bff/` | Public FastAPI BFF, signed session, SSE contract, origin checks, correlation, and shared rate limiting. |
 | `agent-platform/api/` | Repository-owned agent runtime, web v2, external-channel ingress, human control, commercial orchestration, workers, and migrations. |
-| `agent-platform/panel/` | Agent-scoped administration and operations UI for inbox, external ingress review, opportunities, follow-ups, meetings, delivery resolution, and configuration. |
+| `agent-platform/panel/` | CRM-first operations, independent agent configuration, channels, guided commercial pipeline, shared settings, and authorized supervision. |
 | `contracts/chat/v2/` | Authoritative browser-to-BFF schemas for durable web chat, history, resumable events, reset, and commercial contact capture. |
 | `contracts/chat/v1/` | Explicit compatibility schemas; not the current web-chat authority. |
 | `compose.yml` | Site/BFF/Redis topology connected to the private agent service network. |

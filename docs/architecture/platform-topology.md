@@ -45,7 +45,7 @@ Web chat uses the private v2 execution contract between the BFF and Agent Platfo
 | `apps/landing/` (`frontend` service) | Static files, cache/security headers, real 404, lazy chat client, and same-origin API streaming proxy. | Session signing, provider keys, rate policy, agent tools. |
 | `apps/web-bff/` (`backend` service) | Browser validation, signed session, consent, origin policy, correlation, rate limit, and private web-chat v2 adaptation. | Resource aggregation, model execution, commercial persistence, agent orchestration, or API source credentials. |
 | `agent-platform/api/` | Agents, principals, channel identities, histories, executions, human and acting-agent control, commercial records, encrypted sources, tools, provider-neutral external ingress, WhatsApp adapter, durable outbox, follow-ups, meetings, RAG, and model/provider orchestration. | Direct public browser trust or landing rendering. |
-| `agent-platform/panel/` | Authenticated, RBAC-enforced administration and operations UI scoped by platform and selected-agent grants. | Browser-held provider credentials, authorization by visual selection alone, or direct provider execution. |
+| `agent-platform/panel/` | Authenticated CRM projections across authorized agents, contextual agent configuration, and scoped semantic commands. | Browser-held provider credentials, authorization by visual selection alone, or direct provider execution. |
 | site Redis | Ephemeral public rate-limit counters. | Durable transcript or agent data. |
 | agent PostgreSQL/Redis | Durable platform state and internal coordination. | Public ingress. |
 

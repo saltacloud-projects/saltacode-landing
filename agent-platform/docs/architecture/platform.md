@@ -5,7 +5,7 @@
 | Unit | Responsibility |
 |---|---|
 | Agent API | Private web-chat v2 execution, administration API, authenticated channel adapters, commercial workflows, and health endpoints. |
-| Administration panel | Configures shared libraries and selected agents; operates inbox, external ingress review, opportunities, meetings, follow-ups, delivery resolution, handoffs, policy, and audit according to RBAC. |
+| Administration panel | CRM-first operations across authorized agents, independent agent configuration, channels, guided pipeline policy, shared resources, and scoped semantic commands. |
 | PostgreSQL | Durable configuration, identities, conversations, messages, executions, control events, commercial state, outbox, worker evidence, audit, and RAG metadata. |
 | Redis | Locks, deduplication, rate support, and short-lived coordination. |
 | Channel inbound worker | Processes the encrypted provider-neutral external inbox with per-thread FIFO; its Compose compatibility name remains `whatsapp-worker`. |
@@ -60,6 +60,17 @@ This separation allows multiple APIs without environment-variable-per-source cou
 
 ## Administration hierarchy
 
-Connections, sources, tools, knowledge blocks, document areas, and reusable WhatsApp identities form platform-wide libraries. A routing agent owns its profile, runtime, explicit resource assignments, channel routes, conversations, commercial workspace, and PromptLab context. The acting agent is assigned explicitly per conversation. A library resource is not available to an agent until its binding exists.
+Connections, sources, tools, knowledge blocks, document areas, and reusable WhatsApp identities
+form platform-wide libraries. Each independent agent owns identity, runtime, resource bindings,
+routing configuration, and PromptLab context. CRM projections authorize cross-agent reads;
+commands still check the specific record owner. Acting agents are assigned explicitly per
+conversation. Database name `agent_profiles` stays for compatibility, not to imply mutually
+exclusive personas or one active agent per installation.
+
+Commercial progression is separate from follow-up timing/quotas. Explicit `keep_agent` creates
+an opportunity for the current acting agent without changing routing, human control, or epochs.
+`handoff` uses the configured deterministic route. Missing policy preserves the previous handoff
+requirement; the additive migration does not silently activate new production behavior. Replay
+resolves existing receipts before mutable policy. Quote issuance still requires external evidence.
 
 See [`administration-model.md`](administration-model.md) for the complete persistence, secret, routing, and panel ownership map.
