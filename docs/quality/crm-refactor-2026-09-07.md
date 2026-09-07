@@ -1,5 +1,9 @@
 # CRM-first refactor verification — 2026-09-07
 
+Subsequent authorized production deployment is recorded separately in the
+[CRM production release report](crm-production-release-2026-09-07.md). The evidence below
+describes the earlier repository and isolated-review checkpoint.
+
 ## Outcome
 
 Implemented the operator-centered CRM navigation and authorized cross-agent read boundary,
