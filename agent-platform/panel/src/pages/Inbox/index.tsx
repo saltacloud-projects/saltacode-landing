@@ -171,6 +171,7 @@ export default function InboxPage() {
         listFooter={
           <div className="border-t border-[var(--border-color)] px-3 text-xs [&_button]:min-h-11">
             <CrmPagination
+              singlePageLabel={`${inbox.total} ${inbox.total === 1 ? "conversación" : "conversaciones"}`}
               offset={scope.offset}
               total={inbox.total}
               loading={inbox.loadingList}

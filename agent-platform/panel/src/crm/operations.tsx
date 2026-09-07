@@ -138,40 +138,62 @@ export function CrmPagination({
   total,
   loading,
   onChange,
+  singlePageLabel,
 }: {
   offset: number;
   total: number;
   loading: boolean;
   onChange: (offset: number) => void;
+  singlePageLabel?: string;
 }) {
+  const lastOffset = Math.floor(Math.max(0, total - 1) / CRM_PAGE_SIZE) * CRM_PAGE_SIZE;
+  const correctingOffset = offset > lastOffset;
+  useEffect(() => {
+    if (!loading && correctingOffset) onChange(lastOffset);
+  }, [loading, correctingOffset, lastOffset, onChange]);
+  const singlePage = singlePageLabel !== undefined && total <= CRM_PAGE_SIZE && !correctingOffset;
   return (
     <nav
       aria-label="Paginación de resultados"
+      aria-busy={loading || correctingOffset}
       className="my-4 flex flex-wrap items-center justify-between gap-3 text-sm"
     >
-      <span aria-live="polite">
-        {total === 0
-          ? "Sin resultados"
-          : `${offset + 1}–${Math.min(offset + CRM_PAGE_SIZE, total)} de ${total}`}
-      </span>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={loading || offset === 0}
-          onClick={() => onChange(Math.max(0, offset - CRM_PAGE_SIZE))}
-          className="rounded border border-[var(--border-color)] px-3 py-2 disabled:opacity-40"
-        >
-          Anterior
-        </button>
-        <button
-          type="button"
-          disabled={loading || offset + CRM_PAGE_SIZE >= total}
-          onClick={() => onChange(offset + CRM_PAGE_SIZE)}
-          className="rounded border border-[var(--border-color)] px-3 py-2 disabled:opacity-40"
-        >
-          Siguiente
-        </button>
+      <div aria-live="polite">
+        <span>
+          {correctingOffset
+            ? "Actualizando página…"
+            : total === 0
+              ? "Sin resultados"
+              : singlePage
+                ? singlePageLabel
+                : `${offset + 1}–${Math.min(offset + CRM_PAGE_SIZE, total)} de ${total}`}
+        </span>
+        {singlePage && total > 0 && (
+          <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+            Todas en esta página
+          </span>
+        )}
       </div>
+      {!singlePage && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={loading || correctingOffset || offset === 0}
+            onClick={() => onChange(Math.max(0, offset - CRM_PAGE_SIZE))}
+            className="rounded border border-[var(--border-color)] px-3 py-2 disabled:opacity-40"
+          >
+            Anterior
+          </button>
+          <button
+            type="button"
+            disabled={loading || correctingOffset || offset + CRM_PAGE_SIZE >= total}
+            onClick={() => onChange(offset + CRM_PAGE_SIZE)}
+            className="rounded border border-[var(--border-color)] px-3 py-2 disabled:opacity-40"
+          >
+            Siguiente
+          </button>
+        </div>
+      )}
     </nav>
   );
 }
