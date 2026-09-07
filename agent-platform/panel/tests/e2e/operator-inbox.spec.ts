@@ -121,6 +121,9 @@ function registerInboxMocks(
     if (path.endsWith("/inbox/operators")) {
       return json(route, [operator(ADMIN_ID, "Operator"), operator(OTHER_ADMIN_ID, "Partner")]);
     }
+    if (path.endsWith(`/inbox/${CONVERSATION_ID}/presence`)) {
+      return json(route, { typing: false, expires_at: null });
+    }
     if (path.endsWith("/inbox/") && request.method() === "GET") {
       const requestedAgent = path.split("/").at(-3);
       return json(route, {

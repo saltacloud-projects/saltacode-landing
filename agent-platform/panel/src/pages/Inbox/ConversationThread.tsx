@@ -31,6 +31,7 @@ interface ConversationThreadProps {
   assignmentHistoryTotal: number;
   onMessagesRead: (conversationId: string, messageIds: string[]) => Promise<boolean>;
   onDraftChange: (value: string) => void;
+  onDraftBlur: () => void;
   onReassignChange: (value: string) => void;
   onAutomationAgentChange: (value: string) => void;
   onBack: () => void;
@@ -61,6 +62,7 @@ export function ConversationThread({
   assignmentHistoryTotal,
   onMessagesRead,
   onDraftChange,
+  onDraftBlur,
   onReassignChange,
   onAutomationAgentChange,
   onBack,
@@ -116,6 +118,7 @@ export function ConversationThread({
               key={thread.conversation.id}
               thread={thread}
               obscured={controlsOpen}
+              currentAdminId={currentAdminId}
               loading={loading}
               onMessagesRead={onMessagesRead}
             />
@@ -189,7 +192,13 @@ export function ConversationThread({
             )}
           </div>
           {ownsConversation ? (
-            <MessageComposer value={draft} busy={busy} onChange={onDraftChange} onSubmit={onSend} />
+            <MessageComposer
+              value={draft}
+              busy={busy}
+              onChange={onDraftChange}
+              onBlur={onDraftBlur}
+              onSubmit={onSend}
+            />
           ) : (
             <p className="shrink-0 border-t border-[var(--border-color)] bg-[var(--bg-card)] p-3 text-xs text-[var(--text-secondary)]">
               {thread.conversation.control_mode === "closed" ||

@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 import { CrmPagination, CrmScopeFilter, canOperateItem, useCrmScope } from "../../crm/operations";
 import { useInboxLive } from "../../inbox/InboxLiveContext";
+import { useOperatorPresence } from "../../inbox/useOperatorPresence";
 import { InboxFiltersForm, InboxSearch } from "./InboxFilters";
 import { InboxShell } from "./InboxShell";
 import { useInboxState } from "./useInboxState";
@@ -30,6 +31,13 @@ export default function InboxPage() {
     offset: scope.offset,
     user,
     canManage,
+  });
+
+  const presence = useOperatorPresence({
+    agentId: inbox.ownerAgentId,
+    conversationId: inbox.thread?.conversation.id,
+    controlVersion: inbox.thread?.conversation.control_version,
+    enabled: inbox.ownsConversation && !inbox.busy,
   });
 
   return (
@@ -208,14 +216,21 @@ export default function InboxPage() {
         assignmentHistoryTotal={inbox.assignmentHistoryTotal}
         onMessagesRead={inbox.markVisibleMessagesRead}
         onSelect={inbox.openConversation}
-        onDraftChange={inbox.setDraft}
+        onDraftChange={(value) => {
+          inbox.setDraft(value);
+          presence.edit(Boolean(value.trim()));
+        }}
+        onDraftBlur={presence.stop}
         onReassignChange={inbox.setReassignTo}
         onAutomationAgentChange={inbox.selectAutomationAgent}
         onBack={() => {
           inbox.closeThread();
           window.requestAnimationFrame(() => document.getElementById("inbox-search")?.focus());
         }}
-        onSend={() => void inbox.sendMessage()}
+        onSend={() => {
+          presence.stop();
+          void inbox.sendMessage();
+        }}
         onTransition={(transition) => void inbox.runTransition(transition)}
         onAssignAutomation={() => void inbox.assignAutomationAgent()}
         onToggleAssignmentHistory={() => void inbox.toggleAssignmentHistory()}

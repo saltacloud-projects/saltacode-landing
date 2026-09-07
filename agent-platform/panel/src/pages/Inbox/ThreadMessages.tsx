@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useInboxLive } from "../../inbox/InboxLiveContext";
 import type { InboxThread } from "../../inbox/types";
+import { useHumanTyping } from "../../inbox/useHumanTyping";
 import {
   AUTHOR_LABELS,
   calendarDay,
@@ -15,6 +16,7 @@ interface ThreadMessagesProps {
   thread: InboxThread;
   loading: boolean;
   obscured?: boolean;
+  currentAdminId: string;
   onMessagesRead: (conversationId: string, messageIds: string[]) => Promise<boolean>;
 }
 
@@ -22,9 +24,10 @@ export function ThreadMessages({
   thread,
   loading,
   obscured = false,
+  currentAdminId,
   onMessagesRead,
 }: ThreadMessagesProps) {
-  const { connected, revision } = useInboxLive();
+  const { connected, revision, snapshot } = useInboxLive();
   const currentObservation = useRef(() => {});
   const viewport = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -41,7 +44,22 @@ export function ThreadMessages({
     conversation.control_mode === "automated"
       ? conversation.agent_activity
       : null;
+  const freshPresence =
+    connected &&
+    !snapshot?.presence_degraded &&
+    conversation.observedLiveRevision === revision &&
+    document.visibilityState === "visible" &&
+    conversation.status !== "closed" &&
+    conversation.control_mode !== "closed";
+  const visitorTyping = useHumanTyping(conversation.presence?.visitor, freshPresence);
+  const operatorTyping = useHumanTyping(
+    conversation.presence?.operator,
+    freshPresence &&
+      conversation.control_mode === "human" &&
+      conversation.assigned_operator?.id !== currentAdminId,
+  );
   const lastMessageId = messages[messages.length - 1]?.id;
+  const previousMessageId = useRef(lastMessageId);
 
   const observeRead = useCallback(() => {
     if (
@@ -68,11 +86,13 @@ export function ThreadMessages({
   currentObservation.current = observeRead;
 
   useLayoutEffect(() => {
-    if (!lastMessageId && !activity?.status) return;
+    const hasNewMessage = lastMessageId !== previousMessageId.current;
+    previousMessageId.current = lastMessageId;
+    if (!lastMessageId && !activity?.status && !visitorTyping && !operatorTyping) return;
     if (following.current && viewport.current)
       viewport.current.scrollTop = viewport.current.scrollHeight;
-    else setHasNewMessages(true);
-  }, [lastMessageId, activity?.status]);
+    else if (hasNewMessage) setHasNewMessages(true);
+  }, [lastMessageId, activity?.status, visitorTyping, operatorTyping]);
 
   useEffect(() => {
     const sentinel = bottom.current;
@@ -158,6 +178,22 @@ export function ThreadMessages({
               </Fragment>
             );
           })
+        )}
+        {visitorTyping && (
+          <p
+            role="status"
+            className="mr-auto mt-3 shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-xs text-amber-300"
+          >
+            Visitante está escribiendo…
+          </p>
+        )}
+        {operatorTyping && (
+          <p
+            role="status"
+            className="ml-auto mt-3 shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-xs text-amber-300"
+          >
+            Operador está escribiendo…
+          </p>
         )}
         {activity && (
           <p

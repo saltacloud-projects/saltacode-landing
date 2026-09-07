@@ -10,7 +10,25 @@ import type {
   InboxFilters,
   InboxOperator,
   InboxThread,
+  TypingState,
 } from "./types";
+
+export function publishOperatorPresence(
+  agentId: string,
+  conversationId: string,
+  signal: {
+    client_instance_id: string;
+    sequence: number;
+    typing: boolean;
+    expected_control_version: number;
+  },
+): Promise<TypingState> {
+  return api(`${inboxRoot(agentId)}/${encodeURIComponent(conversationId)}/presence`, {
+    method: "POST",
+    keepalive: true,
+    body: JSON.stringify(signal),
+  });
+}
 
 function inboxRoot(agentId: string): string {
   return `/agents/${encodeURIComponent(agentId)}/inbox`;

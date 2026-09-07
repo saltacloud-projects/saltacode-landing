@@ -2,6 +2,11 @@ import type { CrmOwnership } from "../crm/operations";
 export type MessageAuthorType = "visitor" | "agent" | "operator" | "system" | "unknown";
 export type ConversationControlMode = "automated" | "paused" | "human" | "closed";
 
+export interface TypingState {
+  typing: boolean;
+  expires_at: string | null;
+}
+
 export interface InboxOperator {
   id: string;
   name: string;
@@ -34,6 +39,7 @@ export interface InboxConversation extends CrmOwnership {
   unread_count?: number;
   latest_inbound_message_id?: string | null;
   agent_activity?: { status: "queued" | "running"; agent_id: string; name: string } | null;
+  presence?: { visitor: TypingState; operator: TypingState };
   last_activity_at: string;
   last_message_at?: string | null;
   last_message_preview?: string | null;

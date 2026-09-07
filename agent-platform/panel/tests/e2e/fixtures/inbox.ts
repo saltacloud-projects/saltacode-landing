@@ -57,6 +57,10 @@ export function conversation() {
     capabilities: permissions,
     unread_count: 1,
     latest_inbound_message_id: message(1).id,
+    presence: {
+      visitor: { typing: false, expires_at: null as string | null },
+      operator: { typing: false, expires_at: null as string | null },
+    },
     agent_activity: null as null | { status: string; agent_id: string; name: string },
   };
 }
@@ -72,6 +76,7 @@ export async function fixture(page: Page, count = 1, rejectInitialToken = false)
     filterRead: false,
     empty: false,
     refreshCalls: 0,
+    presenceSignals: [] as Record<string, unknown>[],
   };
   await page.addInitScript(
     ({ initialSnapshot, rejectInitialToken }) => {
@@ -146,6 +151,10 @@ export async function fixture(page: Page, count = 1, rejectInitialToken = false)
     if (url.pathname.endsWith("/inbox/operators")) return reply([user]);
     if (url.pathname.endsWith(`/inbox/${CHAT}`))
       return reply({ conversation: state.row, messages: state.messages, control_events: [] });
+    if (url.pathname.endsWith(`/inbox/${CHAT}/presence`)) {
+      state.presenceSignals.push(route.request().postDataJSON());
+      return reply({ typing: false, expires_at: null });
+    }
     if (url.pathname.endsWith(`/inbox/${CHAT}/read`)) {
       state.reads.push(route.request().postDataJSON().message_ids);
       state.row.unread_count = 0;

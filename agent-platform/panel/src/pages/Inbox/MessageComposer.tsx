@@ -5,10 +5,11 @@ interface MessageComposerProps {
   value: string;
   busy: boolean;
   onChange: (value: string) => void;
+  onBlur: () => void;
   onSubmit: () => void;
 }
 
-export function MessageComposer({ value, busy, onChange, onSubmit }: MessageComposerProps) {
+export function MessageComposer({ value, busy, onChange, onBlur, onSubmit }: MessageComposerProps) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onSubmit();
@@ -28,6 +29,7 @@ export function MessageComposer({ value, busy, onChange, onSubmit }: MessageComp
           rows={1}
           maxLength={16_000}
           value={value}
+          onBlur={onBlur}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {

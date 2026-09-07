@@ -35,6 +35,7 @@ interface InboxShellProps {
   onMessagesRead: (conversationId: string, messageIds: string[]) => Promise<boolean>;
   onSelect: (conversation: InboxConversation) => void;
   onDraftChange: (value: string) => void;
+  onDraftBlur: () => void;
   onReassignChange: (value: string) => void;
   onAutomationAgentChange: (value: string) => void;
   onBack: () => void;
@@ -70,6 +71,7 @@ export function InboxShell({
   onMessagesRead,
   onSelect,
   onDraftChange,
+  onDraftBlur,
   onReassignChange,
   onAutomationAgentChange,
   onBack,
@@ -114,6 +116,7 @@ export function InboxShell({
         assignmentHistoryTotal={assignmentHistoryTotal}
         onMessagesRead={onMessagesRead}
         onDraftChange={onDraftChange}
+        onDraftBlur={onDraftBlur}
         onReassignChange={onReassignChange}
         onAutomationAgentChange={onAutomationAgentChange}
         onBack={onBack}

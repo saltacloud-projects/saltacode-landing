@@ -8,6 +8,7 @@ interface InboxSnapshot {
   unread_conversations: number;
   active_conversations: number;
   historical_conversations: number;
+  presence_degraded: boolean;
 }
 
 interface InboxLiveState {
@@ -26,6 +27,7 @@ function parseSnapshot(value: string): InboxSnapshot {
   const parsed = JSON.parse(value) as InboxSnapshot;
   if (
     typeof parsed.revision !== "string" ||
+    (parsed.presence_degraded !== undefined && typeof parsed.presence_degraded !== "boolean") ||
     ![
       parsed.unread_conversations,
       parsed.active_conversations,
@@ -33,7 +35,7 @@ function parseSnapshot(value: string): InboxSnapshot {
     ].every((count) => Number.isSafeInteger(count) && count >= 0)
   )
     throw new Error("Invalid inbox snapshot");
-  return parsed;
+  return { ...parsed, presence_degraded: parsed.presence_degraded ?? false };
 }
 
 export function InboxLiveProvider({ children }: { children: ReactNode }) {
@@ -115,7 +117,9 @@ export function InboxLiveProvider({ children }: { children: ReactNode }) {
                     connected: true,
                     revision:
                       current.revision +
-                      (!current.connected || current.snapshot?.revision !== snapshot.revision
+                      (!current.connected ||
+                      current.snapshot?.revision !== snapshot.revision ||
+                      current.snapshot?.presence_degraded !== snapshot.presence_degraded
                         ? 1
                         : 0),
                   }));

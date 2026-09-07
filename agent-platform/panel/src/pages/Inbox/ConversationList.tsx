@@ -1,6 +1,7 @@
 import { LoaderCircle, MessageSquare } from "lucide-react";
 import { useInboxLive } from "../../inbox/InboxLiveContext";
 import type { InboxConversation } from "../../inbox/types";
+import { useHumanTyping } from "../../inbox/useHumanTyping";
 import {
   AUTHOR_LABELS,
   CONTROL_LABELS,
@@ -24,7 +25,7 @@ export function ConversationList({
   hiddenOnMobile,
   onSelect,
 }: ConversationListProps) {
-  const { connected, revision } = useInboxLive();
+  const { connected, revision, snapshot } = useInboxLive();
   return (
     <section
       aria-label="Conversaciones"
@@ -49,7 +50,13 @@ export function ConversationList({
               item.control_mode === "automated"
                 ? item.agent_activity
                 : null;
-            const author = item.last_message_author_type;
+            const freshPresence =
+              connected &&
+              !snapshot?.presence_degraded &&
+              item.observedLiveRevision === revision &&
+              document.visibilityState === "visible" &&
+              item.status !== "closed" &&
+              item.control_mode !== "closed";
             const unread = item.unread_count ?? 0;
             return (
               <button
@@ -83,17 +90,11 @@ export function ConversationList({
                     )}
                   </span>
                   <span className="mt-1 flex min-w-0 items-center gap-2">
-                    <span
-                      className={`block min-w-0 flex-1 truncate text-xs ${activity ? "text-amber-300" : "text-[var(--text-secondary)]"}`}
-                    >
-                      {activity
-                        ? activity.status === "queued"
-                          ? "Respuesta en cola…"
-                          : "Agente preparando respuesta…"
-                        : item.last_message_preview
-                          ? `${author && author !== "unknown" ? `${AUTHOR_LABELS[author]}: ` : ""}${item.last_message_preview}`
-                          : "Sin vista previa disponible"}
-                    </span>
+                    <ConversationPreview
+                      item={item}
+                      activity={activity}
+                      freshPresence={freshPresence}
+                    />
                     {unread > 0 && (
                       <span
                         role="status"
@@ -131,5 +132,40 @@ export function ConversationList({
         </div>
       )}
     </section>
+  );
+}
+
+function ConversationPreview({
+  item,
+  activity,
+  freshPresence,
+}: {
+  item: InboxConversation;
+  activity: InboxConversation["agent_activity"];
+  freshPresence: boolean;
+}) {
+  const visitorTyping = useHumanTyping(item.presence?.visitor, freshPresence);
+  const operatorTyping = useHumanTyping(
+    item.presence?.operator,
+    freshPresence && item.control_mode === "human",
+  );
+  const author = item.last_message_author_type;
+  const preview = item.last_message_preview
+    ? `${author && author !== "unknown" ? `${AUTHOR_LABELS[author]}: ` : ""}${item.last_message_preview}`
+    : "Sin vista previa disponible";
+  return (
+    <span
+      className={`block min-w-0 flex-1 truncate text-xs ${visitorTyping || operatorTyping || activity ? "text-amber-300" : "text-[var(--text-secondary)]"}`}
+    >
+      {visitorTyping
+        ? "Visitante escribiendo…"
+        : operatorTyping
+          ? "Operador escribiendo…"
+          : activity
+            ? activity.status === "queued"
+              ? "Respuesta en cola…"
+              : "Agente preparando respuesta…"
+            : preview}
+    </span>
   );
 }
