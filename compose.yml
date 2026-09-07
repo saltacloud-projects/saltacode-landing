@@ -17,6 +17,7 @@ services:
     build:
       context: .
       dockerfile: apps/landing/Dockerfile
+      network: ${SALTACODE_BUILD_NETWORK:-default}
     environment:
       BACKEND_URL: http://backend:8000
     ports:
@@ -43,6 +44,7 @@ services:
     build:
       context: ./apps/web-bff
       dockerfile: Dockerfile
+      network: ${SALTACODE_BUILD_NETWORK:-default}
     environment:
       SALTACODE_APP_ENV: ${SALTACODE_APP_ENV:-development}
       SALTACODE_ALLOWED_ORIGINS: ${SALTACODE_ALLOWED_ORIGINS:-http://localhost:18080}

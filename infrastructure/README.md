@@ -62,6 +62,21 @@ SALTACODE_ENV_FILE=/etc/saltacode/production.env \
 
 Preflight checks Docker/Compose, Git/release identity, immutable Redis, service build inputs, loopback bindings, ports, Docker CIDR availability, private Redis URL, secret length/mode/group, production rate limiting, and the effective Compose model.
 
+### Build-network override
+
+`SALTACODE_BUILD_NETWORK` defaults to `default`; release configuration accepts only
+`default` or `host`. If dependency downloads fail because Docker's build bridge cannot
+resolve package registries while host DNS works, an authorized operator can set
+`SALTACODE_BUILD_NETWORK=host` in the external release environment and retry with a new
+immutable release tag. There is no automatic fallback or global Docker DNS change.
+
+This applies only to frontend/BFF Dockerfile `RUN` steps, not running containers, ports,
+runtime networks, or Agent Platform. Host mode allows those build steps to reach the
+host network, so use it only for trusted, reviewed build inputs. Both the effective Compose
+hash and the allowlisted non-secret environment hash record the selected mode. Restore
+`default` for subsequent builds once bridge DNS is repaired. See the
+[Docker build network reference](https://docs.docker.com/reference/compose-file/build/#network).
+
 ## Deploy and verify
 
 ```bash

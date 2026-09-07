@@ -60,6 +60,11 @@ configure_environment() {
   [[ "${RELEASE}" != REPLACE_* && "${RELEASE}" != "dev" ]] ||
     die "replace the SALTACODE_RELEASE placeholder with an immutable tag"
 
+  BUILD_NETWORK="${SALTACODE_BUILD_NETWORK:-$(env_value SALTACODE_BUILD_NETWORK "${ENV_FILE}")}"
+  BUILD_NETWORK="${BUILD_NETWORK:-default}"
+  [[ "${BUILD_NETWORK}" == "default" || "${BUILD_NETWORK}" == "host" ]] ||
+    die "SALTACODE_BUILD_NETWORK must be default or host (build steps only)"
+
   FRONTEND_PORT="${SALTACODE_FRONTEND_PORT:-$(env_value SALTACODE_FRONTEND_PORT "${ENV_FILE}")}"
   BACKEND_PORT="${SALTACODE_BACKEND_PORT:-$(env_value SALTACODE_BACKEND_PORT "${ENV_FILE}")}"
   FRONTEND_BIND_ADDRESS="${SALTACODE_FRONTEND_BIND_ADDRESS:-$(env_value SALTACODE_FRONTEND_BIND_ADDRESS "${ENV_FILE}")}"
@@ -101,6 +106,7 @@ configure_environment() {
   fi
 
   export SALTACODE_RELEASE="${RELEASE}"
+  export SALTACODE_BUILD_NETWORK="${BUILD_NETWORK}"
   export SALTACODE_FRONTEND_PORT="${FRONTEND_PORT}"
   export SALTACODE_BACKEND_PORT="${BACKEND_PORT}"
   export SALTACODE_FRONTEND_BIND_ADDRESS="${FRONTEND_BIND_ADDRESS}"
@@ -247,6 +253,7 @@ environment_contract_hash() {
   local keys key
   keys=(
     SALTACODE_RELEASE
+    SALTACODE_BUILD_NETWORK
     SALTACODE_FRONTEND_BIND_ADDRESS
     SALTACODE_FRONTEND_PORT
     SALTACODE_BACKEND_BIND_ADDRESS
