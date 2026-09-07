@@ -83,6 +83,12 @@ presentation fields, so a site-only rollback across that contract is unsafe; see
   configured and verified providers. Capturing a request is not sending a quote.
 - Existing Inbox history loads at most 500 messages; older unseen records remain unread.
   Add older-page navigation when that operational limit is reached.
+- Stable public chat screenshots at 320 and 390 px in both themes confirm an opaque,
+  settled dialog, preserved operator authorship and intact controls. At 320 px the
+  underlying page separately measures 333 px before and after opening chat: service
+  card media extends 13 px beyond the viewport. The chat itself has no horizontal
+  overflow. This unchanged services-layout issue is recorded for a separate visual
+  iteration, not hidden by a global overflow rule in the chat fix.
 - Public initial JavaScript remains 5,803 bytes. Deferred chat is 24,731 bytes JS and
   10,140 bytes CSS, within the reviewed [budgets](seo-performance-contract.md).
   No rankings or field Core Web Vitals improvement is claimed.
