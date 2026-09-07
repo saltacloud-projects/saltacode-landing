@@ -1,5 +1,8 @@
 # Live Inbox and public chat — 2026-09-07
 
+Status: deployed and verified. See the [production acceptance record](live-inbox-production-release-2026-09-07.md)
+for immutable artifacts, positive canary results and remaining activation boundaries.
+
 ## Functional contract
 
 - **Active** means neither conversation status nor control mode is `closed`. Human-owned
