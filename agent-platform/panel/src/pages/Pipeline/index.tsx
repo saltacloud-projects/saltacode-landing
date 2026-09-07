@@ -30,7 +30,7 @@ const STAGES = [
     title: "Datos y solicitud",
     owner: "Herramienta más formulario validado",
     description:
-      "El agente puede proponer capturar datos mediante una herramienta habilitada. El visitante confirma contacto, canal y consentimiento; el servidor valida y registra la solicitud.",
+      "En el chat web, el agente puede proponer capturar datos mediante una herramienta habilitada. El visitante confirma contacto, canal y consentimiento en el formulario; el servidor valida y persiste la solicitud. Esta captura todavía no está completada para WhatsApp.",
   },
   {
     title: "Oportunidad",
@@ -83,7 +83,7 @@ export default function PipelinePage() {
     {
       path: "handoffs",
       label: "Reglas de derivación",
-      permission: PERMISSIONS.OPPORTUNITIES_MANAGE,
+      permission: PERMISSIONS.RUNTIME_READ,
     },
     {
       path: "automation-policy",
@@ -179,7 +179,13 @@ export default function PipelinePage() {
           <>
             <nav aria-label="Configuración comercial del agente" className="flex flex-wrap gap-2">
               {configLinks
-                .filter((link) => hasPermission(user, link.permission))
+                .filter(
+                  (link) =>
+                    hasPermission(user, PERMISSIONS.PROFILES_READ) &&
+                    selected.capabilities.includes(PERMISSIONS.PROFILES_READ) &&
+                    hasPermission(user, link.permission) &&
+                    selected.capabilities.includes(link.permission),
+                )
                 .map((link) => (
                   <Link
                     key={link.path}
@@ -213,9 +219,11 @@ export default function PipelinePage() {
         </h3>
         <p className="mt-2 text-sm text-[var(--text-secondary)]">
           Web y WhatsApp cuentan con adaptadores implementados; la conexión y el tráfico deben
-          verificarse. Instagram DM, Facebook Messenger y email todavía requieren implementación y
-          habilitación del proveedor. El sistema autoritativo de presupuestos y una agenda externa
-          no quedan conectados por guardar esta política.
+          verificarse. En WhatsApp todavía falta completar la captura comercial de contacto y
+          consentimiento, además de configurar el proveedor. Instagram DM, Facebook Messenger y
+          email todavía requieren implementación y habilitación del proveedor. El sistema
+          autoritativo de presupuestos y una agenda externa no quedan conectados por guardar esta
+          política.
         </p>
         {hasPermission(user, PERMISSIONS.CONNECTIONS_READ) && (
           <Link

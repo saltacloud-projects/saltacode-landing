@@ -1,6 +1,10 @@
 import { ArrowRight, ArrowRightLeft, Plus, RefreshCw } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
+import { api } from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
+import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import type { CrmAgent } from "../../crm/operations";
 import { createHandoffRoute, listHandoffRoutes, updateHandoffRoute } from "./api";
 import { type HandoffRoute, type HandoffTrigger, routeVersion } from "./types";
 
@@ -10,7 +14,12 @@ const TRIGGER_LABELS: Record<HandoffTrigger, string> = {
 };
 
 export default function HandoffsPage() {
-  const { profiles, selectedAgent } = useAgentWorkspace();
+  const { selectedAgent } = useAgentWorkspace();
+  const { user } = useAuth();
+  const [profiles, setProfiles] = useState<CrmAgent[]>([]);
+  const currentAgentId = useRef(selectedAgent?.id);
+  currentAgentId.current = selectedAgent?.id;
+  const loadVersion = useRef(0);
   const [routes, setRoutes] = useState<HandoffRoute[]>([]);
   const [targetAgentId, setTargetAgentId] = useState("");
   const [trigger, setTrigger] = useState<HandoffTrigger>("quote_requested");
@@ -19,18 +28,41 @@ export default function HandoffsPage() {
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const targetProfiles = profiles.filter((profile) => profile.id !== selectedAgent?.id);
+  const canManage =
+    hasPermission(user, PERMISSIONS.RUNTIME_MANAGE) &&
+    Boolean(
+      profiles
+        .find((profile) => profile.id === selectedAgent?.id)
+        ?.capabilities.includes(PERMISSIONS.RUNTIME_MANAGE),
+    );
+  const targetProfiles = profiles.filter(
+    (profile) =>
+      profile.id !== selectedAgent?.id && profile.capabilities.includes(PERMISSIONS.RUNTIME_MANAGE),
+  );
 
   const refresh = useCallback(async () => {
-    if (!selectedAgent) return;
+    if (!selectedAgent || currentAgentId.current !== selectedAgent.id) return;
+    const requestVersion = ++loadVersion.current;
     setLoading(true);
+    setProfiles([]);
     setError("");
     try {
-      setRoutes(await listHandoffRoutes(selectedAgent.id));
+      const [routeRows, authorizedAgents] = await Promise.all([
+        listHandoffRoutes(selectedAgent.id),
+        api<CrmAgent[]>("/crm/automation/agents"),
+      ]);
+      if (requestVersion !== loadVersion.current || currentAgentId.current !== selectedAgent.id)
+        return;
+      setRoutes(routeRows);
+      setProfiles(authorizedAgents);
     } catch (cause) {
+      if (requestVersion !== loadVersion.current || currentAgentId.current !== selectedAgent.id)
+        return;
+      setRoutes([]);
       setError(cause instanceof Error ? cause.message : "No se pudieron cargar los handoffs.");
     } finally {
-      setLoading(false);
+      if (requestVersion === loadVersion.current && currentAgentId.current === selectedAgent.id)
+        setLoading(false);
     }
   }, [selectedAgent]);
 
@@ -42,7 +74,12 @@ export default function HandoffsPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!selectedAgent || !targetAgentId) return;
+    if (
+      !selectedAgent ||
+      !canManage ||
+      !targetProfiles.some((profile) => profile.id === targetAgentId)
+    )
+      return;
     setCreating(true);
     setError("");
     try {
@@ -60,7 +97,13 @@ export default function HandoffsPage() {
     route: HandoffRoute,
     input: { targetAgentId?: string; isActive?: boolean },
   ) => {
-    if (!selectedAgent) return;
+    const destination = input.targetAgentId ?? route.target_agent_id;
+    if (
+      !selectedAgent ||
+      !canManage ||
+      !targetProfiles.some((profile) => profile.id === destination)
+    )
+      return;
     setBusyRouteId(route.id);
     setError("");
     try {
@@ -96,6 +139,7 @@ export default function HandoffsPage() {
         <button
           type="button"
           onClick={() => void refresh()}
+          aria-label="Actualizar reglas"
           className="ml-auto inline-flex items-center gap-2 rounded border border-[var(--border-color)] px-3 py-2 text-sm"
         >
           <RefreshCw size={16} /> <span className="hidden sm:inline">Actualizar</span>
@@ -108,60 +152,69 @@ export default function HandoffsPage() {
         original conserva su agente y su historial.
       </div>
 
-      <form
-        onSubmit={(event) => void submit(event)}
-        className="mb-6 grid gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4 md:grid-cols-[1fr_1fr_auto_auto] md:items-end"
-      >
-        <label className="text-xs text-[var(--text-muted)]">
-          Agente destino
-          <select
-            required
-            value={targetAgentId}
-            onChange={(event) => setTargetAgentId(event.target.value)}
-            className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
-          >
-            <option value="">Seleccionar…</option>
-            {targetProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs text-[var(--text-muted)]">
-          Disparador
-          <select
-            value={trigger}
-            onChange={(event) => setTrigger(event.target.value as HandoffTrigger)}
-            className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
-          >
-            {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex min-h-10 items-center gap-2 rounded border border-[var(--border-color)] px-3 text-sm">
-          <input
-            type="checkbox"
-            checked={isActive}
-            onChange={(event) => setIsActive(event.target.checked)}
-          />
-          Activa
-        </label>
-        <button
-          type="submit"
-          disabled={creating || !targetAgentId}
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      {canManage && (
+        <form
+          onSubmit={(event) => void submit(event)}
+          className="mb-6 grid gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-4 md:grid-cols-[1fr_1fr_auto_auto] md:items-end"
         >
-          <Plus size={16} /> {creating ? "Creando…" : "Crear regla"}
-        </button>
-      </form>
+          <label className="text-xs text-[var(--text-muted)]">
+            Agente destino
+            <select
+              required
+              value={targetAgentId}
+              onChange={(event) => setTargetAgentId(event.target.value)}
+              className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+            >
+              <option value="">Seleccionar…</option>
+              {targetProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[var(--text-muted)]">
+            Disparador
+            <select
+              value={trigger}
+              onChange={(event) => setTrigger(event.target.value as HandoffTrigger)}
+              className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+            >
+              {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-h-10 items-center gap-2 rounded border border-[var(--border-color)] px-3 text-sm">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(event) => setIsActive(event.target.checked)}
+            />
+            Activa
+          </label>
+          <button
+            type="submit"
+            disabled={creating || !targetAgentId}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            <Plus size={16} /> {creating ? "Creando…" : "Crear regla"}
+          </button>
+        </form>
+      )}
+      {!loading && !canManage && (
+        <p className="mb-4 rounded border border-[var(--border-color)] p-3 text-sm">
+          Acceso de solo lectura: podés consultar las reglas, pero no crear ni modificar
+          derivaciones de este agente.
+        </p>
+      )}
 
-      {targetProfiles.length === 0 && (
+      {canManage && targetProfiles.length === 0 && (
         <p className="mb-4 rounded border border-[var(--warning)]/35 bg-[var(--warning)]/5 p-3 text-sm">
-          Necesitás acceso visible a otro agente para configurarlo como destino.
+          Necesitás permiso de administración de runtime sobre otro agente para configurarlo como
+          destino.
         </p>
       )}
       {error && (
@@ -188,33 +241,42 @@ export default function HandoffsPage() {
             <div className="flex flex-wrap items-center gap-2">
               <strong>{selectedAgent?.name}</strong>
               <ArrowRight size={17} className="text-[var(--accent)]" />
-              <select
-                aria-label={`Destino para ${TRIGGER_LABELS[route.trigger]}`}
-                value={route.target_agent_id}
-                disabled={busyRouteId === route.id}
-                onChange={(event) => void update(route, { targetAgentId: event.target.value })}
-                className="min-w-0 flex-1 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm"
-              >
-                {!targetProfiles.some((profile) => profile.id === route.target_agent_id) && (
-                  <option value={route.target_agent_id}>
-                    {profileName(route.target_agent_id)}
-                  </option>
-                )}
-                {targetProfiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={route.is_active}
+              {canManage ? (
+                <select
+                  aria-label={`Destino para ${TRIGGER_LABELS[route.trigger]}`}
+                  value={route.target_agent_id}
                   disabled={busyRouteId === route.id}
-                  onChange={(event) => void update(route, { isActive: event.target.checked })}
-                />
-                Activa
-              </label>
+                  onChange={(event) => void update(route, { targetAgentId: event.target.value })}
+                  className="min-w-0 flex-1 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm"
+                >
+                  {!targetProfiles.some((profile) => profile.id === route.target_agent_id) && (
+                    <option value={route.target_agent_id}>
+                      {profileName(route.target_agent_id)}
+                    </option>
+                  )}
+                  {targetProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <strong>{profileName(route.target_agent_id)}</strong>
+              )}
+              {canManage &&
+              targetProfiles.some((profile) => profile.id === route.target_agent_id) ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={route.is_active}
+                    disabled={busyRouteId === route.id}
+                    onChange={(event) => void update(route, { isActive: event.target.checked })}
+                  />
+                  Activa
+                </label>
+              ) : (
+                <span className="text-sm">{route.is_active ? "Activa" : "Inactiva"}</span>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]">
               <span>{TRIGGER_LABELS[route.trigger]}</span>

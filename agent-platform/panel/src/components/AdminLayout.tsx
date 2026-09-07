@@ -207,6 +207,12 @@ const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
         permission: PERMISSIONS.RUNTIME_READ,
       },
       {
+        segment: "handoffs",
+        label: "Derivaciones",
+        icon: ArrowRightLeft,
+        permission: PERMISSIONS.RUNTIME_READ,
+      },
+      {
         segment: "knowledge",
         label: "Conocimiento",
         icon: Brain,

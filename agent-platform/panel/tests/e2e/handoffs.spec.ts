@@ -11,7 +11,7 @@ const admin = {
   role: "admin",
   is_active: true,
   must_change_password: false,
-  permissions: ["profiles.read", "opportunities.manage"],
+  permissions: ["profiles.read", "runtime.read", "runtime.manage"],
 };
 
 const profiles = [
@@ -57,21 +57,46 @@ interface HandoffState {
 }
 
 async function json(route: Route, value: unknown) {
-  await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(value),
+  });
 }
 
-async function prepare(page: Page, state: HandoffState) {
+async function prepare(
+  page: Page,
+  state: HandoffState,
+  options: { permissions?: string[]; sourceManage?: boolean; targetManage?: boolean } = {},
+) {
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "tokens",
-      JSON.stringify({ access_token: "test", refresh_token: "test" }),
-    );
+    localStorage.setItem("tokens", JSON.stringify({ access_token: "test", refresh_token: "test" }));
   });
   await page.route("**/api/admin/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path.endsWith("/auth/me")) return json(route, admin);
+    if (path.endsWith("/auth/me"))
+      return json(route, { ...admin, permissions: options.permissions ?? admin.permissions });
     if (path.endsWith("/profiles/")) return json(route, profiles);
+    if (path.endsWith("/crm/automation/agents"))
+      return json(
+        route,
+        profiles.map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+          is_active: profile.is_active,
+          capabilities: [
+            "runtime.read",
+            ...((
+              profile.id === AGENT_A
+                ? options.sourceManage !== false
+                : options.targetManage !== false
+            )
+              ? ["runtime.manage"]
+              : []),
+          ],
+        })),
+      );
     if (path.endsWith("/handoff-routes/") && request.method() === "GET") {
       return json(route, state.routes);
     }
@@ -124,7 +149,9 @@ test("operator creates and updates an agent-scoped handoff rule", async ({ page 
   await prepare(page, state);
   await page.goto(`/agents/${AGENT_A}/handoffs`);
 
-  await expect(page.getByText("la conversación original conserva su agente", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("la conversación original conserva su agente", { exact: false }),
+  ).toBeVisible();
   await page.getByLabel("Agente destino").selectOption(AGENT_B);
   await page.getByLabel("Disparador").selectOption("manual_escalation");
   await page.getByRole("button", { name: "Crear regla" }).click();
@@ -165,4 +192,44 @@ test("mobile handoff workspace has no horizontal overflow", async ({ page }) => 
     innerWidth: window.innerWidth,
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth);
+});
+
+test("runtime-read operator sees handoff rules without opportunity permission or write controls", async ({
+  page,
+}) => {
+  const state: HandoffState = { routes: [existingRoute()], commands: [] };
+  await prepare(page, state, {
+    permissions: ["profiles.read", "runtime.read"],
+    sourceManage: false,
+    targetManage: false,
+  });
+  await page.goto(`/agents/${AGENT_A}/handoffs`);
+  await expect(page.getByRole("heading", { name: "Handoffs de Agente comercial" })).toBeVisible();
+  await expect(page.getByText(/Acceso de solo lectura/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crear regla" })).toHaveCount(0);
+  await expect(page.getByLabel("Reglas de handoff").getByRole("checkbox")).toHaveCount(0);
+  await expect(page.getByLabel("Reglas de handoff").getByRole("combobox")).toHaveCount(0);
+  expect(state.commands).toEqual([]);
+});
+
+test("source grant prevents writes despite role runtime-manage permission", async ({ page }) => {
+  const state: HandoffState = { routes: [existingRoute()], commands: [] };
+  await prepare(page, state, { sourceManage: false });
+  await page.goto(`/agents/${AGENT_A}/handoffs`);
+  await expect(page.getByText(/Acceso de solo lectura/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crear regla" })).toHaveCount(0);
+  expect(state.commands).toEqual([]);
+});
+
+test("readable target without manage grant is not offered for writes", async ({ page }) => {
+  const state: HandoffState = { routes: [existingRoute()], commands: [] };
+  await prepare(page, state, { targetManage: false });
+  await page.goto(`/agents/${AGENT_A}/handoffs`);
+  await expect(page.getByLabel("Agente destino").getByRole("option")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Crear regla" })).toBeDisabled();
+  await expect(page.getByLabel("Reglas de handoff").getByRole("checkbox")).toHaveCount(0);
+  await expect(
+    page.getByText(/permiso de administración de runtime sobre otro agente/),
+  ).toBeVisible();
+  expect(state.commands).toEqual([]);
 });

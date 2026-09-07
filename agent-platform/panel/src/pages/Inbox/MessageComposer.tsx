@@ -37,6 +37,7 @@ export function MessageComposer({ value, busy, onChange, onSubmit }: MessageComp
         />
         <button
           type="submit"
+          aria-label="Enviar respuesta"
           disabled={busy || !value.trim()}
           className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 text-sm font-medium text-white disabled:opacity-50"
         >

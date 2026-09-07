@@ -443,8 +443,10 @@ export default function App() {
               <Route
                 path="handoffs"
                 element={
-                  <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_MANAGE}>
-                    <HandoffsPage />
+                  <PermissionRoute permission={PERMISSIONS.PROFILES_READ}>
+                    <PermissionRoute permission={PERMISSIONS.RUNTIME_READ}>
+                      <HandoffsPage />
+                    </PermissionRoute>
                   </PermissionRoute>
                 }
               />

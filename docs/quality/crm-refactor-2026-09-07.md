@@ -36,6 +36,13 @@ and agentic contracts:
 - Empty database upgrade, prior revision upgrade/data preservation, and Alembic drift check.
 - Security dependency audits, Compose fixtures, shell syntax, and agentic validation.
 
+The final panel-only checkpoint passed **91 E2E tests**, Biome, TypeScript, Vite build,
+and the dependency audit with zero reported vulnerabilities. It adds read-only handoff access,
+source/target runtime-grant checks, scoped configuration links requiring workspace access,
+and an accessible mobile reply button. Global progression remains usable without profile access.
+The Pipeline copy now explicitly distinguishes web contact capture from the unfinished WhatsApp
+equivalent. Production application and database state remain untouched.
+
 The regular panel E2E suite uses mocked API responses. Separately, a browser against the actual
 API and an isolated PostgreSQL database verified login, UI agent creation, policy update and
 persistence after reload, global inbox takeover, operator reply/history reload, and explicit

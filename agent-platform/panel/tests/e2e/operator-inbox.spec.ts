@@ -553,9 +553,9 @@ test("mobile inbox opens one thread without horizontal overflow", async ({ page 
   await prepare(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const state: InboxState = {
-    mode: "automated",
+    mode: "human",
     version: 0,
-    ownerId: null,
+    ownerId: ADMIN_ID,
     automationAgentId: AGENT_A,
     automationVersion: 0,
     assignmentHistory: [],
@@ -566,6 +566,7 @@ test("mobile inbox opens one thread without horizontal overflow", async ({ page 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
   await expect(page.getByRole("button", { name: "Volver a conversaciones" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enviar respuesta", exact: true })).toBeVisible();
   const dimensions = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth: window.innerWidth,
