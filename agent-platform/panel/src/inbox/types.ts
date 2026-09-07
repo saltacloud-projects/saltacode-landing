@@ -1,4 +1,5 @@
 import type { CrmOwnership } from "../crm/operations";
+export type MessageAuthorType = "visitor" | "agent" | "operator" | "system" | "unknown";
 export type ConversationControlMode = "automated" | "paused" | "human" | "closed";
 
 export interface InboxOperator {
@@ -34,6 +35,9 @@ export interface InboxConversation extends CrmOwnership {
   latest_inbound_message_id?: string | null;
   agent_activity?: { status: "queued" | "running"; agent_id: string; name: string } | null;
   last_activity_at: string;
+  last_message_at?: string | null;
+  last_message_preview?: string | null;
+  last_message_author_type?: MessageAuthorType;
 }
 
 export interface InboxConversationPage {
@@ -44,6 +48,7 @@ export interface InboxConversationPage {
 }
 
 export interface InboxMessage {
+  author_type?: MessageAuthorType;
   id: string;
   role: string;
   content: string;
@@ -72,13 +77,19 @@ export interface InboxThread {
   control_events: ConversationControlEvent[];
 }
 
+export type LastMessagePeriod = "all" | "today" | "7d" | "30d" | "custom";
+
 export interface InboxFilters {
   channel: string;
   lifecycle?: "active" | "history" | "all";
   controlMode: string;
   status: string;
   owner: string;
-  updatedWithinHours: string;
+  search?: string;
+  unreadOnly?: boolean;
+  lastMessagePeriod?: LastMessagePeriod;
+  lastMessageFrom?: string;
+  lastMessageTo?: string;
 }
 
 export interface ControlTransition {

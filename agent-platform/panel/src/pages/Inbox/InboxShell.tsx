@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { AgentProfile } from "../../agents/types";
 import type {
   AutomationAssignmentEvent,
@@ -10,6 +11,8 @@ import { ConversationList } from "./ConversationList";
 import { ConversationThread } from "./ConversationThread";
 
 interface InboxShellProps {
+  listHeader: ReactNode;
+  listFooter: ReactNode;
   items: InboxConversation[];
   thread: InboxThread | null;
   operators: InboxOperator[];
@@ -43,6 +46,8 @@ interface InboxShellProps {
 }
 
 export function InboxShell({
+  listHeader,
+  listFooter,
   items,
   thread,
   operators,
@@ -75,14 +80,20 @@ export function InboxShell({
   onLoadMoreAssignmentHistory,
 }: InboxShellProps) {
   return (
-    <div className="grid min-h-[68vh] gap-4 lg:grid-cols-[minmax(290px,380px)_1fr]">
-      <ConversationList
-        items={items}
-        selectedId={thread?.conversation.id}
-        loading={loadingList}
-        hiddenOnMobile={Boolean(thread)}
-        onSelect={onSelect}
-      />
+    <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(290px,360px)_minmax(0,1fr)]">
+      <div
+        className={`${thread ? "hidden lg:flex" : "flex"} min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)]`}
+      >
+        <div className="shrink-0">{listHeader}</div>
+        <ConversationList
+          items={items}
+          selectedId={thread?.conversation.id}
+          loading={loadingList}
+          hiddenOnMobile={Boolean(thread)}
+          onSelect={onSelect}
+        />
+        <div className="shrink-0">{listFooter}</div>
+      </div>
       <ConversationThread
         thread={thread}
         operators={operators}

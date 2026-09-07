@@ -1,5 +1,6 @@
 import { api } from "../api/client";
 import { type CrmListOptions, listPath } from "../crm/operations";
+import { lastMessageBounds } from "./last-message-range";
 import type {
   AutomationAssignmentHistoryPage,
   AutomationAssignmentReceipt,
@@ -22,6 +23,13 @@ export async function listInboxConversations(
   options: CrmListOptions = {},
 ): Promise<InboxConversationPage> {
   const query = new URLSearchParams();
+  if (filters.search?.trim()) query.set("search", filters.search.trim());
+  if (filters.unreadOnly) query.set("unread_only", "true");
+  const bounds = lastMessageBounds(filters);
+  if (bounds) {
+    query.set("last_message_from", bounds.from);
+    query.set("last_message_before", bounds.before);
+  }
   if (filters.channel) query.set("channel", filters.channel);
   if (filters.controlMode) query.set("control_mode", filters.controlMode);
   if (filters.lifecycle) query.set("lifecycle", filters.lifecycle);
@@ -31,11 +39,6 @@ export async function listInboxConversations(
   if (filters.owner.startsWith("operator:")) {
     query.set("assigned_admin_id", filters.owner.slice("operator:".length));
   }
-  if (filters.updatedWithinHours) {
-    const hours = Number(filters.updatedWithinHours);
-    query.set("updated_after", new Date(Date.now() - hours * 60 * 60 * 1_000).toISOString());
-  }
-  query.set("limit", "100");
   return api<InboxConversationPage>(listPath("inbox", agentId, query, options));
 }
 

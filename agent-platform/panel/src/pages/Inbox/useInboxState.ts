@@ -31,7 +31,9 @@ const EMPTY_FILTERS: InboxFilters = {
   status: "",
   lifecycle: "active",
   owner: "",
-  updatedWithinHours: "",
+  lastMessagePeriod: "all",
+  search: "",
+  unreadOnly: false,
 };
 
 interface UseInboxStateOptions extends CrmListOptions {
@@ -187,7 +189,6 @@ export function useInboxState({
       setLoadingList(false);
       return;
     }
-    void loadList(agentId, filters);
     if (canManage && agentId && !global) {
       void listInboxOperators(agentId)
         .then((rows) => {
@@ -199,7 +200,11 @@ export function useInboxState({
           }
         });
     }
-  }, [agentId, filters, canManage, loadList, global]);
+  }, [agentId, canManage, global]);
+
+  useEffect(() => {
+    if (agentId || global) void loadList(agentId, filters);
+  }, [agentId, global, filters, loadList]);
 
   useEffect(() => {
     if ((!agentId && !global) || !revision || document.visibilityState !== "visible") return;
@@ -218,6 +223,24 @@ export function useInboxState({
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [agentId, filters, loadList, loadThread, global, connected]);
+
+  useEffect(() => {
+    if (!filters.lastMessagePeriod || ["all", "custom"].includes(filters.lastMessagePeriod)) return;
+    let timer: number;
+    const schedule = () => {
+      const midnight = new Date();
+      midnight.setHours(24, 0, 0, 0);
+      timer = window.setTimeout(
+        () => {
+          if (document.visibilityState === "visible") void loadList(agentId, filters, true);
+          schedule();
+        },
+        midnight.getTime() - Date.now() + 25,
+      );
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, [agentId, filters, loadList]);
 
   const openConversation = (conversation: InboxConversation) => {
     const owner = conversation.owner_agent_id ?? (global ? "" : agentId);
@@ -458,6 +481,7 @@ export function useInboxState({
           canOperateItem(global, thread?.conversation, user, PERMISSIONS.CONVERSATIONS_MANAGE) &&
           user &&
           thread?.conversation.control_mode === "human" &&
+          thread.conversation.status !== "closed" &&
           thread.conversation.assigned_operator?.id === user.id,
       ),
     [canManage, global, thread, user],

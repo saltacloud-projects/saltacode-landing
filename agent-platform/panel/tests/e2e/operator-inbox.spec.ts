@@ -330,6 +330,7 @@ test("a stale control command refreshes the thread and disables the composer", a
 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByRole("button", { name: "Detalles y controles" }).click();
   await expect(page.getByLabel("Respuesta del operador")).toBeVisible();
   await page.getByRole("button", { name: "Pausar" }).click();
 
@@ -392,6 +393,7 @@ test("operator prepares a different acting agent without resuming a paused conve
 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByRole("button", { name: "Detalles y controles" }).click();
 
   await expect(page.getByText("Canal / agente de routing")).toBeVisible();
   await expect(page.getByText("Responde automáticamente", { exact: true })).toBeVisible();
@@ -457,6 +459,7 @@ test("acting-agent history loads on demand and paginates without exposing event 
 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByRole("button", { name: "Detalles y controles" }).click();
   expect(historyOffsets).toEqual([]);
 
   await page.getByRole("button", { name: "Ver historial" }).click();
@@ -491,6 +494,7 @@ test("a stale acting-agent assignment refreshes its independent version", async 
 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByRole("button", { name: "Detalles y controles" }).click();
   await page.getByLabel("Agente que responde automáticamente").selectOption(AGENT_B);
   await page.getByRole("button", { name: "Asignar respuesta automática" }).click();
 
@@ -501,7 +505,7 @@ test("a stale acting-agent assignment refreshes its independent version", async 
   ).toBeVisible();
   await expect(page.getByText("Versión 3", { exact: true })).toBeVisible();
   await expect(
-    page.getByLabel("Detalle de conversación").getByText("Atención manual", { exact: true }),
+    page.getByLabel("Detalle de conversación").getByText("Atención manual · A tu cargo", { exact: true }),
   ).toBeVisible();
 });
 
@@ -522,6 +526,7 @@ test("an unavailable acting-agent target is reported without enumerating it", as
 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByRole("button", { name: "Detalles y controles" }).click();
   await page.getByLabel("Agente que responde automáticamente").selectOption(AGENT_B);
   await page.getByRole("button", { name: "Asignar respuesta automática" }).click();
 
@@ -545,6 +550,7 @@ test("closed conversations expose acting-agent history but disable reassignment"
 
   await page.goto(`/agents/${AGENT_A}/inbox`);
   await page.getByRole("button", { name: /Lead web/ }).click();
+  await page.getByRole("button", { name: "Detalles y controles" }).click();
 
   await expect(page.getByLabel("Agente que responde automáticamente")).toBeDisabled();
   await expect(page.getByRole("button", { name: "Asignar respuesta automática" })).toBeDisabled();

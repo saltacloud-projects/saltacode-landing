@@ -304,6 +304,7 @@ function AdminLayoutContent() {
   const { profiles, selectedAgent, loading: loadingAgents } = useAgentWorkspace();
   const navigate = useNavigate();
   const location = useLocation();
+  const isInbox = /^\/(?:agents\/[^/]+\/)?inbox\/?$/.test(location.pathname);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -553,7 +554,7 @@ function AdminLayoutContent() {
 
       <main
         id="panel-content"
-        className="min-w-0 flex-1 overflow-x-hidden px-4 pb-6 pt-16 text-[var(--text-primary)] md:p-6"
+        className={`min-w-0 flex-1 text-[var(--text-primary)] ${isInbox ? "flex h-dvh min-h-0 flex-col overflow-hidden px-2 pb-2 pt-14 md:p-4" : "overflow-x-hidden px-4 pb-6 pt-16 md:p-6"}`}
         tabIndex={-1}
       >
         <Suspense fallback={<RouteLoading />}>

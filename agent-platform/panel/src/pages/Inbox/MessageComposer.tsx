@@ -15,14 +15,17 @@ export function MessageComposer({ value, busy, onChange, onSubmit }: MessageComp
   };
 
   return (
-    <form onSubmit={submit} className="border-t border-[var(--border-color)] p-3">
+    <form
+      onSubmit={submit}
+      className="shrink-0 border-t border-[var(--border-color)] bg-[var(--bg-card)] p-3"
+    >
       <label htmlFor="operator-message" className="sr-only">
         Respuesta del operador
       </label>
       <div className="flex items-end gap-2">
         <textarea
           id="operator-message"
-          rows={2}
+          rows={1}
           maxLength={16_000}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -33,7 +36,7 @@ export function MessageComposer({ value, busy, onChange, onSubmit }: MessageComp
             }
           }}
           placeholder="Escribí una respuesta…"
-          className="min-h-12 flex-1 resize-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          className="min-h-12 max-h-32 min-w-0 flex-1 resize-none rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
         />
         <button
           type="submit"

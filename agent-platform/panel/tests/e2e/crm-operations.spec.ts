@@ -94,6 +94,7 @@ test("CRM home loads one paginated authorized collection without profile permiss
       (url) => url.pathname.endsWith("/crm/inbox") && url.searchParams.get("offset") === "50",
     ),
   ).toBe(true);
+  await page.getByText("Filtros y alcance", { exact: true }).click();
   await page.getByLabel("Agente de ingreso").selectOption(A);
   await expect(page.getByText("1–50 de 70")).toBeVisible();
   await expect

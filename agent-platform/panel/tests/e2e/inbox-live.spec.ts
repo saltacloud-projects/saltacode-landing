@@ -1,146 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
-
-const AGENT = "00000000-0000-0000-0000-0000000000a1";
-const CHAT = "20000000-0000-0000-0000-000000000002";
-const ADMIN = "10000000-0000-0000-0000-000000000001";
-const permissions = ["conversations.read", "conversations.manage"];
-const user = {
-  id: ADMIN,
-  name: "Operador de prueba",
-  email: "operator@example.test",
-  permissions,
-  is_active: true,
-  role: "operator",
-};
-const initialSnapshot = {
-  revision: "initial",
-  unread_conversations: 1,
-  active_conversations: 1,
-  historical_conversations: 2,
-};
-function message(index: number, role = "user", origin: string | null = null) {
-  return {
-    id: `30000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
-    role,
-    content: `Mensaje de prueba ${index}`,
-    status: "completed",
-    origin,
-    actor_admin_id: origin === "operator" ? ADMIN : null,
-    tool_names: [],
-    created_at: new Date(1_783_000_000_000 + index * 1_000).toISOString(),
-  };
-}
-function conversation() {
-  return {
-    id: CHAT,
-    principal_id: "visitor-test",
-    display_name: "Consulta en vivo",
-    channel: "web",
-    route_key: "website",
-    status: "active",
-    control_mode: "human",
-    control_version: 2,
-    routing_agent: { id: AGENT, name: "Comercial" },
-    automation_agent: { id: AGENT, name: "Comercial" },
-    automation_version: 1,
-    assigned_operator: user,
-    control_changed_at: "2026-09-07T10:00:00Z",
-    control_reason: null,
-    message_count: 1,
-    last_activity_at: "2026-09-07T10:00:00Z",
-    owner_agent_id: AGENT,
-    owner_agent_name: "Comercial",
-    capabilities: permissions,
-    unread_count: 1,
-    latest_inbound_message_id: message(1).id,
-    agent_activity: null as null | { status: string; agent_id: string; name: string },
-  };
-}
-async function fixture(page: Page, count = 1, rejectInitialToken = false) {
-  const state = {
-    row: conversation(),
-    messages: Array.from({ length: count }, (_, index) => message(index + 1)),
-    reads: [] as string[][],
-    lifecycle: [] as string[],
-    listRequests: 0,
-    refreshCalls: 0,
-  };
-  await page.addInitScript(
-    ({ initialSnapshot, rejectInitialToken }) => {
-      localStorage.setItem(
-        "tokens",
-        JSON.stringify({ access_token: "private-test-token", refresh_token: "test-refresh" }),
-      );
-      const original = window.fetch.bind(window);
-      Object.assign(window, { __streamRequests: [] });
-      window.fetch = async (input, init) => {
-        if (!String(input).endsWith("/api/admin/crm/inbox/live")) return original(input, init);
-        (window as unknown as { __streamRequests: unknown[] }).__streamRequests.push({
-          url: String(input),
-          authorization: new Headers(init?.headers).get("Authorization"),
-        });
-        if (
-          rejectInitialToken &&
-          new Headers(init?.headers).get("Authorization") === "Bearer private-test-token"
-        )
-          return new Response(JSON.stringify({ detail: "Expired" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        const encoder = new TextEncoder();
-        let controller: ReadableStreamDefaultController<Uint8Array>;
-        const body = new ReadableStream<Uint8Array>({
-          start(value) {
-            controller = value;
-          },
-        });
-        const emit = (snapshot: unknown) =>
-          controller.enqueue(
-            encoder.encode(`event: inbox.snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`),
-          );
-        Object.assign(window, { __inboxPush: emit, __inboxEnd: () => controller.close() });
-        init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
-        emit(initialSnapshot);
-        return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
-      };
-    },
-    { initialSnapshot, rejectInitialToken },
-  );
-  await page.route("**/api/admin/**", async (route) => {
-    const url = new URL(route.request().url());
-    const reply = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (url.pathname.endsWith("/auth/me")) return reply(user);
-    if (url.pathname.endsWith("/auth/refresh")) {
-      state.refreshCalls++;
-      return reply({ access_token: "renewed-token", refresh_token: "renewed-refresh" });
-    }
-    if (url.pathname.endsWith("/crm/inbox/agents"))
-      return reply([{ id: AGENT, name: "Comercial", is_active: true, capabilities: permissions }]);
-    if (url.pathname.endsWith("/crm/inbox")) {
-      state.listRequests++;
-      state.lifecycle.push(url.searchParams.get("lifecycle") || "");
-      return reply({ items: [state.row], total: 1, limit: 50, offset: 0 });
-    }
-    if (url.pathname.endsWith("/inbox/operators")) return reply([user]);
-    if (url.pathname.endsWith(`/inbox/${CHAT}`))
-      return reply({ conversation: state.row, messages: state.messages, control_events: [] });
-    if (url.pathname.endsWith(`/inbox/${CHAT}/read`)) {
-      state.reads.push(route.request().postDataJSON().message_ids);
-      state.row.unread_count = 0;
-      return reply({ unread_count: 0 });
-    }
-    return reply({ detail: "Unexpected request" }, 404);
-  });
-  return state;
-}
-async function push(page: Page, revision: string, unread = 1) {
-  await page.evaluate(
-    (snapshot) =>
-      (window as unknown as { __inboxPush: (snapshot: unknown) => void }).__inboxPush(snapshot),
-    { ...initialSnapshot, revision, unread_conversations: unread },
-  );
-}
+import { expect, test } from "@playwright/test";
+import { AGENT, CHAT, fixture, message, push, user } from "./fixtures/inbox";
 
 test("live inbox updates without manual refresh, keeps draft and labels both response authors", async ({
   page,
@@ -148,7 +7,9 @@ test("live inbox updates without manual refresh, keeps draft and labels both res
   await page.setViewportSize({ width: 1440, height: 1100 });
   const state = await fixture(page);
   await page.goto("/inbox");
-  await expect(page.getByText("Actualización en tiempo real", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "Actualización en tiempo real", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("status", { name: "1 conversaciones activas sin leer", exact: true }),
   ).toBeVisible();
@@ -188,10 +49,11 @@ test("active and historical views are server filters, not inferred online presen
 }) => {
   const state = await fixture(page);
   await page.goto("/inbox");
-  await page.getByRole("button", { name: "Históricas (2)", exact: true }).click();
+  await page.getByRole("button", { name: "Historial", exact: true }).click();
   await expect.poll(() => state.lifecycle.at(-1)).toBe("history");
-  await page.getByRole("button", { name: "Activas (1)", exact: true }).click();
+  await page.getByRole("button", { name: "Activas", exact: true }).click();
   await expect.poll(() => state.lifecycle.at(-1)).toBe("active");
+  await page.getByText("Filtros y alcance", { exact: true }).click();
   await expect(page.getByText(/no personas conectadas/)).toBeVisible();
   expect(state.reads).toHaveLength(0);
 });
@@ -225,7 +87,9 @@ test("scrolled reading remains in place and unread until visitor messages are ac
 test("hidden tab never acknowledges messages and reconnects when visible", async ({ page }) => {
   const state = await fixture(page);
   await page.goto("/inbox");
-  await expect(page.getByText("Actualización en tiempo real", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "Actualización en tiempo real", exact: true }),
+  ).toBeVisible();
   const before = await page.evaluate(
     () => (window as unknown as { __streamRequests: unknown[] }).__streamRequests.length,
   );
@@ -295,7 +159,9 @@ test("live stream refreshes expired bearer credentials without putting them in i
 }) => {
   const state = await fixture(page, 1, true);
   await page.goto("/inbox");
-  await expect(page.getByText("Actualización en tiempo real", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "Actualización en tiempo real", exact: true }),
+  ).toBeVisible();
   expect(state.refreshCalls).toBe(1);
   const requests = await page.evaluate(
     () =>
@@ -326,7 +192,9 @@ test("disconnected typing is hidden and an unchanged reconnect snapshot still re
   ).toHaveCount(0);
   await expect(page.getByText("Agente preparando respuesta…", { exact: true })).toHaveCount(0);
   await expect.poll(() => state.listRequests).toBeGreaterThan(requests);
-  await expect(page.getByText("Actualización en tiempo real", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "Actualización en tiempo real", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("status").filter({ hasText: "Comercial está preparando una respuesta…" }),
   ).toHaveCount(0);

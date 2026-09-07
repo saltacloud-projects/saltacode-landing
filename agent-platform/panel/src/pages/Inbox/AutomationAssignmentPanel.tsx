@@ -50,7 +50,7 @@ export function AutomationAssignmentPanel({
   return (
     <section
       aria-labelledby="automation-assignment-title"
-      className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/35 p-4"
+      className="border-b border-[var(--border-color)] bg-[color-mix(in_srgb,var(--bg-secondary)_35%,transparent)] p-4"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -58,9 +58,9 @@ export function AutomationAssignmentPanel({
             id="automation-assignment-title"
             className="flex items-center gap-2 text-sm font-semibold"
           >
-            <Bot size={16} className="text-[var(--accent)]" /> Respuesta automática
+            <Bot size={16} className="text-[var(--accent-hover)]" /> Respuesta automática
           </h4>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Agente actual: {automationAgent.name} · versión {automationVersion}
           </p>
         </div>
@@ -82,7 +82,7 @@ export function AutomationAssignmentPanel({
 
       {canAssign && (
         <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <label className="text-xs text-[var(--text-muted)]">
+          <label className="text-xs text-[var(--text-secondary)]">
             Agente que responde automáticamente
             <select
               value={selectedAgentId}
@@ -120,12 +120,12 @@ export function AutomationAssignmentPanel({
         </p>
       )}
       {isClosed && (
-        <p className="mt-2 text-xs text-[var(--text-muted)]">
+        <p className="mt-2 text-xs text-[var(--text-secondary)]">
           La conversación está cerrada y no admite nuevas asignaciones.
         </p>
       )}
       {!canAssign && !isClosed && (
-        <p className="mt-2 text-xs text-[var(--text-muted)]">
+        <p className="mt-2 text-xs text-[var(--text-secondary)]">
           Tu acceso permite ver el agente automático, pero no cambiarlo.
         </p>
       )}
@@ -133,11 +133,14 @@ export function AutomationAssignmentPanel({
       {historyVisible && (
         <div id="automation-assignment-history" className="mt-4">
           {historyLoading && historyItems.length === 0 ? (
-            <p role="status" className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+            <p
+              role="status"
+              className="flex items-center gap-2 text-xs text-[var(--text-secondary)]"
+            >
               <LoaderCircle className="animate-spin" size={14} /> Cargando historial…
             </p>
           ) : historyItems.length === 0 ? (
-            <p className="text-xs text-[var(--text-muted)]">Todavía no hay reasignaciones.</p>
+            <p className="text-xs text-[var(--text-secondary)]">Todavía no hay reasignaciones.</p>
           ) : (
             <ol className="space-y-2">
               {historyItems.map((event) => (
@@ -148,7 +151,7 @@ export function AutomationAssignmentPanel({
                   <p className="font-medium text-[var(--text-primary)]">
                     {event.from_automation_agent.name} → {event.to_automation_agent.name}
                   </p>
-                  <p className="mt-1 text-[var(--text-muted)]">
+                  <p className="mt-1 text-[var(--text-secondary)]">
                     Versión {event.automation_version} · {formatDate(event.created_at)}
                     {!event.applied && " · Sin cambios"}
                   </p>
