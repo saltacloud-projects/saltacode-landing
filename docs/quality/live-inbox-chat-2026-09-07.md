@@ -74,6 +74,14 @@ event projection discarded the three descriptors required by the contact form. T
 initializes the process-local tool catalog in each execution owner and preserves only
 bounded, sanitized commercial form descriptors for the matching event type.
 
+After successful real-provider form display and idempotent contact capture, reading
+the first linked opportunity exposed another pre-existing defect: its conversation
+DTO incorrectly required `target_channel`, a follow-up delivery field absent from
+the conversation read model. Removing that misplaced requirement preserves the real
+conversation `channel` and the actual follow-up destination. PostgreSQL regression
+tests now cover capture, replay and authorized detail reads for both keep-agent and
+handoff policies; empty-list health checks could not detect this defect.
+
 The bounded correction also includes an explicit tool binding, guided progression with the
 current agent and persisted prompt instructions to offer structured contact/consent
 capture on an explicit quote request even when some project details are pending.

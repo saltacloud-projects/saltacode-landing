@@ -18,12 +18,29 @@ from app.routers.admin.commercial import (
     transition_opportunity_stage,
 )
 from app.schemas.commercial import (
+    FollowUpTaskOut,
+    OpportunityConversationOut,
     OpportunityStageTransitionRequest,
     QuoteRequestCreateRequest,
 )
 from app.services.commercial.read_models import CommercialReadNotFoundError
 
 ROOT = "/api/admin/agents/{agent_id}/opportunities"
+
+
+@pytest.mark.parametrize("retained", [True, False])
+def test_linked_conversation_does_not_require_a_follow_up_delivery_target(retained):
+    link = OpportunityConversationOut(
+        id=uuid4(),
+        conversation_id=uuid4() if retained else None,
+        channel="web" if retained else None,
+        route_key="public-web" if retained else None,
+        status="active" if retained else None,
+        linked_at=datetime.now(UTC),
+    )
+
+    assert "target_channel" not in link.model_dump()
+    assert "target_channel" in FollowUpTaskOut.model_fields
 
 
 def test_commercial_contract_is_agent_scoped_authenticated_and_non_destructive() -> (

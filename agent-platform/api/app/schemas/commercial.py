@@ -113,7 +113,6 @@ class ConversationCandidateOut(BaseModel):
 class OpportunityConversationOut(BaseModel):
     id: UUID
     conversation_id: UUID | None
-    target_channel: str | None
     channel: str | None
     route_key: str | None
     status: str | None

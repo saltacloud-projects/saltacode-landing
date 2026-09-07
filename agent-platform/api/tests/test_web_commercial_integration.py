@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import httpx
@@ -13,11 +14,13 @@ from sqlalchemy import delete, select
 
 from app.config import settings
 from app.core.database import AsyncSessionLocal, engine
+from app.models.admin_agent_grant import AdminAgentGrant
 from app.models.admin_role import AdminRole
 from app.models.admin_user import AdminUser
 from app.models.agent_handoff_route import AgentHandoffRoute
 from app.models.agent_profile import AgentProfile
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
+from app.models.commercial_progression_policy import CommercialProgressionPolicy
 from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.conversation_automation_assignment import (
     ConversationAutomationAssignmentEvent,
@@ -31,6 +34,8 @@ from app.models.opportunity import (
     OpportunityStageEvent,
 )
 from app.models.platform import ChannelIdentity, ChatConversation, Principal
+from app.routers.admin.auth import require_admin
+from app.routers.admin.commercial import router as admin_commercial_router
 from app.routers.web_chat_v2 import router as web_chat_router
 from app.routers.web_commercial import router
 
@@ -287,6 +292,85 @@ def _payload(graph: WebCommercialGraph, *, request_id: UUID) -> dict:
         "quote_delivery_consent": True,
         "commercial_follow_up_consent": True,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("keep_agent", [True, False])
+async def test_captured_opportunity_detail_is_readable_and_keeps_delivery_separate(
+    contact_crypto_keys, web_commercial_graph, keep_agent
+):
+    graph = web_commercial_graph
+    async with AsyncSessionLocal() as db:
+        role = (
+            await db.execute(
+                select(AdminRole).where(AdminRole.key == graph.admin_role_key)
+            )
+        ).scalar_one()
+        role.permissions = ["opportunities.read"]
+        for agent_id in (graph.source_agent_id, graph.target_agent_id):
+            db.add(
+                AdminAgentGrant(
+                    admin_user_id=graph.admin_id,
+                    agent_id=agent_id,
+                    permissions=["opportunities.read"],
+                    is_active=True,
+                    created_by="integration-test",
+                )
+            )
+        if keep_agent:
+            db.add(
+                CommercialProgressionPolicy(
+                    agent_id=graph.source_agent_id,
+                    quote_request_action="keep_agent",
+                    version=1,
+                    updated_by_admin_id=graph.admin_id,
+                )
+            )
+        await db.commit()
+
+    app = _app()
+    app.include_router(
+        admin_commercial_router, prefix="/api/admin/agents/{agent_id}/opportunities"
+    )
+    app.dependency_overrides[require_admin] = lambda: SimpleNamespace(
+        id=graph.admin_id, role=graph.admin_role_key
+    )
+    payload = _payload(graph, request_id=uuid4())
+    owner_id = graph.source_agent_id if keep_agent else graph.target_agent_id
+    other_id = graph.target_agent_id if keep_agent else graph.source_agent_id
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {settings.fastapi_api_key}"},
+    ) as client:
+        accepted = await client.post(
+            "/internal/v2/web/commercial-contact", json=payload
+        )
+        assert accepted.status_code == 202
+        repeated = await client.post(
+            "/internal/v2/web/commercial-contact", json=payload
+        )
+        assert repeated.status_code == 202
+        assert repeated.json() == accepted.json()
+        opportunity_id = accepted.json()["opportunity_id"]
+        detail = await client.get(
+            f"/api/admin/agents/{owner_id}/opportunities/{opportunity_id}"
+        )
+        foreign_detail = await client.get(
+            f"/api/admin/agents/{other_id}/opportunities/{opportunity_id}"
+        )
+
+    assert detail.status_code == 200
+    result = detail.json()
+    assert result["id"] == opportunity_id
+    assert result["assigned_agent"]["id"] == str(owner_id)
+    assert result["conversations"][0]["conversation_id"] == str(graph.conversation_id)
+    assert result["conversations"][0]["channel"] == "web"
+    assert "target_channel" not in result["conversations"][0]
+    assert result["contact"]["contact_points"][0]["quote_delivery_allowed"] is True
+    assert payload["contact_value"] not in detail.text
+    assert result["quote_requests"] == []
+    assert foreign_detail.status_code == 404
 
 
 @pytest.mark.asyncio
