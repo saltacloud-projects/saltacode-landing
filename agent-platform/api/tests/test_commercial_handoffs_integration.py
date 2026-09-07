@@ -240,7 +240,7 @@ async def commercial_handoff_context() -> CommercialHandoffContext:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("control_mode", ["automated", "paused"])
+@pytest.mark.parametrize("control_mode", ["automated", "paused", "human"])
 async def test_explicit_keep_agent_creates_opportunity_without_handoff_or_resume(
     commercial_handoff_context, control_mode
 ) -> None:
@@ -260,6 +260,9 @@ async def test_explicit_keep_agent_creates_opportunity_without_handoff_or_resume
         assert configured.version == 1 and configured.is_configured
         conversation = await db.get(ChatConversation, context.conversation_id)
         conversation.control_mode = control_mode
+        conversation.assigned_admin_id = (
+            context.admin_id if control_mode == "human" else None
+        )
         # The acting agent can differ from the immutable routing owner.
         conversation.automation_agent_id = context.target_agent_id
         conversation.automation_version = 3
@@ -286,6 +289,9 @@ async def test_explicit_keep_agent_creates_opportunity_without_handoff_or_resume
         conversation = await db.get(ChatConversation, context.conversation_id)
         assert conversation.agent_id == context.source_agent_id
         assert conversation.control_mode == control_mode
+        assert conversation.assigned_admin_id == (
+            context.admin_id if control_mode == "human" else None
+        )
         assert conversation.automation_version == 3
         assert (
             await db.execute(
