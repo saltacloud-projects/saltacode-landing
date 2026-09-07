@@ -1,4 +1,5 @@
 import { api } from "../../api/client";
+import { type CrmListOptions, listPath } from "../../crm/operations";
 import type {
   DeliveryDetail,
   DeliveryFilters,
@@ -12,14 +13,18 @@ function root(agentId: string): string {
   return `/agents/${encodeURIComponent(agentId)}/deliveries`;
 }
 
-export function listDeliveries(agentId: string, filters: DeliveryFilters): Promise<DeliveryPage> {
+export function listDeliveries(
+  agentId: string,
+  filters: DeliveryFilters,
+  options: CrmListOptions = {},
+): Promise<DeliveryPage> {
   const query = new URLSearchParams({ limit: "100" });
   if (filters.channel) query.set("channel", filters.channel);
   if (filters.status) query.set("status", filters.status);
   if (filters.conversationId.trim()) {
     query.set("conversation_id", filters.conversationId.trim());
   }
-  return api<DeliveryPage>(`${root(agentId)}/?${query}`);
+  return api<DeliveryPage>(listPath("deliveries", agentId, query, options));
 }
 
 export function getDelivery(agentId: string, deliveryId: string): Promise<DeliveryDetail> {

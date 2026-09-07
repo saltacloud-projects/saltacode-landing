@@ -151,7 +151,7 @@ test("loads and updates the agent policy with its CAS version", async ({ page })
   await expect(page.getByText("Versión de política 1")).toBeVisible();
 });
 
-test("navigation and dashboard expose the agent-scoped policy", async ({ page }) => {
+test("agent dashboard keeps scoped commercial policy while global pipeline needs runtime permission", async ({ page }) => {
   const state: PolicyState = { policy: defaultPolicy(), updates: [] };
   await prepare(page, state);
   await page.goto(`/agents/${AGENT_ID}/overview`);
@@ -160,8 +160,8 @@ test("navigation and dashboard expose the agent-scoped policy", async ({ page })
     page.locator("#panel-content").getByRole("link", { name: /^Política comercial/ }),
   ).toHaveAttribute("href", `/agents/${AGENT_ID}/automation-policy`);
   await expect(
-    page.locator("#admin-navigation").getByRole("link", { name: "Política comercial" }),
-  ).toHaveAttribute("href", `/agents/${AGENT_ID}/automation-policy`);
+    page.locator("#admin-navigation").getByRole("link", { name: "Pipeline comercial" }),
+  ).toHaveCount(0);
 });
 
 test("a CAS conflict refreshes the latest policy before another edit", async ({ page }) => {

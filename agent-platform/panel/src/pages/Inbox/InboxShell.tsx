@@ -16,7 +16,7 @@ interface InboxShellProps {
   currentAdminId: string;
   canManage: boolean;
   canAssignAutomation: boolean;
-  automationAgents: AgentProfile[];
+  automationAgents: Pick<AgentProfile, "id" | "name" | "is_active">[];
   ownsConversation: boolean;
   loadingList: boolean;
   loadingThread: boolean;

@@ -1,9 +1,9 @@
 import { CalendarDays, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { CrmPagination, CrmScopeFilter, canOperateItem, useCrmScope } from "../../crm/operations";
 import { MeetingDetail } from "./MeetingDetail";
 import { MeetingList } from "./MeetingList";
 import { STATUS_LABELS } from "./presentation";
@@ -25,13 +25,27 @@ const INPUT =
 const UUID_PATTERN = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 export default function MeetingsPage() {
-  const { selectedAgent } = useAgentWorkspace();
+  const scope = useCrmScope("meetings");
+  const { selectedAgent } = scope;
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedOpportunityId = searchParams.get("opportunity_id") ?? "";
   const [creating, setCreating] = useState(Boolean(requestedOpportunityId));
-  const workspace = useMeetings(selectedAgent?.id, requestedOpportunityId);
+  const workspace = useMeetings(scope.agentId, requestedOpportunityId, {
+    global: scope.global,
+    offset: scope.offset,
+    creationCapabilities: scope.agents.find((agent) => agent.id === scope.agentId)?.capabilities,
+  });
   const canManage = hasPermission(user, PERMISSIONS.MEETINGS_MANAGE);
+  const canCreate =
+    canManage &&
+    Boolean(scope.agentId) &&
+    (!scope.global ||
+      Boolean(
+        scope.agents
+          .find((agent) => agent.id === scope.agentId)
+          ?.capabilities.includes(PERMISSIONS.MEETINGS_MANAGE),
+      ));
 
   useEffect(() => {
     if (!requestedOpportunityId) return;
@@ -44,7 +58,9 @@ export default function MeetingsPage() {
       <header className="mb-5 flex flex-wrap items-center gap-3">
         <CalendarDays size={23} className="text-[var(--accent)]" aria-hidden="true" />
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold">Reuniones de {selectedAgent?.name}</h2>
+          <h2 className="text-xl font-semibold">
+            Reuniones{selectedAgent ? ` de ${selectedAgent.name}` : ""}
+          </h2>
           <p className="text-sm text-[var(--text-muted)]">
             Coordinación auditable de horarios vinculada a oportunidades.
           </p>
@@ -58,7 +74,7 @@ export default function MeetingsPage() {
             <RefreshCw size={16} aria-hidden="true" />
             <span className="hidden sm:inline">Actualizar</span>
           </button>
-          {canManage && (
+          {canCreate && (
             <button
               type="button"
               onClick={() => setCreating((value) => !value)}
@@ -69,6 +85,12 @@ export default function MeetingsPage() {
           )}
         </div>
       </header>
+      <CrmScopeFilter scope={scope} label="Responsable comercial" />
+      {scope.global && !scope.agentId && canManage && (
+        <p className="mb-3 text-sm text-[var(--text-muted)]">
+          Para crear una reunión, seleccioná el responsable comercial de la oportunidad.
+        </p>
+      )}
 
       <p
         role="note"
@@ -78,25 +100,42 @@ export default function MeetingsPage() {
         manuales y requieren evidencia. El panel no promete crear eventos ni enviar invitaciones.
       </p>
 
-      {creating && canManage && (
+      {creating && canCreate && (
         <CreateMeetingForm
           initialOpportunityId={requestedOpportunityId}
           busy={workspace.busy}
           onCancel={() => {
             setCreating(false);
-            if (requestedOpportunityId) setSearchParams({}, { replace: true });
+            if (requestedOpportunityId)
+              setSearchParams(scope.agentId && scope.global ? { agent_id: scope.agentId } : {}, {
+                replace: true,
+              });
           }}
           onSubmit={async (input) => {
             const result = await workspace.create(input);
             if (result) {
               setCreating(false);
-              setSearchParams({}, { replace: true });
+              setSearchParams(scope.agentId && scope.global ? { agent_id: scope.agentId } : {}, {
+                replace: true,
+              });
             }
           }}
         />
       )}
 
-      <MeetingFiltersForm filters={workspace.filters} onChange={workspace.setFilters} />
+      <CrmPagination
+        offset={scope.offset}
+        total={workspace.total}
+        loading={workspace.loadingList}
+        onChange={scope.setOffset}
+      />
+      <MeetingFiltersForm
+        filters={workspace.filters}
+        onChange={(filters) => {
+          scope.setOffset(0);
+          workspace.setFilters(filters);
+        }}
+      />
 
       {workspace.error && (
         <p
@@ -115,11 +154,16 @@ export default function MeetingsPage() {
           onSelect={workspace.open}
         />
         <MeetingDetail
-          agentId={selectedAgent?.id ?? ""}
+          agentId={workspace.ownerAgentId}
           meeting={workspace.detail}
           loading={workspace.loadingDetail}
           busy={workspace.busy || workspace.loadingDetail}
-          canManage={canManage}
+          canManage={canOperateItem(
+            scope.global,
+            workspace.detail,
+            user,
+            PERMISSIONS.MEETINGS_MANAGE,
+          )}
           onBack={workspace.close}
           onProposeSlots={workspace.proposeSlots}
           onMarkAwaiting={workspace.markAwaiting}

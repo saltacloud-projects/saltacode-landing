@@ -1,3 +1,4 @@
+import type { CrmOwnership } from "../../crm/operations";
 export type OpportunityStage =
   | "new"
   | "qualified"
@@ -51,7 +52,7 @@ export interface CommercialContact {
   contact_points: ContactPoint[];
 }
 
-export interface OpportunitySummary {
+export interface OpportunitySummary extends CrmOwnership {
   id: string;
   title: string;
   summary: string | null;

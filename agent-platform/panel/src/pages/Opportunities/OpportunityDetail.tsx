@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import type { AgentProfile } from "../../agents/types";
 import { useAuth } from "../../auth/AuthContext";
-import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { PERMISSIONS } from "../../auth/permissions";
+import { canOperateItem } from "../../crm/operations";
 import { FollowUpsPanel } from "./FollowUpsPanel";
 import { OpportunityActions } from "./OpportunityActions";
 import { contactName, formatDate, STAGE_LABELS, stageTone } from "./presentation";
@@ -18,7 +19,7 @@ import type {
 
 interface Props {
   opportunity: OpportunityDetailType | null;
-  agents: AgentProfile[];
+  agents: Pick<AgentProfile, "id" | "name" | "is_active">[];
   operators: CommercialOperator[];
   loading: boolean;
   busy: boolean;
@@ -72,7 +73,13 @@ export function OpportunityDetail({
 }: Props) {
   const { selectedAgent } = useAgentWorkspace();
   const { user } = useAuth();
-  const canCreateMeeting = hasPermission(user, PERMISSIONS.MEETINGS_MANAGE);
+  const canCreateMeeting = canOperateItem(
+    !selectedAgent,
+    opportunity,
+    user,
+    PERMISSIONS.MEETINGS_MANAGE,
+  );
+  const ownerAgentId = opportunity?.owner_agent_id ?? selectedAgent?.id;
 
   return (
     <section
@@ -112,9 +119,13 @@ export function OpportunityDetail({
           )}
 
           <ContactCard opportunity={opportunity} />
-          {canCreateMeeting && selectedAgent && (
+          {canCreateMeeting && ownerAgentId && (
             <Link
-              to={`/agents/${selectedAgent.id}/meetings?opportunity_id=${encodeURIComponent(opportunity.id)}`}
+              to={
+                selectedAgent
+                  ? `/agents/${ownerAgentId}/meetings?opportunity_id=${encodeURIComponent(opportunity.id)}`
+                  : `/meetings?agent_id=${encodeURIComponent(ownerAgentId)}&opportunity_id=${encodeURIComponent(opportunity.id)}`
+              }
               className="inline-flex items-center gap-2 rounded border border-[var(--accent)]/50 px-3 py-2 text-sm font-medium text-[var(--accent-hover)]"
             >
               <CalendarPlus size={16} aria-hidden="true" /> Coordinar reunión

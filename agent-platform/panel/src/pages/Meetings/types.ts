@@ -1,3 +1,4 @@
+import type { CrmOwnership } from "../../crm/operations";
 export type MeetingStatus =
   | "requested"
   | "slots_proposed"
@@ -45,7 +46,7 @@ export interface MeetingEvent {
   created_at: string;
 }
 
-export interface MeetingSummary {
+export interface MeetingSummary extends CrmOwnership {
   id: string;
   opportunity_id: string;
   opportunity_control_version: number;

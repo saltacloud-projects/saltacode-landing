@@ -1,4 +1,5 @@
 import { api } from "../../api/client";
+import { type CrmListOptions, listPath } from "../../crm/operations";
 import type {
   MeetingDetail,
   MeetingFilters,
@@ -38,11 +39,15 @@ function command(
   });
 }
 
-export function listMeetings(agentId: string, filters: MeetingFilters): Promise<MeetingPage> {
+export function listMeetings(
+  agentId: string,
+  filters: MeetingFilters,
+  options: CrmListOptions = {},
+): Promise<MeetingPage> {
   const query = new URLSearchParams({ limit: "100" });
   if (filters.status) query.set("status", filters.status);
   if (filters.opportunityId.trim()) query.set("opportunity_id", filters.opportunityId.trim());
-  return api<MeetingPage>(`${root(agentId)}/?${query}`);
+  return api<MeetingPage>(listPath("meetings", agentId, query, options));
 }
 
 export function getMeeting(agentId: string, meetingId: string): Promise<MeetingDetail> {

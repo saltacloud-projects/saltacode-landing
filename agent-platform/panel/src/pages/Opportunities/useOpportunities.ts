@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
+import { PERMISSIONS } from "../../auth/permissions";
+import type { CrmListOptions } from "../../crm/operations";
 import {
   createAuthoritativeQuoteVersion,
   createFollowUp,
@@ -27,7 +29,7 @@ import type {
 
 const EMPTY_FILTERS: OpportunityFilters = { stage: "", owner: "", search: "" };
 
-interface Options {
+interface Options extends CrmListOptions {
   agentId?: string;
   adminId: string;
   canManage: boolean;
@@ -37,7 +39,16 @@ function message(value: unknown, fallback: string): string {
   return value instanceof Error ? value.message : fallback;
 }
 
-export function useOpportunities({ agentId, adminId, canManage }: Options) {
+export function useOpportunities({
+  agentId = "",
+  adminId,
+  canManage,
+  global = false,
+  offset = 0,
+}: Options) {
+  const ownerAgentId = useRef(agentId);
+  const [total, setTotal] = useState(0);
+  const listGeneration = useRef(0);
   const [items, setItems] = useState<OpportunitySummary[]>([]);
   const [detail, setDetail] = useState<OpportunityDetail | null>(null);
   const [candidates, setCandidates] = useState<OpportunityCandidate[]>([]);
@@ -54,35 +65,43 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
 
   const loadList = useCallback(
     async (requestedAgent: string, activeFilters: OpportunityFilters) => {
+      const generation = ++listGeneration.current;
       setLoadingList(true);
       try {
-        const page = await listOpportunities(requestedAgent, activeFilters, adminId);
-        if (activeAgentId.current === requestedAgent) setItems(page.items);
+        const page = await listOpportunities(requestedAgent, activeFilters, adminId, {
+          global,
+          offset,
+        });
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent) {
+          setItems(page.items);
+          setTotal(page.total);
+        }
       } catch (value) {
-        if (activeAgentId.current === requestedAgent) {
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent) {
           setError(message(value, "No se pudieron cargar las oportunidades."));
         }
       } finally {
-        if (activeAgentId.current === requestedAgent) setLoadingList(false);
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent)
+          setLoadingList(false);
       }
     },
-    [adminId],
+    [adminId, global, offset],
   );
 
   const loadDetail = useCallback(async (requestedAgent: string, opportunityId: string) => {
     setLoadingDetail(true);
     try {
       const next = await getOpportunity(requestedAgent, opportunityId);
-      if (activeAgentId.current === requestedAgent && selectedId.current === opportunityId) {
-        setDetail(next);
+      if (ownerAgentId.current === requestedAgent && selectedId.current === opportunityId) {
+        setDetail((current) => ({ ...current, ...next }));
       }
     } catch (value) {
-      if (activeAgentId.current === requestedAgent) {
+      if (ownerAgentId.current === requestedAgent) {
         if (value instanceof ApiError && value.status === 404) setDetail(null);
         setError(message(value, "No se pudo cargar la oportunidad."));
       }
     } finally {
-      if (activeAgentId.current === requestedAgent) setLoadingDetail(false);
+      if (ownerAgentId.current === requestedAgent) setLoadingDetail(false);
     }
   }, []);
 
@@ -93,7 +112,6 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
     setOperators([]);
     setError("");
     if (!agentId) {
-      setLoadingList(false);
       return;
     }
     void listOpportunityCandidates(agentId)
@@ -119,12 +137,20 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
   }, [agentId, canManage]);
 
   useEffect(() => {
-    if (!agentId) return;
+    if (!agentId && !global) return;
     void loadList(agentId, filters);
-  }, [agentId, filters, loadList]);
+  }, [agentId, filters, loadList, global]);
 
   const open = (item: OpportunitySummary) => {
-    if (!agentId) return;
+    const owner = item.owner_agent_id ?? (global ? "" : agentId);
+    if (!owner) return;
+    ownerAgentId.current = owner;
+    if (canManage && (!global || item.capabilities?.includes(PERMISSIONS.OPPORTUNITIES_MANAGE)))
+      void listOpportunityOperators(owner)
+        .then((rows) => {
+          if (ownerAgentId.current === owner) setOperators(rows);
+        })
+        .catch(() => setOperators([]));
     setError("");
     selectedId.current = item.id;
     setDetail({
@@ -136,15 +162,15 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
       follow_ups: [],
       quote_requests: [],
     });
-    void loadDetail(agentId, item.id);
+    void loadDetail(owner, item.id);
   };
 
   const refresh = useCallback(async () => {
-    if (!agentId) return;
+    if (!agentId && !global) return;
     await loadList(agentId, filters);
     const opportunityId = selectedId.current;
-    if (opportunityId) await loadDetail(agentId, opportunityId);
-  }, [agentId, filters, loadList, loadDetail]);
+    if (opportunityId) await loadDetail(ownerAgentId.current, opportunityId);
+  }, [agentId, filters, loadList, loadDetail, global]);
 
   const command = async (action: () => Promise<unknown>, fallback: string): Promise<boolean> => {
     if (busy) return false;
@@ -167,6 +193,8 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
 
   return {
     items,
+    total,
+    ownerAgentId: ownerAgentId.current,
     detail,
     candidates,
     operators,
@@ -184,17 +212,24 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
       return command(() => createOpportunity(agentId, input), "No se pudo crear la oportunidad.");
     },
     transitionStage: (stage: OpportunityStage, reason?: string) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
-        () => transitionOpportunityStage(agentId, detail.id, stage, detail.control_version, reason),
+        () =>
+          transitionOpportunityStage(
+            ownerAgentId.current,
+            detail.id,
+            stage,
+            detail.control_version,
+            reason,
+          ),
         "No se pudo cambiar la etapa.",
       );
     },
     reassign: (assignedAgentId: string, assignedOperatorId?: string, reason?: string) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
         () =>
-          reassignOpportunity(agentId, detail.id, {
+          reassignOpportunity(ownerAgentId.current, detail.id, {
             assigned_agent_id: assignedAgentId,
             assigned_operator_id: assignedOperatorId,
             expected_version: detail.control_version,
@@ -204,9 +239,9 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
       );
     },
     linkConversation: (conversationId: string) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
-        () => linkOpportunityConversation(agentId, detail.id, conversationId),
+        () => linkOpportunityConversation(ownerAgentId.current, detail.id, conversationId),
         "No se pudo vincular la conversación.",
       );
     },
@@ -216,23 +251,23 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
       due_at: string;
       note?: string;
     }) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
-        () => createFollowUp(agentId, detail.id, input),
+        () => createFollowUp(ownerAgentId.current, detail.id, input),
         "No se pudo programar el seguimiento.",
       );
     },
     transitionFollowUp: (taskId: string, status: FollowUpStatus, version: number) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
-        () => transitionFollowUp(agentId, detail.id, taskId, status, version),
+        () => transitionFollowUp(ownerAgentId.current, detail.id, taskId, status, version),
         "No se pudo actualizar el seguimiento.",
       );
     },
     requestQuote: (input: Parameters<typeof createQuoteRequest>[2]) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
-        () => createQuoteRequest(agentId, detail.id, input),
+        () => createQuoteRequest(ownerAgentId.current, detail.id, input),
         "No se pudo registrar la solicitud de presupuesto.",
       );
     },
@@ -240,9 +275,9 @@ export function useOpportunities({ agentId, adminId, canManage }: Options) {
       requestId: string,
       input: Parameters<typeof createAuthoritativeQuoteVersion>[3],
     ) => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return command(
-        () => createAuthoritativeQuoteVersion(agentId, detail.id, requestId, input),
+        () => createAuthoritativeQuoteVersion(ownerAgentId.current, detail.id, requestId, input),
         "No se pudo registrar la evidencia autoritativa.",
       );
     },

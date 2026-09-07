@@ -1,3 +1,4 @@
+import type { CrmOwnership } from "../../crm/operations";
 export type FollowUpKind = "commercial_follow_up" | "meeting_coordination" | "proposal_reminder";
 
 export type FollowUpStatus =
@@ -8,7 +9,7 @@ export type FollowUpStatus =
   | "cancelled"
   | "review_required";
 
-export interface FollowUpQueueItem {
+export interface FollowUpQueueItem extends CrmOwnership {
   id: string;
   opportunity_id: string;
   assigned_agent_id: string;

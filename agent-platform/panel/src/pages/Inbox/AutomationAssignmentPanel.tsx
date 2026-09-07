@@ -11,7 +11,7 @@ interface AutomationAssignmentPanelProps {
   automationAgent: InboxAgent;
   automationVersion: number;
   controlMode: ConversationControlMode;
-  agents: AgentProfile[];
+  agents: Pick<AgentProfile, "id" | "name" | "is_active">[];
   selectedAgentId: string;
   canAssign: boolean;
   busy: boolean;

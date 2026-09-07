@@ -5,7 +5,7 @@ import type { CommercialOperator, OpportunityDetail, OpportunityStage } from "./
 
 interface Props {
   opportunity: OpportunityDetail;
-  agents: AgentProfile[];
+  agents: Pick<AgentProfile, "id" | "name" | "is_active">[];
   operators: CommercialOperator[];
   busy: boolean;
   canManage: boolean;

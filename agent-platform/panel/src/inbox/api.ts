@@ -1,4 +1,5 @@
 import { api } from "../api/client";
+import { type CrmListOptions, listPath } from "../crm/operations";
 import type {
   AutomationAssignmentHistoryPage,
   AutomationAssignmentReceipt,
@@ -18,6 +19,7 @@ export async function listInboxConversations(
   agentId: string,
   filters: InboxFilters,
   currentAdminId: string,
+  options: CrmListOptions = {},
 ): Promise<InboxConversationPage> {
   const query = new URLSearchParams();
   if (filters.channel) query.set("channel", filters.channel);
@@ -33,7 +35,7 @@ export async function listInboxConversations(
     query.set("updated_after", new Date(Date.now() - hours * 60 * 60 * 1_000).toISOString());
   }
   query.set("limit", "100");
-  return api<InboxConversationPage>(`${inboxRoot(agentId)}/?${query}`);
+  return api<InboxConversationPage>(listPath("inbox", agentId, query, options));
 }
 
 export async function getInboxThread(

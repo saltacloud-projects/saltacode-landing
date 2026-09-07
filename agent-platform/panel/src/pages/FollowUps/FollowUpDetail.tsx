@@ -61,7 +61,7 @@ export function FollowUpDetail({
             <div className="min-w-0 flex-1">
               <h3 className="text-lg font-semibold">Seguimiento {shortId(detail.id)}</h3>
               <Link
-                to={`/agents/${agentId}/opportunities`}
+                to={`/opportunities?agent_id=${encodeURIComponent(agentId)}`}
                 className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent-hover)]"
               >
                 Oportunidad {shortId(detail.opportunity_id)}

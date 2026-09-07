@@ -1,3 +1,4 @@
+import type { CrmOwnership } from "../../crm/operations";
 import type { ChannelKind } from "../../runtime/types";
 
 export type DeliveryStatus =
@@ -10,7 +11,7 @@ export type DeliveryStatus =
   | "delivery_unknown"
   | "cancelled";
 
-export interface DeliverySummary {
+export interface DeliverySummary extends CrmOwnership {
   id: string;
   conversation_id: string;
   channel: ChannelKind;

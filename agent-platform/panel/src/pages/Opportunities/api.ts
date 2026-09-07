@@ -1,4 +1,5 @@
 import { api } from "../../api/client";
+import { type CrmListOptions, listPath } from "../../crm/operations";
 import type {
   CommercialOperator,
   FollowUpKind,
@@ -32,6 +33,7 @@ export async function listOpportunities(
   agentId: string,
   filters: OpportunityFilters,
   adminId: string,
+  options: CrmListOptions = {},
 ): Promise<OpportunityPage> {
   const query = new URLSearchParams({ limit: "100" });
   if (filters.stage) query.set("stage", filters.stage);
@@ -41,7 +43,7 @@ export async function listOpportunities(
   if (filters.owner.startsWith("operator:")) {
     query.set("assigned_operator_id", filters.owner.slice("operator:".length));
   }
-  return api<OpportunityPage>(`${root(agentId)}/?${query}`);
+  return api<OpportunityPage>(listPath("opportunities", agentId, query, options));
 }
 
 export function listOpportunityCandidates(agentId: string): Promise<OpportunityCandidate[]> {

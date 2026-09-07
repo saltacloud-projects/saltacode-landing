@@ -300,7 +300,8 @@ test("operator takes control and responds with the current ownership version", a
   expect(messages[0].key).toMatch(/^operator-/);
   await expect(page.getByText("Coordinemos el alcance.")).toBeVisible();
 
-  await page.getByLabel("Agente de trabajo").selectOption(AGENT_B);
+  await expect(page.locator("#agent-switcher")).toHaveCount(0);
+  await page.goto(`/agents/${AGENT_B}/inbox`);
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_B}/inbox$`));
   await expect(page.getByText("No hay conversaciones para estos filtros.")).toBeVisible();
 });

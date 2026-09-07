@@ -1,3 +1,4 @@
+import type { CrmOwnership } from "../../crm/operations";
 export type InboundJobStatus =
   | "queued"
   | "processing"
@@ -9,7 +10,7 @@ export type InboundJobStatus =
 
 export type InboundJobAction = "requeue" | "cancel" | "acknowledge";
 
-export interface InboundJobSummary {
+export interface InboundJobSummary extends CrmOwnership {
   id: string;
   channel: string;
   status: InboundJobStatus;

@@ -1,7 +1,7 @@
 import { RefreshCw, Webhook } from "lucide-react";
-import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { CrmPagination, CrmScopeFilter, canOperateItem, useCrmScope } from "../../crm/operations";
 import { InboundJobDetail } from "./InboundJobDetail";
 import { InboundJobList } from "./InboundJobList";
 import { STATUS_LABELS } from "./presentation";
@@ -19,9 +19,10 @@ const STATUSES: InboundJobStatus[] = [
 ];
 
 export default function InboundJobsPage() {
-  const { selectedAgent } = useAgentWorkspace();
+  const scope = useCrmScope("inbound-jobs");
+  const { selectedAgent } = scope;
   const { user } = useAuth();
-  const workspace = useInboundJobs(selectedAgent?.id);
+  const workspace = useInboundJobs(scope.agentId, { global: scope.global, offset: scope.offset });
   const canReview = hasPermission(user, PERMISSIONS.INBOUND_REVIEW);
 
   return (
@@ -29,7 +30,9 @@ export default function InboundJobsPage() {
       <header className="mb-5 flex flex-wrap items-center gap-3">
         <Webhook size={23} className="text-[var(--accent)]" aria-hidden="true" />
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold">Ingresos externos de {selectedAgent?.name}</h2>
+          <h2 className="text-xl font-semibold">
+            Ingresos externos{selectedAgent ? ` de ${selectedAgent.name}` : ""}
+          </h2>
           <p className="text-sm text-[var(--text-muted)]">
             Supervisión segura del ingreso multicanal antes de su procesamiento interno.
           </p>
@@ -43,6 +46,7 @@ export default function InboundJobsPage() {
           <span className="hidden sm:inline">Actualizar</span>
         </button>
       </header>
+      <CrmScopeFilter scope={scope} label="Agente de ingreso" />
 
       <p
         role="note"
@@ -52,7 +56,19 @@ export default function InboundJobsPage() {
         identificadores externos permanecen protegidos.
       </p>
 
-      <StatusFilter filters={workspace.filters} onChange={workspace.setFilters} />
+      <CrmPagination
+        offset={scope.offset}
+        total={workspace.total}
+        loading={workspace.loadingList}
+        onChange={scope.setOffset}
+      />
+      <StatusFilter
+        filters={workspace.filters}
+        onChange={(filters) => {
+          scope.setOffset(0);
+          workspace.setFilters(filters);
+        }}
+      />
 
       {workspace.error && (
         <p
@@ -76,7 +92,10 @@ export default function InboundJobsPage() {
           events={workspace.events}
           loading={workspace.loadingDetail}
           busy={workspace.busy}
-          canReview={canReview}
+          canReview={
+            canReview &&
+            canOperateItem(scope.global, workspace.detail, user, PERMISSIONS.INBOUND_REVIEW)
+          }
           onBack={workspace.close}
           onRequeue={workspace.requeue}
           onCancel={workspace.cancel}

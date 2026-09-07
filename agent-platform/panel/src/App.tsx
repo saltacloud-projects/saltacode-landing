@@ -15,6 +15,8 @@ const AgentIdentityPage = lazy(() =>
 const AgentRuntimePage = lazy(() => import("./pages/AgentRuntime"));
 const AuditPage = lazy(() => import("./pages/Audit"));
 const CommercialAutomationPolicyPage = lazy(() => import("./pages/CommercialAutomationPolicy"));
+const ChannelsPage = lazy(() => import("./pages/Channels"));
+const PipelinePage = lazy(() => import("./pages/Pipeline"));
 const ChannelConnectionsPage = lazy(() =>
   import("./pages/Connections").then((module) => ({ default: module.ChannelConnectionsPage })),
 );
@@ -73,17 +75,6 @@ function PermissionRoute({
 
 function HomeRoute() {
   const { user } = useAuth();
-  const { preferredAgent, loading } = useAgentWorkspace();
-  if (loading && hasPermission(user, PERMISSIONS.PROFILES_READ)) {
-    return (
-      <p className="text-sm text-[var(--text-muted)]" role="status">
-        Cargando agentes…
-      </p>
-    );
-  }
-  if (preferredAgent && hasPermission(user, PERMISSIONS.DASHBOARD_READ)) {
-    return <Navigate to={`/agents/${preferredAgent.id}/overview`} replace />;
-  }
   return <Navigate to={defaultPanelPath(user)} replace />;
 }
 
@@ -168,7 +159,99 @@ export default function App() {
           />
           <Route element={<PanelShell />}>
             <Route index element={<HomeRoute />} />
+            <Route
+              path="no-access"
+              element={
+                <section role="status">
+                  <h2 className="text-xl font-semibold">Sin acceso a módulos</h2>
+                  <p className="mt-2 text-sm text-[var(--text-muted)]">
+                    Tu cuenta está autenticada, pero necesita permisos para operar o configurar la
+                    plataforma.
+                  </p>
+                </section>
+              }
+            />
 
+            <Route
+              path="inbox"
+              element={
+                <PermissionRoute permission={PERMISSIONS.CONVERSATIONS_READ}>
+                  <InboxPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="opportunities"
+              element={
+                <PermissionRoute permission={PERMISSIONS.OPPORTUNITIES_READ}>
+                  <OpportunitiesPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="meetings"
+              element={
+                <PermissionRoute permission={PERMISSIONS.MEETINGS_READ}>
+                  <MeetingsPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="follow-ups"
+              element={
+                <PermissionRoute permission={PERMISSIONS.FOLLOW_UPS_READ}>
+                  <FollowUpsPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="deliveries"
+              element={
+                <PermissionRoute permission={PERMISSIONS.DELIVERIES_READ}>
+                  <DeliveriesPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="inbound-jobs"
+              element={
+                <PermissionRoute permission={PERMISSIONS.INBOUND_READ}>
+                  <InboundJobsPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="audit"
+              element={
+                <PermissionRoute permission={PERMISSIONS.AUDIT_READ}>
+                  <AuditPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="channels"
+              element={
+                <PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}>
+                  <ChannelsPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="channels/connections"
+              element={
+                <PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}>
+                  <ChannelConnectionsPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="pipeline"
+              element={
+                <PermissionRoute permission={PERMISSIONS.RUNTIME_READ}>
+                  <PipelinePage />
+                </PermissionRoute>
+              }
+            />
             <Route
               path="agents"
               element={
@@ -222,14 +305,6 @@ export default function App() {
               element={
                 <PermissionRoute permission={PERMISSIONS.CONNECTIONS_READ}>
                   <ChannelConnectionsPage />
-                </PermissionRoute>
-              }
-            />
-            <Route
-              path="audit"
-              element={
-                <PermissionRoute permission={PERMISSIONS.AUDIT_READ}>
-                  <LegacyAgentRedirect section="audit" fallback="/agents" />
                 </PermissionRoute>
               }
             />
@@ -429,10 +504,7 @@ export default function App() {
               path="users"
               element={<LegacyAgentRedirect section="access" fallback="/agents" />}
             />
-            <Route
-              path="conversations"
-              element={<LegacyAgentRedirect section="inbox" fallback="/agents" />}
-            />
+            <Route path="conversations" element={<Navigate to="/inbox" replace />} />
             <Route
               path="promptlab"
               element={<LegacyAgentRedirect section="promptlab" fallback="/agents" />}

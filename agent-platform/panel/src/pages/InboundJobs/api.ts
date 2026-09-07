@@ -1,4 +1,5 @@
 import { api } from "../../api/client";
+import { type CrmListOptions, listPath } from "../../crm/operations";
 import type {
   CommandIntent,
   InboundJobAction,
@@ -27,10 +28,11 @@ export function createCommandIntent(action: InboundJobAction): CommandIntent {
 export function listInboundJobs(
   agentId: string,
   filters: InboundJobFilters,
+  options: CrmListOptions = {},
 ): Promise<InboundJobPage> {
   const query = new URLSearchParams({ limit: "100" });
   if (filters.status) query.set("status", filters.status);
-  return api<InboundJobPage>(`${root(agentId)}/?${query}`);
+  return api<InboundJobPage>(listPath("inbound-jobs", agentId, query, options));
 }
 
 export function getInboundJob(agentId: string, jobId: string): Promise<InboundJobDetail> {

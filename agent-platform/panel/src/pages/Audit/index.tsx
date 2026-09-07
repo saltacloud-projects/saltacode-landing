@@ -1,7 +1,12 @@
 import { ClipboardList, ListFilter, LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { api } from "../../api/client";
+import {
+  type CrmOwnership,
+  CrmPagination,
+  CrmScopeFilter,
+  useCrmScope,
+} from "../../crm/operations";
 
 interface ToolCall {
   tool: string;
@@ -9,7 +14,7 @@ interface ToolCall {
   status?: string;
 }
 
-interface AuditLog {
+interface AuditLog extends CrmOwnership {
   id: string;
   agent_id: string | null;
   channel_route_id: string | null;
@@ -56,7 +61,10 @@ function statusBadge(status: string): string {
 }
 
 export default function AuditPage() {
-  const { selectedAgent } = useAgentWorkspace();
+  const scope = useCrmScope("audit");
+  const { selectedAgent, agentId, global, offset } = scope;
+  const [total, setTotal] = useState(0);
+  const requestGeneration = useRef(0);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -67,23 +75,33 @@ export default function AuditPage() {
 
   const fetchLogs = useCallback(
     (status: string, phone: string) => {
-      if (!selectedAgent) return;
+      if (!agentId && !global) return;
+      const generation = ++requestGeneration.current;
       setLoading(true);
       setError("");
       const params = new URLSearchParams();
-      params.set("agent_id", selectedAgent.id);
+      if (agentId) params.set("agent_id", agentId);
       if (status) params.set("status", status);
       if (phone) params.set("phone", phone);
-      params.set("limit", "100");
-      api<AuditLog[]>(`/audit/?${params}`)
-        .then(setLogs)
-        .catch((value) => {
+      params.set("limit", "50");
+      params.set("offset", String(offset));
+      const request = api<{ items: AuditLog[]; total: number }>(`/crm/audit?${params}`);
+      request
+        .then((page) => {
+          if (generation !== requestGeneration.current) return;
+          setLogs(page.items);
+          setTotal(page.total);
+        })
+        .catch((value: unknown) => {
+          if (generation !== requestGeneration.current) return;
           setLogs([]);
           setError(value instanceof Error ? value.message : "No se pudo cargar la auditoría.");
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (generation === requestGeneration.current) setLoading(false);
+        });
     },
-    [selectedAgent],
+    [agentId, global, offset],
   );
   const load = useCallback(
     () => fetchLogs(statusFilter, phoneFilter),
@@ -95,14 +113,6 @@ export default function AuditPage() {
     fetchLogs(statusFilter, phoneFilterRef.current);
   }, [fetchLogs, statusFilter]);
 
-  if (!selectedAgent) {
-    return (
-      <p className="text-sm text-[var(--text-muted)]" role="status">
-        Seleccioná un agente para consultar su auditoría.
-      </p>
-    );
-  }
-
   return (
     <div>
       <div className="mb-6 flex items-start gap-2">
@@ -110,19 +120,25 @@ export default function AuditPage() {
         <div>
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">Auditoría</h2>
           <p className="text-sm text-[var(--text-muted)]">
-            Eventos operativos atribuidos a {selectedAgent.name}. Los registros históricos sin
-            agente identificado no se muestran acá.
+            Eventos operativos{" "}
+            {selectedAgent ? `atribuidos a ${selectedAgent.name}` : "de los agentes autorizados"}.
+            Los registros históricos sin agente identificado no se muestran acá.
           </p>
         </div>
       </div>
 
+      <CrmScopeFilter scope={scope} label="Agente registrado" />
+      <CrmPagination offset={offset} total={total} loading={loading} onChange={scope.setOffset} />
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 mb-4 items-center">
         <div className="flex items-center gap-2">
           <ListFilter size={16} className="text-[var(--text-muted)]" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              scope.setOffset(0);
+              setStatusFilter(e.target.value);
+            }}
             className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
           >
             <option value="">Todos los estados</option>
@@ -135,7 +151,10 @@ export default function AuditPage() {
         <input
           placeholder="Filtrar por teléfono..."
           value={phoneFilter}
-          onChange={(e) => setPhoneFilter(e.target.value)}
+          onChange={(e) => {
+            scope.setOffset(0);
+            setPhoneFilter(e.target.value);
+          }}
           onKeyDown={(e) => e.key === "Enter" && load()}
           className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-3 py-2 text-sm w-56 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
         />
@@ -163,6 +182,7 @@ export default function AuditPage() {
           <thead className="bg-[var(--bg-secondary)] text-left text-[var(--text-secondary)]">
             <tr>
               <th className="px-3 py-2.5 font-medium whitespace-nowrap">Fecha</th>
+              <th className="px-3 py-2.5 font-medium">Agente</th>
               <th className="px-3 py-2.5 font-medium">Usuario</th>
               <th className="px-3 py-2.5 font-medium">Consulta</th>
               <th className="px-3 py-2.5 font-medium">Status</th>
@@ -177,6 +197,7 @@ export default function AuditPage() {
                 <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
                   {new Date(l.created_at).toLocaleString("es-AR")}
                 </td>
+                <td className="px-3 py-2.5">{l.owner_agent_name ?? selectedAgent?.name ?? "—"}</td>
                 <td className="px-3 py-2.5">
                   {l.user_name ? (
                     <div>
@@ -245,7 +266,7 @@ export default function AuditPage() {
             ))}
             {!loading && logs.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-[var(--text-muted)] text-sm">
+                <td colSpan={8} className="px-3 py-6 text-center text-[var(--text-muted)] text-sm">
                   Sin logs
                 </td>
               </tr>
@@ -253,7 +274,7 @@ export default function AuditPage() {
             {loading && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-3 py-6 text-center text-[var(--text-secondary)] text-sm"
                 >
                   <span className="inline-flex items-center gap-2">

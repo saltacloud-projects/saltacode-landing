@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
+import type { CrmListOptions } from "../../crm/operations";
 import {
   commandInboundJob,
   createCommandIntent,
@@ -22,7 +23,10 @@ function message(value: unknown, fallback: string): string {
   return value instanceof Error ? value.message : fallback;
 }
 
-export function useInboundJobs(agentId?: string) {
+export function useInboundJobs(agentId = "", { global = false, offset = 0 }: CrmListOptions = {}) {
+  const ownerAgentId = useRef(agentId);
+  const [total, setTotal] = useState(0);
+  const listGeneration = useRef(0);
   const [items, setItems] = useState<InboundJobSummary[]>([]);
   const [detail, setDetail] = useState<InboundJobDetail | null>(null);
   const [events, setEvents] = useState<InboundJobEvent[]>([]);
@@ -37,19 +41,27 @@ export function useInboundJobs(agentId?: string) {
   const pendingIntents = useRef(new Map<string, CommandIntent>());
   activeAgentId.current = agentId;
 
-  const loadList = useCallback(async (requestedAgent: string, activeFilters: InboundJobFilters) => {
-    setLoadingList(true);
-    try {
-      const page = await listInboundJobs(requestedAgent, activeFilters);
-      if (activeAgentId.current === requestedAgent) setItems(page.items);
-    } catch (value) {
-      if (activeAgentId.current === requestedAgent) {
-        setError(message(value, "No se pudo cargar la cola de ingresos externos."));
+  const loadList = useCallback(
+    async (requestedAgent: string, activeFilters: InboundJobFilters) => {
+      const generation = ++listGeneration.current;
+      setLoadingList(true);
+      try {
+        const page = await listInboundJobs(requestedAgent, activeFilters, { global, offset });
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent) {
+          setItems(page.items);
+          setTotal(page.total);
+        }
+      } catch (value) {
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent) {
+          setError(message(value, "No se pudo cargar la cola de ingresos externos."));
+        }
+      } finally {
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent)
+          setLoadingList(false);
       }
-    } finally {
-      if (activeAgentId.current === requestedAgent) setLoadingList(false);
-    }
-  }, []);
+    },
+    [global, offset],
+  );
 
   const loadDetail = useCallback(async (requestedAgent: string, jobId: string) => {
     setLoadingDetail(true);
@@ -58,12 +70,12 @@ export function useInboundJobs(agentId?: string) {
         getInboundJob(requestedAgent, jobId),
         getInboundJobTimeline(requestedAgent, jobId),
       ]);
-      if (activeAgentId.current === requestedAgent && selectedId.current === jobId) {
-        setDetail(nextDetail);
+      if (ownerAgentId.current === requestedAgent && selectedId.current === jobId) {
+        setDetail((current) => ({ ...current, ...nextDetail }));
         setEvents(timeline.items);
       }
     } catch (value) {
-      if (activeAgentId.current === requestedAgent) {
+      if (ownerAgentId.current === requestedAgent) {
         if (value instanceof ApiError && value.status === 404) {
           selectedId.current = null;
           setDetail(null);
@@ -72,7 +84,7 @@ export function useInboundJobs(agentId?: string) {
         setError(message(value, "No se pudo cargar el ingreso externo."));
       }
     } finally {
-      if (activeAgentId.current === requestedAgent) setLoadingDetail(false);
+      if (ownerAgentId.current === requestedAgent) setLoadingDetail(false);
     }
   }, []);
 
@@ -83,15 +95,17 @@ export function useInboundJobs(agentId?: string) {
     setEvents([]);
     setError("");
     pendingIntents.current.clear();
-    if (!agentId) {
+    if (!agentId && !global) {
       setLoadingList(false);
       return;
     }
     void loadList(agentId, filters);
-  }, [agentId, filters, loadList]);
+  }, [agentId, filters, loadList, global]);
 
   const open = (item: InboundJobSummary) => {
-    if (!agentId) return;
+    const owner = item.owner_agent_id ?? (global ? "" : agentId);
+    if (!owner) return;
+    ownerAgentId.current = owner;
     selectedId.current = item.id;
     setDetail({
       ...item,
@@ -101,7 +115,7 @@ export function useInboundJobs(agentId?: string) {
     });
     setEvents([]);
     setError("");
-    void loadDetail(agentId, item.id);
+    void loadDetail(owner, item.id);
   };
 
   const close = () => {
@@ -111,21 +125,27 @@ export function useInboundJobs(agentId?: string) {
   };
 
   const refresh = useCallback(async () => {
-    if (!agentId) return;
+    if (!agentId && !global) return;
     await loadList(agentId, filters);
-    if (selectedId.current) await loadDetail(agentId, selectedId.current);
-  }, [agentId, filters, loadDetail, loadList]);
+    if (selectedId.current) await loadDetail(ownerAgentId.current, selectedId.current);
+  }, [agentId, filters, loadDetail, loadList, global]);
 
   const execute = async (action: InboundJobAction): Promise<boolean> => {
-    if (!agentId || !detail || commandInFlight.current) return false;
+    if (!ownerAgentId.current || !detail || commandInFlight.current) return false;
     commandInFlight.current = true;
     setBusy(true);
     setError("");
-    const signature = `${agentId}:${detail.id}:${detail.state_version}:${action}`;
+    const signature = `${ownerAgentId.current}:${detail.id}:${detail.state_version}:${action}`;
     const intent = pendingIntents.current.get(signature) ?? createCommandIntent(action);
     pendingIntents.current.set(signature, intent);
     try {
-      await commandInboundJob(agentId, detail.id, action, detail.state_version, intent);
+      await commandInboundJob(
+        ownerAgentId.current,
+        detail.id,
+        action,
+        detail.state_version,
+        intent,
+      );
       pendingIntents.current.delete(signature);
       await refresh();
       return true;
@@ -153,6 +173,8 @@ export function useInboundJobs(agentId?: string) {
 
   return {
     items,
+    total,
+    ownerAgentId: ownerAgentId.current,
     detail,
     events,
     filters,

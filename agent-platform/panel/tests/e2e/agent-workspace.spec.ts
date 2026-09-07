@@ -71,13 +71,13 @@ test("agent selection is URL-owned and survives refresh", async ({ page }) => {
   await mockWorkspace(page);
   await page.goto(`/agents/${AGENT_A}/overview`);
   await expect(page.locator("#panel-content").getByRole("heading", { name: "Agent Alpha", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Agente de trabajo")).toHaveValue(AGENT_A);
+  await expect(page.getByRole("combobox", { name: "Configurar agente", exact: true })).toHaveValue(AGENT_A);
 
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_A}/overview$`));
-  await expect(page.getByLabel("Agente de trabajo")).toHaveValue(AGENT_A);
+  await expect(page.getByRole("combobox", { name: "Configurar agente", exact: true })).toHaveValue(AGENT_A);
 
-  await page.getByLabel("Agente de trabajo").selectOption(AGENT_B);
+  await page.getByRole("combobox", { name: "Configurar agente", exact: true }).selectOption(AGENT_B);
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_B}/overview$`));
   await expect(page.locator("#panel-content").getByRole("heading", { name: "Agent Beta", exact: true })).toBeVisible();
 });
@@ -87,8 +87,7 @@ test("agent selection only exposes server-authorized profiles", async ({ page })
   await page.goto(`/agents/${AGENT_B}/overview`);
 
   await expect(page.getByRole("heading", { name: "Agente no encontrado" })).toBeVisible();
-  await expect(page.getByLabel("Agente de trabajo")).toHaveValue("");
-  await expect(page.getByLabel("Agente de trabajo").locator("option")).toHaveCount(2);
+  await expect(page.getByLabel("Configurar agente", { exact: true })).toHaveCount(0);
 });
 
 test("dashboard separates operations, automation, agent settings, and global libraries", async ({

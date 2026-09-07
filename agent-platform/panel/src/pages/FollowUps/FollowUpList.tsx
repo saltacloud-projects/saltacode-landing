@@ -1,4 +1,5 @@
 import { LoaderCircle } from "lucide-react";
+import { CrmOwnerLabel } from "../../crm/operations";
 import {
   dateTime,
   KIND_LABELS,
@@ -52,6 +53,7 @@ export function FollowUpList({ items, selectedId, loading, hiddenOnMobile, onSel
                   {STATUS_LABELS[item.status]}
                 </span>
               </div>
+              <CrmOwnerLabel item={item} label="Responsable actual" />
               <p className="mt-2 text-xs text-[var(--text-secondary)]">
                 {KIND_LABELS[item.kind]} · oportunidad {shortId(item.opportunity_id)}
               </p>

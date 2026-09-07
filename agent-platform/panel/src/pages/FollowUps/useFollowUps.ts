@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
+import type { CrmListOptions } from "../../crm/operations";
 import {
   cancelFollowUp,
   getFollowUp,
@@ -16,7 +17,10 @@ function errorMessage(value: unknown, fallback: string): string {
   return value instanceof Error ? value.message : fallback;
 }
 
-export function useFollowUps(agentId?: string) {
+export function useFollowUps(agentId = "", { global = false, offset = 0 }: CrmListOptions = {}) {
+  const ownerAgentId = useRef(agentId);
+  const [total, setTotal] = useState(0);
+  const listGeneration = useRef(0);
   const [items, setItems] = useState<FollowUpQueueItem[]>([]);
   const [detail, setDetail] = useState<FollowUpDetail | null>(null);
   const [events, setEvents] = useState<FollowUpEvent[]>([]);
@@ -30,19 +34,27 @@ export function useFollowUps(agentId?: string) {
   const commandInFlight = useRef(false);
   activeAgentId.current = agentId;
 
-  const loadList = useCallback(async (requestedAgent: string, activeFilters: FollowUpFilters) => {
-    setLoadingList(true);
-    try {
-      const page = await listFollowUps(requestedAgent, activeFilters);
-      if (activeAgentId.current === requestedAgent) setItems(page.items);
-    } catch (value) {
-      if (activeAgentId.current === requestedAgent) {
-        setError(errorMessage(value, "No se pudo cargar la cola de seguimientos."));
+  const loadList = useCallback(
+    async (requestedAgent: string, activeFilters: FollowUpFilters) => {
+      const generation = ++listGeneration.current;
+      setLoadingList(true);
+      try {
+        const page = await listFollowUps(requestedAgent, activeFilters, { global, offset });
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent) {
+          setItems(page.items);
+          setTotal(page.total);
+        }
+      } catch (value) {
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent) {
+          setError(errorMessage(value, "No se pudo cargar la cola de seguimientos."));
+        }
+      } finally {
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgent)
+          setLoadingList(false);
       }
-    } finally {
-      if (activeAgentId.current === requestedAgent) setLoadingList(false);
-    }
-  }, []);
+    },
+    [global, offset],
+  );
 
   const loadDetail = useCallback(async (requestedAgent: string, taskId: string) => {
     setLoadingDetail(true);
@@ -51,12 +63,12 @@ export function useFollowUps(agentId?: string) {
         getFollowUp(requestedAgent, taskId),
         listFollowUpEvents(requestedAgent, taskId),
       ]);
-      if (activeAgentId.current === requestedAgent && selectedId.current === taskId) {
-        setDetail(nextDetail);
+      if (ownerAgentId.current === requestedAgent && selectedId.current === taskId) {
+        setDetail((current) => ({ ...current, ...nextDetail }));
         setEvents(eventPage.items);
       }
     } catch (value) {
-      if (activeAgentId.current === requestedAgent) {
+      if (ownerAgentId.current === requestedAgent) {
         if (value instanceof ApiError && value.status === 404) {
           selectedId.current = null;
           setDetail(null);
@@ -65,7 +77,7 @@ export function useFollowUps(agentId?: string) {
         setError(errorMessage(value, "No se pudo cargar el seguimiento."));
       }
     } finally {
-      if (activeAgentId.current === requestedAgent) setLoadingDetail(false);
+      if (ownerAgentId.current === requestedAgent) setLoadingDetail(false);
     }
   }, []);
 
@@ -75,15 +87,17 @@ export function useFollowUps(agentId?: string) {
     setDetail(null);
     setEvents([]);
     setError("");
-    if (!agentId) {
+    if (!agentId && !global) {
       setLoadingList(false);
       return;
     }
     void loadList(agentId, filters);
-  }, [agentId, filters, loadList]);
+  }, [agentId, filters, loadList, global]);
 
   const open = (item: FollowUpQueueItem) => {
-    if (!agentId) return;
+    const owner = item.owner_agent_id ?? (global ? "" : agentId);
+    if (!owner) return;
+    ownerAgentId.current = owner;
     selectedId.current = item.id;
     setDetail({
       ...item,
@@ -103,7 +117,7 @@ export function useFollowUps(agentId?: string) {
     });
     setEvents([]);
     setError("");
-    void loadDetail(agentId, item.id);
+    void loadDetail(owner, item.id);
   };
 
   const close = () => {
@@ -113,10 +127,10 @@ export function useFollowUps(agentId?: string) {
   };
 
   const refresh = useCallback(async () => {
-    if (!agentId) return;
+    if (!agentId && !global) return;
     await loadList(agentId, filters);
-    if (selectedId.current) await loadDetail(agentId, selectedId.current);
-  }, [agentId, filters, loadDetail, loadList]);
+    if (selectedId.current) await loadDetail(ownerAgentId.current, selectedId.current);
+  }, [agentId, filters, loadDetail, loadList, global]);
 
   const execute = async (action: () => Promise<unknown>, fallback: string): Promise<boolean> => {
     if (commandInFlight.current) return false;
@@ -146,6 +160,8 @@ export function useFollowUps(agentId?: string) {
 
   return {
     items,
+    total,
+    ownerAgentId: ownerAgentId.current,
     detail,
     events,
     filters,
@@ -158,23 +174,24 @@ export function useFollowUps(agentId?: string) {
     close,
     refresh,
     cancel: () => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return execute(
-        () => cancelFollowUp(agentId, detail.id, detail.state_version),
+        () => cancelFollowUp(ownerAgentId.current, detail.id, detail.state_version),
         "No se pudo cancelar el seguimiento.",
       );
     },
     requeue: () => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return execute(
-        () => requeueFollowUp(agentId, detail.id, detail.state_version),
+        () => requeueFollowUp(ownerAgentId.current, detail.id, detail.state_version),
         "No se pudo reencolar el seguimiento.",
       );
     },
     resolveReview: (resolution: "requeue" | "cancel") => {
-      if (!agentId || !detail) return Promise.resolve(false);
+      if (!ownerAgentId.current || !detail) return Promise.resolve(false);
       return execute(
-        () => resolveFollowUpReview(agentId, detail.id, detail.state_version, resolution),
+        () =>
+          resolveFollowUpReview(ownerAgentId.current, detail.id, detail.state_version, resolution),
         "No se pudo resolver la revisión.",
       );
     },

@@ -49,6 +49,11 @@ async function mockAudit(page: Page, observedAgentIds: string[]) {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/auth/me")) return json(route, admin);
     if (url.pathname.endsWith("/profiles/")) return json(route, [profile]);
+    if (url.pathname.endsWith("/crm/audit/agents")) return json(route, [{id: AGENT_ID, name: profile.name, is_active: true, capabilities: ["audit.read"]}]);
+    if (url.pathname.endsWith("/crm/audit")) {
+      observedAgentIds.push(url.searchParams.get("agent_id") ?? "");
+      return json(route, {items: [], total: 0, limit: 50, offset: 0});
+    }
     if (url.pathname.endsWith("/audit/")) {
       observedAgentIds.push(url.searchParams.get("agent_id") ?? "");
       return json(route, []);
@@ -74,12 +79,13 @@ test("audit is scoped to the selected agent", async ({ page }) => {
   await expect(page.getByText("Auditoría global")).toHaveCount(0);
 });
 
-test("legacy audit route redirects to the preferred agent", async ({ page }) => {
+test("audit root now lists authorized agents without preferred-agent redirection", async ({ page }) => {
   const observedAgentIds: string[] = [];
   await mockAudit(page, observedAgentIds);
 
   await page.goto("/audit");
 
-  await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_ID}/audit$`));
-  await expect.poll(() => observedAgentIds).toContain(AGENT_ID);
+  await expect(page).toHaveURL(/\/audit$/);
+  await expect.poll(() => observedAgentIds).toContain("");
+  await expect(page.getByLabel("Agente registrado")).toHaveValue("");
 });

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
 import type { AdminUser } from "../../auth/AuthContext";
+import { PERMISSIONS } from "../../auth/permissions";
+import { type CrmListOptions, canOperateItem } from "../../crm/operations";
 import {
   assignInboxAutomationAgent,
   getInboxThread,
@@ -29,7 +31,7 @@ const EMPTY_FILTERS: InboxFilters = {
   updatedWithinHours: "",
 };
 
-interface UseInboxStateOptions {
+interface UseInboxStateOptions extends CrmListOptions {
   agentId?: string;
   user: AdminUser | null;
   canManage: boolean;
@@ -49,7 +51,16 @@ function errorMessage(value: unknown, fallback: string): string {
   return value instanceof ApiError ? value.message : fallback;
 }
 
-export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions) {
+export function useInboxState({
+  agentId = "",
+  user,
+  canManage,
+  global = false,
+  offset = 0,
+}: UseInboxStateOptions) {
+  const ownerAgentId = useRef(agentId);
+  const [total, setTotal] = useState(0);
+  const listGeneration = useRef(0);
   const [items, setItems] = useState<InboxConversation[]>([]);
   const [operators, setOperators] = useState<InboxOperator[]>([]);
   const [thread, setThread] = useState<InboxThread | null>(null);
@@ -77,19 +88,31 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
   const loadList = useCallback(
     async (requestedAgentId: string, activeFilters: InboxFilters, silent = false) => {
       if (!user) return;
+      const generation = ++listGeneration.current;
       if (!silent) setLoadingList(true);
       try {
-        const page = await listInboxConversations(requestedAgentId, activeFilters, user.id);
-        if (activeAgentId.current === requestedAgentId) setItems(page.items);
+        const page = await listInboxConversations(requestedAgentId, activeFilters, user.id, {
+          global,
+          offset,
+        });
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgentId) {
+          setItems(page.items);
+          setTotal(page.total);
+        }
       } catch (value) {
-        if (activeAgentId.current === requestedAgentId) {
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgentId) {
           setError(errorMessage(value, "No se pudo cargar el inbox."));
         }
       } finally {
-        if (!silent && activeAgentId.current === requestedAgentId) setLoadingList(false);
+        if (
+          !silent &&
+          generation === listGeneration.current &&
+          activeAgentId.current === requestedAgentId
+        )
+          setLoadingList(false);
       }
     },
-    [user],
+    [user, global, offset],
   );
 
   const loadThread = useCallback(async (requestedAgentId: string, conversationId: string) => {
@@ -97,21 +120,29 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     try {
       const nextThread = await getInboxThread(requestedAgentId, conversationId);
       if (
-        activeAgentId.current === requestedAgentId &&
+        ownerAgentId.current === requestedAgentId &&
         selectedConversationId.current === conversationId
       ) {
-        setThread(nextThread);
+        setThread((current) => ({
+          ...nextThread,
+          conversation: { ...current?.conversation, ...nextThread.conversation },
+        }));
         setReassignTo(nextThread.conversation.assigned_operator?.id ?? "");
         if (!automationSelectionDirty.current) {
           setAutomationAgentTo(nextThread.conversation.automation_agent.id);
         }
       }
     } catch (value) {
-      if (activeAgentId.current === requestedAgentId) {
+      if (
+        ownerAgentId.current === requestedAgentId &&
+        selectedConversationId.current === conversationId
+      ) {
+        if (value instanceof ApiError && (value.status === 403 || value.status === 404))
+          setThread(null);
         setError(errorMessage(value, "No se pudo cargar la conversación."));
       }
     } finally {
-      if (activeAgentId.current === requestedAgentId) setLoadingThread(false);
+      if (ownerAgentId.current === requestedAgentId) setLoadingThread(false);
     }
   }, []);
 
@@ -127,12 +158,12 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     setAssignmentHistoryItems([]);
     setAssignmentHistoryTotal(0);
     automationSelectionDirty.current = false;
-    if (!agentId) {
+    if (!agentId && !global) {
       setLoadingList(false);
       return;
     }
     void loadList(agentId, filters);
-    if (canManage) {
+    if (canManage && agentId && !global) {
       void listInboxOperators(agentId)
         .then((rows) => {
           if (activeAgentId.current === agentId) setOperators(rows);
@@ -143,20 +174,30 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
           }
         });
     }
-  }, [agentId, filters, canManage, loadList]);
+  }, [agentId, filters, canManage, loadList, global]);
 
   useEffect(() => {
-    if (!agentId) return;
+    if (!agentId && !global) return;
     const timer = window.setInterval(() => {
       void loadList(agentId, filters, true);
       const conversationId = selectedConversationId.current;
-      if (conversationId) void loadThread(agentId, conversationId);
+      if (conversationId) void loadThread(ownerAgentId.current, conversationId);
     }, 10_000);
     return () => window.clearInterval(timer);
-  }, [agentId, filters, loadList, loadThread]);
+  }, [agentId, filters, loadList, loadThread, global]);
 
   const openConversation = (conversation: InboxConversation) => {
-    if (!agentId) return;
+    const owner = conversation.owner_agent_id ?? (global ? "" : agentId);
+    if (!owner) return;
+    ownerAgentId.current = owner;
+    setOperators([]);
+    if (canOperateItem(global, conversation, user, PERMISSIONS.CONVERSATIONS_MANAGE)) {
+      void listInboxOperators(owner)
+        .then((rows) => {
+          if (ownerAgentId.current === owner) setOperators(rows);
+        })
+        .catch(() => setOperators([]));
+    }
     setError("");
     setThread({ conversation, messages: [], control_events: [] });
     setAutomationAgentTo(conversation.automation_agent.id);
@@ -166,22 +207,25 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     setAssignmentHistoryTotal(0);
     automationSelectionDirty.current = false;
     selectedConversationId.current = conversation.id;
-    void loadThread(agentId, conversation.id);
+    void loadThread(owner, conversation.id);
   };
 
   const refreshSelected = useCallback(async () => {
     const conversationId = selectedConversationId.current;
-    if (!agentId || !conversationId) return;
-    await Promise.all([loadList(agentId, filters, true), loadThread(agentId, conversationId)]);
-  }, [agentId, filters, loadList, loadThread]);
+    if ((!agentId && !global) || !conversationId) return;
+    await Promise.all([
+      loadList(agentId, filters, true),
+      loadThread(ownerAgentId.current, conversationId),
+    ]);
+  }, [agentId, filters, loadList, loadThread, global]);
 
   const runTransition = async (transition: Omit<ControlTransition, "expected_version">) => {
     const conversation = thread?.conversation;
-    if (!agentId || !conversation || busy) return;
+    if (!ownerAgentId.current || !conversation || busy) return;
     setBusy(true);
     setError("");
     try {
-      await transitionInboxConversation(agentId, conversation.id, {
+      await transitionInboxConversation(ownerAgentId.current, conversation.id, {
         ...transition,
         expected_version: conversation.control_version,
       });
@@ -201,12 +245,12 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
   const sendMessage = async () => {
     const conversation = thread?.conversation;
     const content = draft.trim();
-    if (!agentId || !conversation || !content || busy) return;
+    if (!ownerAgentId.current || !conversation || !content || busy) return;
     setBusy(true);
     setError("");
     try {
       await sendInboxOperatorMessage(
-        agentId,
+        ownerAgentId.current,
         conversation.id,
         content,
         conversation.control_version,
@@ -228,18 +272,19 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
 
   const loadAssignmentHistory = useCallback(
     async (offset: number, append: boolean) => {
+      const requestedOwner = ownerAgentId.current;
       const conversationId = selectedConversationId.current;
-      if (!agentId || !conversationId || assignmentHistoryLoading) return;
+      if (!ownerAgentId.current || !conversationId || assignmentHistoryLoading) return;
       setAssignmentHistoryLoading(true);
       try {
         const page = await listInboxAutomationAssignments(
-          agentId,
+          ownerAgentId.current,
           conversationId,
           ASSIGNMENT_HISTORY_PAGE_SIZE,
           offset,
         );
         if (
-          activeAgentId.current === agentId &&
+          ownerAgentId.current === requestedOwner &&
           selectedConversationId.current === conversationId
         ) {
           setAssignmentHistoryItems((current) =>
@@ -248,14 +293,14 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
           setAssignmentHistoryTotal(page.total);
         }
       } catch (value) {
-        if (activeAgentId.current === agentId) {
+        if (ownerAgentId.current === requestedOwner) {
           setError(errorMessage(value, "No se pudo cargar el historial de agentes."));
         }
       } finally {
-        if (activeAgentId.current === agentId) setAssignmentHistoryLoading(false);
+        if (ownerAgentId.current === requestedOwner) setAssignmentHistoryLoading(false);
       }
     },
-    [agentId, assignmentHistoryLoading],
+    [assignmentHistoryLoading],
   );
 
   const toggleAssignmentHistory = async () => {
@@ -276,7 +321,7 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
   const assignAutomationAgent = async () => {
     const conversation = thread?.conversation;
     if (
-      !agentId ||
+      !ownerAgentId.current ||
       !conversation ||
       !automationAgentTo ||
       automationAgentTo === conversation.automation_agent.id ||
@@ -289,7 +334,7 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     setAutomationAssignmentNotice("");
     try {
       await assignInboxAutomationAgent(
-        agentId,
+        ownerAgentId.current,
         conversation.id,
         {
           target_agent_id: automationAgentTo,
@@ -330,15 +375,18 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     () =>
       Boolean(
         canManage &&
+          canOperateItem(global, thread?.conversation, user, PERMISSIONS.CONVERSATIONS_MANAGE) &&
           user &&
           thread?.conversation.control_mode === "human" &&
           thread.conversation.assigned_operator?.id === user.id,
       ),
-    [canManage, thread, user],
+    [canManage, global, thread, user],
   );
 
   return {
     items,
+    total,
+    ownerAgentId: ownerAgentId.current,
     operators,
     thread,
     filters,
@@ -361,7 +409,7 @@ export function useInboxState({ agentId, user, canManage }: UseInboxStateOptions
     selectAutomationAgent,
     openConversation,
     closeThread: () => setThread(null),
-    refreshList: () => (agentId ? loadList(agentId, filters) : Promise.resolve()),
+    refreshList: () => (agentId || global ? loadList(agentId, filters) : Promise.resolve()),
     runTransition,
     sendMessage,
     assignAutomationAgent,

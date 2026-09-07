@@ -1,4 +1,5 @@
 import { LoaderCircle } from "lucide-react";
+import { CrmOwnerLabel } from "../../crm/operations";
 import { contactName, formatDate, STAGE_LABELS, stageTone } from "./presentation";
 import type { OpportunitySummary } from "./types";
 
@@ -38,6 +39,7 @@ export function OpportunityList({ items, selectedId, loading, hiddenOnMobile, on
                   {STAGE_LABELS[item.stage]}
                 </span>
               </div>
+              <CrmOwnerLabel item={item} label="Responsable comercial" />
               <p className="mt-2 truncate text-xs text-[var(--text-secondary)]">
                 {contactName(item.contact)}
                 {item.contact.company_name ? ` · ${item.contact.company_name}` : ""}

@@ -1,4 +1,5 @@
 import { LoaderCircle } from "lucide-react";
+import { CrmOwnerLabel } from "../../crm/operations";
 import { dateTime, STATUS_LABELS, shortId, slotTime, statusTone } from "./presentation";
 import type { MeetingSummary } from "./types";
 
@@ -45,6 +46,7 @@ export function MeetingList({ items, selectedId, loading, hiddenOnMobile, onSele
                   {STATUS_LABELS[meeting.status]}
                 </span>
               </div>
+              <CrmOwnerLabel item={meeting} label="Responsable comercial" />
               <p className="mt-2 text-xs text-[var(--text-secondary)]">
                 Oportunidad {shortId(meeting.opportunity_id)}
               </p>

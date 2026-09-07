@@ -135,9 +135,9 @@ test("audit remains inside the selected agent and filters server-side", async ({
     const path = url.pathname;
     const handled = common(path, route);
     if (handled) return handled;
-    if (path.endsWith("/audit/")) {
+    if (path.endsWith("/crm/audit")) {
       auditAgentIds.push(url.searchParams.get("agent_id") ?? "");
-      return json(route, []);
+      return json(route, { items: [], total: 0, limit: 50, offset: 0 });
     }
     return json(route, { detail: `Mock missing: ${route.request().method()} ${path}` }, 500);
   });

@@ -1,3 +1,4 @@
+import type { CrmOwnership } from "../crm/operations";
 export type ConversationControlMode = "automated" | "paused" | "human" | "closed";
 
 export interface InboxOperator {
@@ -11,7 +12,7 @@ export interface InboxAgent {
   name: string;
 }
 
-export interface InboxConversation {
+export interface InboxConversation extends CrmOwnership {
   id: string;
   principal_id: string;
   display_name: string | null;

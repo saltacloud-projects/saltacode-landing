@@ -1,9 +1,15 @@
 import { AlertTriangle, ArrowLeft, RefreshCw, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import {
+  CrmOwnerLabel,
+  CrmPagination,
+  CrmScopeFilter,
+  canOperateItem,
+  useCrmScope,
+} from "../../crm/operations";
 import { CHANNEL_LABELS } from "../../runtime/channels";
 import type { ChannelKind } from "../../runtime/types";
 import { createResolutionIntent, getDelivery, listDeliveries, resolveDelivery } from "./api";
@@ -106,6 +112,7 @@ function DeliveryCard({
         </span>
         <time className="text-xs text-[var(--text-muted)]">{dateTime(delivery.updated_at)}</time>
       </div>
+      <CrmOwnerLabel item={delivery} label="Agente de ingreso" />
       <p className="mt-2 truncate font-mono text-xs text-[var(--text-secondary)]">
         {delivery.correlation_id}
       </p>
@@ -309,7 +316,11 @@ function DeliveryDetailPanel({
 }
 
 export default function DeliveriesPage() {
-  const { selectedAgent } = useAgentWorkspace();
+  const scope = useCrmScope("deliveries");
+  const { selectedAgent, agentId, global, offset } = scope;
+  const [total, setTotal] = useState(0);
+  const listGeneration = useRef(0);
+  const selectedId = useRef<string | null>(null);
   const { user } = useAuth();
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [items, setItems] = useState<DeliverySummary[]>([]);
@@ -323,42 +334,59 @@ export default function DeliveriesPage() {
   const canReview = hasPermission(user, PERMISSIONS.DELIVERIES_REVIEW);
 
   const refresh = useCallback(async () => {
-    if (!selectedAgent) return;
+    if (!agentId && !global) return;
+    const generation = ++listGeneration.current;
     setLoading(true);
     setError("");
     try {
-      const page = await listDeliveries(selectedAgent.id, filters);
+      const page = await listDeliveries(agentId, filters, { global, offset });
+      if (generation !== listGeneration.current) return;
       setItems(page.items);
+      setTotal(page.total);
       setDetail((current) =>
         current && !page.items.some((item) => item.id === current.id) ? null : current,
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudieron cargar las entregas.");
+      if (generation === listGeneration.current) {
+        setItems([]);
+        setTotal(0);
+        setError(cause instanceof Error ? cause.message : "No se pudieron cargar las entregas.");
+      }
     } finally {
-      setLoading(false);
+      if (generation === listGeneration.current) setLoading(false);
     }
-  }, [selectedAgent, filters]);
+  }, [agentId, global, offset, filters]);
 
   useEffect(() => {
+    selectedId.current = null;
+    setDetail(null);
+    setLoadingDetail(false);
     pendingIntents.current.clear();
     void refresh();
   }, [refresh]);
 
-  const open = async (deliveryId: string) => {
-    if (!selectedAgent) return;
+  const open = async (delivery: DeliverySummary) => {
+    if (commandInFlight.current) return;
+    const owner = delivery.owner_agent_id ?? (global ? "" : agentId);
+    if (!owner) return;
+    selectedId.current = delivery.id;
+    setDetail(null);
     setLoadingDetail(true);
     setError("");
     try {
-      setDetail(await getDelivery(selectedAgent.id, deliveryId));
+      const result = await getDelivery(owner, delivery.id);
+      if (selectedId.current === delivery.id) setDetail({ ...delivery, ...result });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo cargar el detalle.");
+      if (selectedId.current === delivery.id)
+        setError(cause instanceof Error ? cause.message : "No se pudo cargar el detalle.");
     } finally {
-      setLoadingDetail(false);
+      if (selectedId.current === delivery.id) setLoadingDetail(false);
     }
   };
 
   const resolve = async (input: DeliveryResolutionInput): Promise<boolean> => {
-    if (!selectedAgent || !detail || commandInFlight.current) return false;
+    const owner = detail?.owner_agent_id ?? (global ? "" : agentId);
+    if (!owner || !detail || commandInFlight.current) return false;
     commandInFlight.current = true;
     setCommandBusy(true);
     setError("");
@@ -368,23 +396,19 @@ export default function DeliveriesPage() {
       signature = resolutionSignature(current.id, current.resolution_version, input);
       const intent = pendingIntents.current.get(signature) ?? createResolutionIntent();
       pendingIntents.current.set(signature, intent);
-      await resolveDelivery(
-        selectedAgent.id,
-        current.id,
-        current.resolution_version,
-        input,
-        intent,
-      );
+      await resolveDelivery(owner, current.id, current.resolution_version, input, intent);
       pendingIntents.current.delete(signature);
       await refresh();
-      setDetail(await getDelivery(selectedAgent.id, current.id));
+      const updated = await getDelivery(owner, current.id);
+      if (selectedId.current === current.id) setDetail({ ...current, ...updated });
       return true;
     } catch (cause) {
       const hasDefinitiveResponse = cause instanceof ApiError && cause.status < 500;
       if (hasDefinitiveResponse && signature) pendingIntents.current.delete(signature);
       try {
         await refresh();
-        setDetail(await getDelivery(selectedAgent.id, current.id));
+        const updated = await getDelivery(owner, current.id);
+        if (selectedId.current === current.id) setDetail({ ...current, ...updated });
       } catch {
         // Preserve the resolution error below; the next explicit refresh can reconcile the view.
       }
@@ -411,7 +435,9 @@ export default function DeliveriesPage() {
       <header className="mb-5 flex flex-wrap items-center gap-3">
         <Send size={23} className="text-[var(--accent)]" />
         <div>
-          <h2 className="text-xl font-semibold">Entregas de {selectedAgent?.name}</h2>
+          <h2 className="text-xl font-semibold">
+            Entregas{selectedAgent ? ` de ${selectedAgent.name}` : ""}
+          </h2>
           <p className="text-sm text-[var(--text-muted)]">
             Revisión segura de incidentes y evidencia de proveedor.
           </p>
@@ -424,6 +450,8 @@ export default function DeliveriesPage() {
           <RefreshCw size={16} /> <span className="hidden sm:inline">Actualizar</span>
         </button>
       </header>
+      <CrmScopeFilter scope={scope} label="Agente de ingreso" />
+      <CrmPagination offset={offset} total={total} loading={loading} onChange={scope.setOffset} />
 
       <div className="mb-4 flex items-start gap-2 rounded border border-[var(--error)]/30 bg-[var(--error)]/5 p-3 text-sm">
         <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[var(--error)]" />
@@ -436,12 +464,13 @@ export default function DeliveriesPage() {
           Canal
           <select
             value={filters.channel}
-            onChange={(event) =>
+            onChange={(event) => {
+              scope.setOffset(0);
               setFilters((current) => ({
                 ...current,
                 channel: event.target.value as "" | ChannelKind,
-              }))
-            }
+              }));
+            }}
             className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
           >
             <option value="">Todos</option>
@@ -456,9 +485,10 @@ export default function DeliveriesPage() {
           Estado
           <select
             value={filters.status}
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, status: event.target.value }))
-            }
+            onChange={(event) => {
+              scope.setOffset(0);
+              setFilters((current) => ({ ...current, status: event.target.value }));
+            }}
             className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
           >
             <option value="">Incidentes primero</option>
@@ -473,9 +503,10 @@ export default function DeliveriesPage() {
           ID de conversación
           <input
             value={filters.conversationId}
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, conversationId: event.target.value }))
-            }
+            onChange={(event) => {
+              scope.setOffset(0);
+              setFilters((current) => ({ ...current, conversationId: event.target.value }));
+            }}
             placeholder="UUID exacto"
             className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
           />
@@ -507,7 +538,7 @@ export default function DeliveriesPage() {
               key={item.id}
               delivery={item}
               selected={detail?.id === item.id}
-              onSelect={() => void open(item.id)}
+              onSelect={() => void open(item)}
             />
           ))}
         </section>
@@ -516,8 +547,13 @@ export default function DeliveriesPage() {
             detail={detail}
             loading={loadingDetail}
             busy={commandBusy}
-            canReview={canReview}
-            onBack={() => setDetail(null)}
+            canReview={
+              canReview && canOperateItem(global, detail, user, PERMISSIONS.DELIVERIES_REVIEW)
+            }
+            onBack={() => {
+              selectedId.current = null;
+              setDetail(null);
+            }}
             onResolve={resolve}
           />
         </div>

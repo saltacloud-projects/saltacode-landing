@@ -2,24 +2,42 @@ import { Inbox, RefreshCw } from "lucide-react";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { CrmPagination, CrmScopeFilter, canOperateItem, useCrmScope } from "../../crm/operations";
 import { InboxFiltersForm } from "./InboxFilters";
 import { InboxShell } from "./InboxShell";
 import { useInboxState } from "./useInboxState";
 
 export default function InboxPage() {
-  const { profiles, selectedAgent } = useAgentWorkspace();
+  const scope = useCrmScope("inbox");
+  const { selectedAgent } = scope;
+  const { profiles } = useAgentWorkspace();
   const { user } = useAuth();
   const canManage = hasPermission(user, PERMISSIONS.CONVERSATIONS_MANAGE);
   const canAssignAutomation = canManage && hasPermission(user, PERMISSIONS.RUNTIME_MANAGE);
-  const automationAgents = profiles.filter((profile) => profile.is_active);
-  const inbox = useInboxState({ agentId: selectedAgent?.id, user, canManage });
+  const automationAgents = scope.global
+    ? scope.agents.filter(
+        (agent) =>
+          agent.is_active &&
+          agent.capabilities.includes(PERMISSIONS.RUNTIME_MANAGE) &&
+          agent.capabilities.includes(PERMISSIONS.CONVERSATIONS_MANAGE),
+      )
+    : profiles.filter((profile) => profile.is_active);
+  const inbox = useInboxState({
+    agentId: scope.agentId,
+    global: scope.global,
+    offset: scope.offset,
+    user,
+    canManage,
+  });
 
   return (
     <div className="mx-auto max-w-[1500px]">
       <header className="mb-5 flex flex-wrap items-center gap-3">
         <Inbox size={23} className="text-[var(--accent)]" />
         <div>
-          <h2 className="text-xl font-semibold">Inbox de {selectedAgent?.name}</h2>
+          <h2 className="text-xl font-semibold">
+            Inbox{selectedAgent ? ` de ${selectedAgent.name}` : ""}
+          </h2>
           <p className="text-sm text-[var(--text-muted)]">
             Atención multicanal con control humano por conversación.
           </p>
@@ -32,11 +50,21 @@ export default function InboxPage() {
           <RefreshCw size={16} /> Actualizar
         </button>
       </header>
+      <CrmScopeFilter scope={scope} label="Agente de ingreso" />
 
+      <CrmPagination
+        offset={scope.offset}
+        total={inbox.total}
+        loading={inbox.loadingList}
+        onChange={scope.setOffset}
+      />
       <InboxFiltersForm
         filters={inbox.filters}
         operators={inbox.operators}
-        onChange={inbox.setFilters}
+        onChange={(filters) => {
+          scope.setOffset(0);
+          inbox.setFilters(filters);
+        }}
       />
 
       {inbox.error && (
@@ -53,8 +81,16 @@ export default function InboxPage() {
         thread={inbox.thread}
         operators={inbox.operators}
         currentAdminId={user?.id ?? ""}
-        canManage={canManage}
-        canAssignAutomation={canAssignAutomation}
+        canManage={canOperateItem(
+          scope.global,
+          inbox.thread?.conversation,
+          user,
+          PERMISSIONS.CONVERSATIONS_MANAGE,
+        )}
+        canAssignAutomation={
+          canAssignAutomation &&
+          canOperateItem(scope.global, inbox.thread?.conversation, user, PERMISSIONS.RUNTIME_MANAGE)
+        }
         automationAgents={automationAgents}
         ownsConversation={inbox.ownsConversation}
         loadingList={inbox.loadingList}

@@ -1,4 +1,5 @@
 import { LoaderCircle } from "lucide-react";
+import { CrmOwnerLabel } from "../../crm/operations";
 import { dateTime, phaseLabel, STATUS_LABELS, shortId, statusTone } from "./presentation";
 import type { InboundJobSummary } from "./types";
 
@@ -45,6 +46,7 @@ export function InboundJobList({ items, selectedId, loading, hiddenOnMobile, onS
                   {STATUS_LABELS[item.status]}
                 </span>
               </div>
+              <CrmOwnerLabel item={item} label="Agente de ingreso" />
               <p className="mt-2 text-sm text-[var(--text-secondary)]">
                 Canal {item.channel} · {phaseLabel(item.phase)}
               </p>

@@ -3,7 +3,6 @@ import {
   Bot,
   Brain,
   Cable,
-  CalendarClock,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -62,58 +61,110 @@ interface WorkspaceNavigationGroup {
 
 const PLATFORM_GROUPS: NavigationGroup[] = [
   {
-    id: "platform-library",
-    label: "Biblioteca global",
-    description: "Recursos compartidos que después se vinculan a cada agente.",
+    id: "crm-operate",
+    label: "Operar",
+    items: [
+      { to: "/inbox", label: "Inbox", icon: Inbox, permission: PERMISSIONS.CONVERSATIONS_READ },
+      {
+        to: "/opportunities",
+        label: "Oportunidades",
+        icon: Target,
+        permission: PERMISSIONS.OPPORTUNITIES_READ,
+      },
+      {
+        to: "/meetings",
+        label: "Reuniones",
+        icon: CalendarDays,
+        permission: PERMISSIONS.MEETINGS_READ,
+      },
+      {
+        to: "/follow-ups",
+        label: "Seguimientos",
+        icon: ListChecks,
+        permission: PERMISSIONS.FOLLOW_UPS_READ,
+      },
+      { to: "/deliveries", label: "Entregas", icon: Send, permission: PERMISSIONS.DELIVERIES_READ },
+      {
+        to: "/inbound-jobs",
+        label: "Ingresos externos",
+        icon: Webhook,
+        permission: PERMISSIONS.INBOUND_READ,
+      },
+      { to: "/audit", label: "Auditoría", icon: ClipboardList, permission: PERMISSIONS.AUDIT_READ },
+    ],
+  },
+  {
+    id: "crm-channels",
+    label: "Canales",
     items: [
       {
-        to: "/shared/sources",
-        label: "Biblioteca de fuentes",
-        icon: Cable,
-        permission: PERMISSIONS.SOURCES_READ,
-      },
-      {
-        to: "/shared/knowledge",
-        label: "Biblioteca de conocimiento",
-        icon: Library,
-        permission: PERMISSIONS.KNOWLEDGE_READ,
-      },
-      {
-        to: "/shared/tools",
-        label: "Biblioteca de herramientas",
-        icon: Wrench,
-        permission: PERMISSIONS.TOOLS_READ,
-      },
-      {
-        to: "/shared/documents",
-        label: "Biblioteca de documentos",
-        icon: Files,
-        permission: PERMISSIONS.DOCUMENTS_READ,
+        to: "/channels",
+        label: "Canales y conexiones",
+        icon: Globe2,
+        permission: PERMISSIONS.CONNECTIONS_READ,
+        end: true,
       },
     ],
   },
   {
-    id: "platform-administration",
-    label: "Administrar plataforma",
+    id: "crm-agents",
+    label: "Agentes",
     items: [
       {
         to: "/agents",
-        label: "Agentes",
+        label: "Administrar agentes",
         icon: Bot,
         permission: PERMISSIONS.PROFILES_READ,
         end: true,
       },
+    ],
+  },
+  {
+    id: "crm-automation",
+    label: "Automatización",
+    items: [
+      {
+        to: "/pipeline",
+        label: "Pipeline comercial",
+        icon: ArrowRightLeft,
+        permission: PERMISSIONS.RUNTIME_READ,
+      },
+    ],
+  },
+  {
+    id: "crm-settings",
+    label: "Configuración compartida",
+    description: "Recursos reutilizables; cada agente autoriza sus vínculos.",
+    items: [
       {
         to: "/shared/provider-connections",
-        label: "Conexiones de IA",
+        label: "Proveedores de IA",
         icon: CloudCog,
         permission: PERMISSIONS.CONNECTIONS_READ,
       },
       {
-        to: "/shared/channel-connections",
-        label: "Conexiones de canal",
-        icon: Globe2,
-        permission: PERMISSIONS.CONNECTIONS_READ,
+        to: "/shared/sources",
+        label: "Fuentes API",
+        icon: Cable,
+        permission: PERMISSIONS.SOURCES_READ,
+      },
+      {
+        to: "/shared/tools",
+        label: "Herramientas",
+        icon: Wrench,
+        permission: PERMISSIONS.TOOLS_READ,
+      },
+      {
+        to: "/shared/knowledge",
+        label: "Conocimiento",
+        icon: Library,
+        permission: PERMISSIONS.KNOWLEDGE_READ,
+      },
+      {
+        to: "/shared/documents",
+        label: "Documentos",
+        icon: Files,
+        permission: PERMISSIONS.DOCUMENTS_READ,
       },
       {
         to: "/panel-users",
@@ -127,81 +178,15 @@ const PLATFORM_GROUPS: NavigationGroup[] = [
 
 const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
   {
-    id: "workspace-overview",
-    label: "Agente seleccionado",
+    id: "workspace-configure",
+    label: "Configurar agente",
+    description: "Vinculá bibliotecas globales y ajustá sólo este agente.",
     items: [
       {
         segment: "overview",
         label: "Resumen",
         icon: Gauge,
         permission: PERMISSIONS.DASHBOARD_READ,
-        end: true,
-      },
-    ],
-  },
-  {
-    id: "workspace-operate",
-    label: "Operar",
-    items: [
-      {
-        segment: "inbox",
-        label: "Inbox",
-        icon: Inbox,
-        permission: PERMISSIONS.CONVERSATIONS_READ,
-      },
-      {
-        segment: "opportunities",
-        label: "Oportunidades",
-        icon: Target,
-        permission: PERMISSIONS.OPPORTUNITIES_READ,
-      },
-      {
-        segment: "meetings",
-        label: "Reuniones",
-        icon: CalendarDays,
-        permission: PERMISSIONS.MEETINGS_READ,
-      },
-      {
-        segment: "follow-ups",
-        label: "Seguimientos",
-        icon: ListChecks,
-        permission: PERMISSIONS.FOLLOW_UPS_READ,
-      },
-      {
-        segment: "inbound-jobs",
-        label: "Ingresos externos",
-        icon: Webhook,
-        permission: PERMISSIONS.INBOUND_READ,
-      },
-      {
-        segment: "deliveries",
-        label: "Entregas",
-        icon: Send,
-        permission: PERMISSIONS.DELIVERIES_READ,
-      },
-      {
-        segment: "audit",
-        label: "Auditoría",
-        icon: ClipboardList,
-        permission: PERMISSIONS.AUDIT_READ,
-      },
-    ],
-  },
-  {
-    id: "workspace-automate",
-    label: "Automatizar",
-    items: [
-      {
-        segment: "automation-policy",
-        label: "Política comercial",
-        icon: CalendarClock,
-        permission: PERMISSIONS.OPPORTUNITIES_READ,
-      },
-      {
-        segment: "handoffs",
-        label: "Handoffs",
-        icon: ArrowRightLeft,
-        permission: PERMISSIONS.OPPORTUNITIES_MANAGE,
       },
       {
         segment: "promptlab",
@@ -209,13 +194,6 @@ const WORKSPACE_GROUPS: WorkspaceNavigationGroup[] = [
         icon: FlaskConical,
         permission: PERMISSIONS.PROMPTLAB_USE,
       },
-    ],
-  },
-  {
-    id: "workspace-configure",
-    label: "Configurar agente",
-    description: "Vinculá bibliotecas globales y ajustá sólo este agente.",
-    items: [
       {
         segment: "identity",
         label: "Identidad",
@@ -308,17 +286,24 @@ export default function AdminLayout() {
     ...group,
     items: group.items.filter((item) => !item.permission || hasPermission(user, item.permission)),
   })).filter((group) => group.items.length > 0);
-  const workspaceGroups = selectedAgent
-    ? WORKSPACE_GROUPS.map((group) => ({
-        ...group,
-        items: group.items
-          .filter((item) => !item.permission || hasPermission(user, item.permission))
-          .map((item) => ({
-            ...item,
-            to: `/agents/${selectedAgent.id}/${item.segment}`,
-          })),
-      })).filter((group) => group.items.length > 0)
-    : [];
+  const isAgentConfiguration = Boolean(
+    selectedAgent &&
+      !/^\/agents\/[^/]+\/(inbox|opportunities|meetings|follow-ups|inbound-jobs|deliveries|audit|conversations)(?:\/|$)/.test(
+        location.pathname,
+      ),
+  );
+  const workspaceGroups =
+    selectedAgent && isAgentConfiguration
+      ? WORKSPACE_GROUPS.map((group) => ({
+          ...group,
+          items: group.items
+            .filter((item) => !item.permission || hasPermission(user, item.permission))
+            .map((item) => ({
+              ...item,
+              to: `/agents/${selectedAgent.id}/${item.segment}`,
+            })),
+        })).filter((group) => group.items.length > 0)
+      : [];
 
   const closeMobileNavigation = (restoreFocus = false) => {
     setMobileOpen(false);
@@ -330,6 +315,22 @@ export default function AdminLayout() {
 
     closeButtonRef.current?.focus();
     const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const controls = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "#admin-navigation a[href], #admin-navigation button:not([disabled]), #admin-navigation select:not([disabled])",
+          ),
+        ).filter((element) => element.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
       if (event.key !== "Escape") return;
       setMobileOpen(false);
       requestAnimationFrame(() => menuButtonRef.current?.focus());
@@ -387,7 +388,7 @@ export default function AdminLayout() {
             <h1 className="truncate text-base font-bold text-[var(--text-primary)]">
               Agent Platform
             </h1>
-            <p className="truncate text-xs text-[var(--text-muted)]">Administración por agente</p>
+            <p className="truncate text-xs text-[var(--text-muted)]">CRM multicanal</p>
           </div>
           <button
             ref={closeButtonRef}
@@ -408,61 +409,34 @@ export default function AdminLayout() {
           </button>
         </div>
 
-        <div
-          className={`${collapsed ? "md:hidden" : ""} border-b border-[var(--border-color)] p-3`}
-        >
-          <label
-            className="block text-xs font-medium text-[var(--text-muted)]"
-            htmlFor="agent-switcher"
+        {selectedAgent && isAgentConfiguration && (
+          <div
+            className={`${collapsed ? "md:hidden" : ""} border-b border-[var(--border-color)] p-3`}
           >
-            Agente de trabajo
-          </label>
-          <select
-            id="agent-switcher"
-            className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-2 py-2 text-sm text-[var(--text-primary)]"
-            value={selectedAgent?.id || ""}
-            disabled={loadingAgents}
-            onChange={(event) => changeAgent(event.target.value)}
-          >
-            <option value="">Seleccionar agente…</option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
-        </div>
+            <label
+              className="block text-xs font-medium text-[var(--text-muted)]"
+              htmlFor="agent-switcher"
+            >
+              Configurar agente
+            </label>
+            <select
+              id="agent-switcher"
+              className="mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-2 py-2 text-sm text-[var(--text-primary)]"
+              value={selectedAgent?.id || ""}
+              disabled={loadingAgents}
+              onChange={(event) => changeAgent(event.target.value)}
+            >
+              <option value="">Seleccionar agente…</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <nav className="flex-1 overflow-y-auto py-2" aria-label="Navegación del panel">
-          {workspaceGroups.map((group, index) => (
-            <section
-              key={group.id}
-              aria-labelledby={`${group.id}-title`}
-              className={index > 0 ? "mt-2 border-t border-[var(--border-color)] pt-2" : ""}
-            >
-              <h2
-                id={`${group.id}-title`}
-                className={`${collapsed ? "md:sr-only" : ""} px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]`}
-              >
-                {group.id === "workspace-overview" ? selectedAgent?.name : group.label}
-              </h2>
-              {group.description && (
-                <p
-                  className={`${collapsed ? "md:hidden" : ""} px-4 pb-2 text-xs leading-4 text-[var(--text-muted)]`}
-                >
-                  {group.description}
-                </p>
-              )}
-              {group.items.map((item) => (
-                <NavigationLink
-                  key={item.to}
-                  item={item}
-                  collapsed={collapsed}
-                  onNavigate={() => closeMobileNavigation()}
-                />
-              ))}
-            </section>
-          ))}
           {platformGroups.length > 0 && (
             <div
               className={
@@ -499,7 +473,36 @@ export default function AdminLayout() {
                 </section>
               ))}
             </div>
-          )}
+          )}{" "}
+          {workspaceGroups.map((group, index) => (
+            <section
+              key={group.id}
+              aria-labelledby={`${group.id}-title`}
+              className={index > 0 ? "mt-2 border-t border-[var(--border-color)] pt-2" : ""}
+            >
+              <h2
+                id={`${group.id}-title`}
+                className={`${collapsed ? "md:sr-only" : ""} px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]`}
+              >
+                {group.id === "workspace-overview" ? selectedAgent?.name : group.label}
+              </h2>
+              {group.description && (
+                <p
+                  className={`${collapsed ? "md:hidden" : ""} px-4 pb-2 text-xs leading-4 text-[var(--text-muted)]`}
+                >
+                  {group.description}
+                </p>
+              )}
+              {group.items.map((item) => (
+                <NavigationLink
+                  key={item.to}
+                  item={item}
+                  collapsed={collapsed}
+                  onNavigate={() => closeMobileNavigation()}
+                />
+              ))}
+            </section>
+          ))}
         </nav>
 
         <div className="border-t border-[var(--border-color)] p-3">

@@ -1,4 +1,5 @@
 import { api } from "../../api/client";
+import { type CrmListOptions, listPath } from "../../crm/operations";
 import type {
   FollowUpCommandResult,
   FollowUpDetail,
@@ -37,11 +38,12 @@ function command(
 export function listFollowUps(
   agentId: string,
   filters: FollowUpFilters,
+  options: CrmListOptions = {},
 ): Promise<FollowUpQueuePage> {
   const query = new URLSearchParams({ limit: "100" });
   if (filters.status) query.set("status", filters.status);
   if (filters.kind) query.set("kind", filters.kind);
-  return api<FollowUpQueuePage>(`${root(agentId)}/?${query}`);
+  return api<FollowUpQueuePage>(listPath("follow-ups", agentId, query, options));
 }
 
 export function getFollowUp(agentId: string, taskId: string): Promise<FollowUpDetail> {

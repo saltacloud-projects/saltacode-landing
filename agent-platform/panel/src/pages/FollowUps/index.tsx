@@ -1,7 +1,7 @@
 import { ListChecks, RefreshCw } from "lucide-react";
-import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { CrmPagination, CrmScopeFilter, canOperateItem, useCrmScope } from "../../crm/operations";
 import { FollowUpDetail } from "./FollowUpDetail";
 import { FollowUpList } from "./FollowUpList";
 import { KIND_LABELS, STATUS_LABELS } from "./presentation";
@@ -21,9 +21,10 @@ const SELECT =
   "mt-1 w-full rounded border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]";
 
 export default function FollowUpsPage() {
-  const { selectedAgent } = useAgentWorkspace();
+  const scope = useCrmScope("follow-ups");
+  const { selectedAgent } = scope;
   const { user } = useAuth();
-  const workspace = useFollowUps(selectedAgent?.id);
+  const workspace = useFollowUps(scope.agentId, { global: scope.global, offset: scope.offset });
   const canManage = hasPermission(user, PERMISSIONS.FOLLOW_UPS_MANAGE);
   const canReview = hasPermission(user, PERMISSIONS.FOLLOW_UPS_REVIEW);
 
@@ -32,7 +33,9 @@ export default function FollowUpsPage() {
       <header className="mb-5 flex flex-wrap items-center gap-3">
         <ListChecks size={23} className="text-[var(--accent)]" aria-hidden="true" />
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold">Seguimientos de {selectedAgent?.name}</h2>
+          <h2 className="text-xl font-semibold">
+            Seguimientos{selectedAgent ? ` de ${selectedAgent.name}` : ""}
+          </h2>
           <p className="text-sm text-[var(--text-muted)]">
             Cola durable, revisión humana y evidencia operativa sin exponer datos de contacto.
           </p>
@@ -46,6 +49,7 @@ export default function FollowUpsPage() {
           <span className="hidden sm:inline">Actualizar</span>
         </button>
       </header>
+      <CrmScopeFilter scope={scope} label="Responsable comercial actual" />
 
       <p
         role="note"
@@ -55,7 +59,19 @@ export default function FollowUpsPage() {
         cancelar trabajo todavía seguro o resolver una revisión; nunca fuerza estados internos.
       </p>
 
-      <FollowUpFiltersForm filters={workspace.filters} onChange={workspace.setFilters} />
+      <CrmPagination
+        offset={scope.offset}
+        total={workspace.total}
+        loading={workspace.loadingList}
+        onChange={scope.setOffset}
+      />
+      <FollowUpFiltersForm
+        filters={workspace.filters}
+        onChange={(filters) => {
+          scope.setOffset(0);
+          workspace.setFilters(filters);
+        }}
+      />
 
       {workspace.error && (
         <p
@@ -75,13 +91,19 @@ export default function FollowUpsPage() {
           onSelect={workspace.open}
         />
         <FollowUpDetail
-          agentId={selectedAgent?.id ?? ""}
+          agentId={workspace.ownerAgentId}
           detail={workspace.detail}
           events={workspace.events}
           loading={workspace.loadingDetail}
           busy={workspace.busy}
-          canManage={canManage}
-          canReview={canReview}
+          canManage={
+            canManage &&
+            canOperateItem(scope.global, workspace.detail, user, PERMISSIONS.FOLLOW_UPS_MANAGE)
+          }
+          canReview={
+            canReview &&
+            canOperateItem(scope.global, workspace.detail, user, PERMISSIONS.FOLLOW_UPS_REVIEW)
+          }
           onBack={workspace.close}
           onCancel={workspace.cancel}
           onRequeue={workspace.requeue}

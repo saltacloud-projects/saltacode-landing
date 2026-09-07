@@ -44,13 +44,20 @@ export function hasPermission(user: AdminUser | null, permission: string): boole
 }
 
 export function defaultPanelPath(user: AdminUser | null): string {
+  if (hasPermission(user, PERMISSIONS.CONVERSATIONS_READ)) return "/inbox";
+  if (hasPermission(user, PERMISSIONS.OPPORTUNITIES_READ)) return "/opportunities";
+  if (hasPermission(user, PERMISSIONS.MEETINGS_READ)) return "/meetings";
+  if (hasPermission(user, PERMISSIONS.FOLLOW_UPS_READ)) return "/follow-ups";
+  if (hasPermission(user, PERMISSIONS.DELIVERIES_READ)) return "/deliveries";
+  if (hasPermission(user, PERMISSIONS.INBOUND_READ)) return "/inbound-jobs";
+  if (hasPermission(user, PERMISSIONS.AUDIT_READ)) return "/audit";
+  if (hasPermission(user, PERMISSIONS.RUNTIME_READ)) return "/pipeline";
   if (hasPermission(user, PERMISSIONS.PROFILES_READ)) return "/agents";
   if (hasPermission(user, PERMISSIONS.DOCUMENTS_READ)) return "/shared/documents";
   if (hasPermission(user, PERMISSIONS.SOURCES_READ)) return "/shared/sources";
   if (hasPermission(user, PERMISSIONS.KNOWLEDGE_READ)) return "/shared/knowledge";
   if (hasPermission(user, PERMISSIONS.TOOLS_READ)) return "/shared/tools";
   if (hasPermission(user, PERMISSIONS.CONNECTIONS_READ)) return "/shared/provider-connections";
-  if (hasPermission(user, PERMISSIONS.AUDIT_READ)) return "/audit";
   if (hasPermission(user, PERMISSIONS.PANEL_USERS_MANAGE)) return "/panel-users";
-  return "/login";
+  return "/no-access";
 }
