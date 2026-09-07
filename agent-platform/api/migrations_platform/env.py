@@ -50,6 +50,7 @@ from app.models.channel_inbound import (  # noqa: F401
 from app.models.commercial_automation_policy import (  # noqa: F401
     CommercialAutomationPolicy,
 )
+from app.models.commercial_progression_policy import CommercialProgressionPolicy  # noqa: F401
 from app.models.contact import ConsentRecord, Contact, ContactPoint  # noqa: F401
 from app.models.conversation_automation_assignment import (  # noqa: F401
     ConversationAutomationAssignmentEvent,

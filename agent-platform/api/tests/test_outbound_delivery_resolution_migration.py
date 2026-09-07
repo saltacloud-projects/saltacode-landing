@@ -28,10 +28,11 @@ def _config() -> Config:
     return Config(str(api_root / "alembic-platform.ini"))
 
 
-def test_delivery_resolution_migration_is_the_single_head() -> None:
+def test_delivery_resolution_migration_remains_in_the_single_chain() -> None:
     scripts = ScriptDirectory.from_config(_config())
 
-    assert scripts.get_heads() == [_REVISION]
+    assert len(scripts.get_heads()) == 1
+    assert _REVISION in {item.revision for item in scripts.walk_revisions()}
     assert scripts.get_revision(_REVISION).down_revision == _DOWN_REVISION
 
 

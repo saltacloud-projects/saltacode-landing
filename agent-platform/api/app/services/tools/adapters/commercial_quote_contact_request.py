@@ -41,6 +41,9 @@ class _ScopedExecution:
     principal_id: uuid.UUID
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
+    routing_agent_id: uuid.UUID
+    control_version: int
+    automation_version: int
     external_subject: str | None
 
 
@@ -107,7 +110,7 @@ class CommercialQuoteContactRequestTool(AbstractTool):
                 event = await self._event_service.publish(
                     db,
                     conversation_id=execution.conversation_id,
-                    agent_id=execution.agent_id,
+                    agent_id=execution.routing_agent_id,
                     event_type=_EVENT_TYPE,
                     visibility=ConversationEventVisibility.PUBLIC,
                     payload=event_payload,
@@ -152,14 +155,22 @@ class CommercialQuoteContactRequestTool(AbstractTool):
             principal_id = uuid.UUID(context.principal_id or "")
             conversation_id = uuid.UUID(context.conversation_id or "")
             agent_id = uuid.UUID(context.agent_id or "")
+            routing_agent_id = uuid.UUID(
+                context.routing_agent_id or context.agent_id or ""
+            )
         except ValueError as exc:
             raise ValueError("A complete execution context is required.") from exc
+        if context.control_version is None or context.automation_version is None:
+            raise ValueError("Conversation ownership versions are required.")
         return _ScopedExecution(
             request_id=request_id,
             channel=context.channel,
             principal_id=principal_id,
             conversation_id=conversation_id,
             agent_id=agent_id,
+            routing_agent_id=routing_agent_id,
+            control_version=context.control_version,
+            automation_version=context.automation_version,
             external_subject=context.external_subject,
         )
 
@@ -208,7 +219,11 @@ class CommercialQuoteContactRequestTool(AbstractTool):
             select(ChatConversation)
             .where(
                 ChatConversation.id == execution.conversation_id,
-                ChatConversation.agent_id == execution.agent_id,
+                ChatConversation.agent_id == execution.routing_agent_id,
+                ChatConversation.automation_agent_id == execution.agent_id,
+                ChatConversation.control_version == execution.control_version,
+                ChatConversation.automation_version == execution.automation_version,
+                ChatConversation.status == "active",
                 ChatConversation.principal_id == execution.principal_id,
                 ChatConversation.channel == execution.channel,
             )
@@ -231,7 +246,7 @@ class CommercialQuoteContactRequestTool(AbstractTool):
                 await db.execute(
                     select(ConversationEvent).where(
                         ConversationEvent.conversation_id == execution.conversation_id,
-                        ConversationEvent.agent_id == execution.agent_id,
+                        ConversationEvent.agent_id == execution.routing_agent_id,
                         ConversationEvent.event_type == _EVENT_TYPE,
                         ConversationEvent.visibility
                         == ConversationEventVisibility.PUBLIC.value,

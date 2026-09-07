@@ -21,6 +21,58 @@ from app.services.tools.adapters.commercial_quote_contact_request import (
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.asyncio
+async def test_contact_tool_after_handoff_keeps_event_routing_and_fences_stale_work(
+    commercial_graph,
+):
+    graph = commercial_graph
+    async with AsyncSessionLocal() as db:
+        conversation = await db.get(ChatConversation, graph.web_conversation_id)
+        conversation.automation_agent_id = graph.other_agent_id
+        conversation.automation_version = 1
+        conversation.control_version = 2
+        await db.commit()
+    context = _context(
+        graph=graph,
+        channel="web",
+        conversation_id=graph.web_conversation_id,
+        external_subject=graph.web_subject,
+        agent_id=graph.other_agent_id,
+    ).model_copy(
+        update={
+            "routing_agent_id": str(graph.agent_id),
+            "automation_version": 1,
+            "control_version": 2,
+        }
+    )
+    tool = CommercialQuoteContactRequestTool()
+    params = {
+        "title": "Website",
+        "summary": "A company website",
+        "preferred_delivery_channel": "email",
+    }
+    result = await tool.invoke(params, context.request_id, context)
+    assert result.status == "success"
+    async with AsyncSessionLocal() as db:
+        event = (
+            await db.execute(
+                select(ConversationEvent).where(
+                    ConversationEvent.conversation_id == graph.web_conversation_id
+                )
+            )
+        ).scalar_one()
+        assert event.agent_id == graph.agent_id
+    for update in (
+        {"automation_version": 0},
+        {"control_version": 1},
+        {"agent_id": str(graph.agent_id)},
+    ):
+        stale = await tool.invoke(
+            params, context.request_id, context.model_copy(update=update)
+        )
+        assert stale.status == "error"
+
+
 @dataclass(frozen=True, slots=True)
 class _CommercialGraph:
     agent_id: UUID
@@ -314,6 +366,8 @@ def _context(
         principal_id=str(principal_id or graph.principal_id),
         conversation_id=str(conversation_id),
         agent_id=str(agent_id or graph.agent_id),
+        control_version=0,
+        automation_version=0,
         external_subject=external_subject,
     )
 

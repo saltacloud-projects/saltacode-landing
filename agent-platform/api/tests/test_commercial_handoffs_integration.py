@@ -14,6 +14,8 @@ from app.models.admin_role import AdminRole
 from app.models.admin_user import AdminUser
 from app.models.agent_handoff_route import AgentHandoffRoute
 from app.models.agent_profile import AgentProfile
+from app.models.audit_log import AuditLog
+from app.models.commercial_progression_policy import CommercialProgressionPolicy
 from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.conversation_automation_assignment import (
     ConversationAutomationAssignmentEvent,
@@ -25,12 +27,17 @@ from app.models.opportunity import (
     OpportunityStageEvent,
 )
 from app.models.platform import ChannelIdentity, ChatConversation, Principal
+from app.schemas.commercial_progression import CommercialProgressionUpdate
 from app.services.commercial.handoffs import (
     CommercialHandoffConsentRequiredError,
     CommercialHandoffContactEvidenceError,
     CommercialHandoffCoordinator,
     CommercialHandoffError,
     CommercialHandoffRouteRequiredError,
+)
+from app.services.commercial.progression_policy import (
+    CommercialProgressionService,
+    ProgressionPolicyConflictError,
 )
 from app.services.conversation_automation_assignment import (
     ConversationAutomationAssignmentService,
@@ -218,6 +225,9 @@ async def commercial_handoff_context() -> CommercialHandoffContext:
                 delete(Principal).where(Principal.id == context.principal_id)
             )
             await db.execute(delete(AdminUser).where(AdminUser.id == context.admin_id))
+            await db.execute(
+                delete(AuditLog).where(AuditLog.agent_id == context.source_agent_id)
+            )
             await db.execute(delete(AdminRole).where(AdminRole.key == context.role_key))
             await db.execute(
                 delete(AgentProfile).where(
@@ -227,6 +237,122 @@ async def commercial_handoff_context() -> CommercialHandoffContext:
                 )
             )
             await db.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("control_mode", ["automated", "paused"])
+async def test_explicit_keep_agent_creates_opportunity_without_handoff_or_resume(
+    commercial_handoff_context, control_mode
+) -> None:
+    context = commercial_handoff_context
+    service = CommercialProgressionService()
+    async with AsyncSessionLocal() as db:
+        before = await service.get(db, context.source_agent_id)
+        assert not before.is_configured and before.quote_request_action == "handoff"
+        configured = await service.configure(
+            db,
+            agent_id=context.source_agent_id,
+            actor_admin_id=context.admin_id,
+            request=CommercialProgressionUpdate(
+                quote_request_action="keep_agent", expected_version=0
+            ),
+        )
+        assert configured.version == 1 and configured.is_configured
+        conversation = await db.get(ChatConversation, context.conversation_id)
+        conversation.control_mode = control_mode
+        # The acting agent can differ from the immutable routing owner.
+        conversation.automation_agent_id = context.target_agent_id
+        conversation.automation_version = 3
+        await db.execute(
+            delete(AgentHandoffRoute).where(AgentHandoffRoute.id == context.route_id)
+        )
+        await db.commit()
+
+    command = dict(
+        source_agent_id=context.source_agent_id,
+        conversation_id=context.conversation_id,
+        contact_id=context.contact_id,
+        contact_point_id=context.contact_point_id,
+        title="Requested company website",
+        summary="Explicit delivery request",
+        correlation_id="keep-agent",
+        idempotency_key="keep-agent",
+    )
+    coordinator = CommercialHandoffCoordinator()
+    async with AsyncSessionLocal() as db:
+        result = await coordinator.quote_requested(db, **command)
+        assert result.created
+        assert result.opportunity.assigned_agent_id == context.target_agent_id
+        conversation = await db.get(ChatConversation, context.conversation_id)
+        assert conversation.agent_id == context.source_agent_id
+        assert conversation.control_mode == control_mode
+        assert conversation.automation_version == 3
+        assert (
+            await db.execute(
+                select(func.count())
+                .select_from(ConversationAutomationAssignmentEvent)
+                .where(
+                    ConversationAutomationAssignmentEvent.conversation_id
+                    == context.conversation_id
+                )
+            )
+        ).scalar_one() == 0
+        await service.configure(
+            db,
+            agent_id=context.source_agent_id,
+            actor_admin_id=context.admin_id,
+            request=CommercialProgressionUpdate(
+                quote_request_action="handoff", expected_version=1
+            ),
+        )
+        await db.commit()
+    async with AsyncSessionLocal() as db:
+        # A retry must not reevaluate the new policy or require the deleted route.
+        replay = await coordinator.quote_requested(db, **command)
+        assert not replay.created and replay.opportunity.id == result.opportunity.id
+        with pytest.raises(ProgressionPolicyConflictError):
+            await service.configure(
+                db,
+                agent_id=context.source_agent_id,
+                actor_admin_id=context.admin_id,
+                request=CommercialProgressionUpdate(
+                    quote_request_action="keep_agent", expected_version=1
+                ),
+            )
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_keep_agent_still_requires_delivery_consent(
+    commercial_handoff_context,
+) -> None:
+    context = commercial_handoff_context
+    async with AsyncSessionLocal() as db:
+        db.add(
+            CommercialProgressionPolicy(
+                agent_id=context.source_agent_id,
+                quote_request_action="keep_agent",
+                version=1,
+            )
+        )
+        await db.execute(
+            delete(ConsentRecord).where(ConsentRecord.id == context.consent_id)
+        )
+        await db.commit()
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(CommercialHandoffConsentRequiredError):
+            await CommercialHandoffCoordinator().quote_requested(
+                db,
+                source_agent_id=context.source_agent_id,
+                conversation_id=context.conversation_id,
+                contact_id=context.contact_id,
+                contact_point_id=context.contact_point_id,
+                title="Consent required",
+                summary=None,
+                correlation_id="keep-no-consent",
+                idempotency_key="keep-no-consent",
+            )
+        await db.rollback()
 
 
 @pytest.mark.asyncio

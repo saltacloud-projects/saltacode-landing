@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_handoff_route import AgentHandoffRoute
+from app.models.commercial_progression_policy import CommercialProgressionPolicy
 from app.models.contact import Contact, ContactPoint
 from app.models.opportunity import Opportunity, OpportunityConversation
 from app.models.platform import ChatConversation
@@ -90,7 +91,7 @@ class CommercialHandoffCoordinator:
         idempotency_key: str,
         at: datetime | None = None,
     ) -> CommercialHandoffResult:
-        """Create an opportunity owned by the configured quote specialist."""
+        """Apply explicit progression, retaining legacy handoff when unconfigured."""
         normalized_title = _policy.required_text(title, "title", 200)
         normalized_summary = _policy.optional_text(summary, 8_000)
         correlation = _policy.required_text(correlation_id, "correlation_id", 120)
@@ -112,11 +113,30 @@ class CommercialHandoffCoordinator:
                 "quote handoff requires an explicit contact point"
             )
 
-        route = await self._load_active_quote_route(
-            db,
-            source_agent_id=source_agent_id,
+        policy = await db.get(CommercialProgressionPolicy, source_agent_id)
+        keep_agent = policy is not None and policy.quote_request_action == "keep_agent"
+        route = (
+            None
+            if keep_agent
+            else await self._load_active_quote_route(
+                db, source_agent_id=source_agent_id
+            )
         )
-        conversation = await db.get(ChatConversation, conversation_id)
+        if keep_agent:
+            # Capture may run while a human owns the thread. Lock ownership, but
+            # do not reassign or resume automation as a side effect of capture.
+            conversation = await db.get(
+                ChatConversation,
+                conversation_id,
+                with_for_update=True,
+                populate_existing=True,
+            )
+            if conversation is not None and (
+                conversation.status != "active" or conversation.control_mode == "closed"
+            ):
+                raise CommercialHandoffContactEvidenceError("conversation is closed")
+        else:
+            conversation = await db.get(ChatConversation, conversation_id)
         contact = await db.get(Contact, contact_id)
         point = await db.get(ContactPoint, contact_point_id)
         principal_id = self._validate_contact_evidence(
@@ -154,13 +174,21 @@ class CommercialHandoffCoordinator:
             contact_id=contact_id,
             source_conversation_id=conversation_id,
             created_by_agent_id=source_agent_id,
-            assigned_agent_id=route.target_agent_id,
+            assigned_agent_id=(
+                conversation.automation_agent_id
+                if keep_agent
+                else route.target_agent_id
+            ),
             assigned_operator_id=None,
             title=normalized_title,
             summary=normalized_summary,
             correlation_id=correlation,
             idempotency_key=key,
         )
+        if keep_agent:
+            return CommercialHandoffResult(
+                opportunity=result.opportunity, created=result.created
+            )
         await self._automation_assignments.assign(
             db,
             conversation_id=conversation_id,

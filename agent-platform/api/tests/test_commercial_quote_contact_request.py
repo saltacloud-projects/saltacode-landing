@@ -21,6 +21,8 @@ def _context(**overrides) -> ToolExecutionContext:
         "conversation_id": str(uuid.uuid4()),
         "agent_id": str(uuid.uuid4()),
         "external_subject": "visitor-1",
+        "control_version": 0,
+        "automation_version": 0,
     }
     values.update(overrides)
     return ToolExecutionContext(**values)
@@ -28,7 +30,14 @@ def _context(**overrides) -> ToolExecutionContext:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "missing_field", ["principal_id", "conversation_id", "agent_id"]
+    "missing_field",
+    [
+        "principal_id",
+        "conversation_id",
+        "agent_id",
+        "control_version",
+        "automation_version",
+    ],
 )
 async def test_capability_requires_complete_matching_execution_context(
     missing_field: str,

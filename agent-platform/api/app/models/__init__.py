@@ -27,6 +27,7 @@ from app.models.audit_log import AuditLog
 from app.models.authorized_user import AuthorizedUser
 from app.models.channel_inbound import ChannelInboundEvent, ChannelInboundJob
 from app.models.commercial_automation_policy import CommercialAutomationPolicy
+from app.models.commercial_progression_policy import CommercialProgressionPolicy
 from app.models.contact import ConsentRecord, Contact, ContactPoint
 from app.models.conversation_automation_assignment import (
     ConversationAutomationAssignmentEvent,
