@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # ---- Stage 2: Serve ---------------------------------------------------------
-FROM nginx:1.28.0-alpine AS runtime
+FROM nginx:1.28.3-alpine AS runtime
 
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
