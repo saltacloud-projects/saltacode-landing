@@ -525,8 +525,36 @@ def test_openapi_describes_v2_sse_and_problem_contracts() -> None:
     event_operation = document["paths"]["/api/v2/chat/events"]["get"]
     success = event_operation["responses"]["200"]["content"]["text/event-stream"]
     assert success["schema"] == {"type": "string"}
-    assert len(success["x-sse-event-schema"]["oneOf"]) == 3
+    assert len(success["x-sse-event-schema"]["oneOf"]) == 4
     for status_code in ("400", "403", "404", "422", "429", "503"):
         assert set(event_operation["responses"][status_code]["content"]) == {
             "application/problem+json"
         }
+
+
+def test_activity_snapshot_changes_without_advancing_durable_cursor() -> None:
+    fake = FakeWebChatV2Client()
+    fake.events_pages = [
+        EventsResponse.model_validate(
+            {
+                "after": 0,
+                "next_cursor": 0,
+                "has_more": False,
+                "events": [],
+                "activity": activity,
+            }
+        )
+        for activity in ({"status": "queued"}, {"status": "running"}, None)
+    ]
+    with build_client(fake) as client:
+        client.post("/api/v2/chat/messages", json=message_payload(), headers={"Origin": ORIGIN})
+        response = client.get("/api/v2/chat/events", headers={"Origin": ORIGIN})
+    activity_frames = [
+        frame for frame in response.text.split("\n\n") if "event: chat.activity" in frame
+    ]
+    assert len(activity_frames) == 3
+    assert '"status":"queued"' in activity_frames[0]
+    assert '"status":"running"' in activity_frames[1]
+    assert '"activity":null' in activity_frames[2]
+    assert all("\nid:" not in frame for frame in activity_frames)
+    assert all(request[2] == 0 for request in fake.event_requests)

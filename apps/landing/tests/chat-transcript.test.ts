@@ -91,14 +91,25 @@ test("human replies and control changes update the same durable conversation", (
     cursor: 14,
     event_type: "chat.message.completed",
     occurred_at: "2026-09-06T00:00:03Z",
-    payload: { message_id: "operator-reply", role: "assistant", content: "Hola, soy Oscar." },
+    payload: { message_id: "operator-reply", role: "assistant", author_type: "operator", content: "Hola, soy Oscar." },
   });
 
   assert.equal(result.controlChanged, true);
   assert.equal(transcript.controlMode, "human");
   assert.equal(reply.receivedRole, "assistant");
   assert.equal(transcript.messages.at(-1)?.text, "Hola, soy Oscar.");
+  assert.equal(transcript.messages.at(-1)?.authorType, "operator");
   assert.equal(transcript.latestEventId, 14);
+});
+
+test("cached authors survive reload while legacy messages remain unattributed", () => {
+  const transcript = conversation();
+  transcript.messages[1]!.authorType = "operator";
+  const storage = new MemoryStorage();
+  saveChatTranscript(storage, transcript, now);
+  const restored = loadChatTranscript(storage, now);
+  assert.equal(restored?.messages[0]?.authorType, undefined);
+  assert.equal(restored?.messages[1]?.authorType, "operator");
 });
 
 test("expires and removes obsolete or corrupt local cache", () => {

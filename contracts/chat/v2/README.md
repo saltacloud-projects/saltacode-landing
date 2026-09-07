@@ -25,3 +25,17 @@ started, a temporary dependency failure is represented by the failure and done v
 These are consumer-owned public contracts. Private Agent Platform payloads and identifiers are not
 exported here. Run `uv run python scripts/export_contracts.py` from `apps/web-bff/` after changing a
 contract and commit the Python models and generated schemas together.
+
+## Live presentation metadata (2026-09-07)
+
+History adds optional `author_type` (visitor/agent/operator/system/unknown, default
+unknown) and nullable `activity` (`{status: queued|running}`). The private events page
+carries the same current activity projection; the BFF emits `chat.activity` with
+`schema_version: "2"` and `activity`, without `id` or `cursor`, after draining durable
+backlog and whenever the snapshot changes. It must not be replayed, advance the
+message cursor or persist as typing in client storage. Null clears activity; failures,
+human control and disconnects also clear it. These are additive optional fields.
+
+Completed-message payloads add `author_type` based on recorded provenance, never
+current ownership. Staff/agent IDs and names remain private. Consumers must tolerate
+unknown legacy authors and ignore unrecognized event types.

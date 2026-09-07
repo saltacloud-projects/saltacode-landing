@@ -21,6 +21,7 @@ from app.models.platform import (
     Principal,
 )
 from app.schemas.web_chat_v2 import (
+    WebChatActivity,
     WebConversationEvent,
     WebEventsResponse,
     WebHistoryMessage,
@@ -35,6 +36,7 @@ from app.services.agent_runtime import (
     ResolvedChannelRoute,
     agent_runtime_resolver,
 )
+from app.services.chat_execution_activity import active_execution_predicate
 from app.services.conversation_events import (
     ConversationEventService,
     ConversationEventVisibility,
@@ -308,15 +310,27 @@ class WebChatV2Service:
             )
         )
         rows.reverse()
+        execution_outputs = set(
+            (
+                await db.scalars(
+                    select(ChatExecution.output_message_id).where(
+                        ChatExecution.conversation_id == conversation.id,
+                        ChatExecution.output_message_id.in_([row.id for row in rows]),
+                    )
+                )
+            ).all()
+        )
         return WebHistoryResponse(
             status="closed" if conversation.status == "closed" else "active",
             control_mode=conversation.control_mode,
+            activity=await self._activity(db, conversation.id),
             latest_event_id=conversation.next_event_sequence - 1,
             messages=[
                 WebHistoryMessage(
                     message_id=row.id,
                     client_message_id=row.client_message_id,
                     role=row.role,
+                    author_type=self._author_type(row, row.id in execution_outputs),
                     content=row.content,
                     status=row.status,
                     created_at=row.created_at,
@@ -357,7 +371,33 @@ class WebChatV2Service:
             next_cursor=next_cursor,
             has_more=has_more,
             events=[self._public_event(event) for event in page],
+            activity=await self._activity(db, conversation.id),
         )
+
+    @staticmethod
+    def _author_type(message: ChatMessage, has_execution: bool) -> str:
+        if message.role == "user":
+            return "visitor"
+        if (message.metadata_json or {}).get("origin") == "operator":
+            return "operator"
+        return "agent" if has_execution else "unknown"
+
+    @staticmethod
+    async def _activity(
+        db: AsyncSession, conversation_id: uuid.UUID
+    ) -> WebChatActivity | None:
+        status = await db.scalar(
+            select(ChatExecution.status)
+            .join(
+                ChatConversation, ChatConversation.id == ChatExecution.conversation_id
+            )
+            .where(ChatConversation.id == conversation_id, active_execution_predicate())
+            .order_by(
+                (ChatExecution.status == "running").desc(), ChatExecution.created_at
+            )
+            .limit(1)
+        )
+        return WebChatActivity(status=status) if status else None
 
     async def reset_session(
         self,
@@ -571,6 +611,13 @@ class WebChatV2Service:
             if key in cls._public_event_fields
             and isinstance(value, (str, int, float, bool, type(None)))
         }
+        if event.event_type == "chat.message.completed":
+            if event.payload_json.get("actor") == "human":
+                payload["author_type"] = "operator"
+            elif event.payload_json.get("execution_id"):
+                payload["author_type"] = "agent"
+            else:
+                payload["author_type"] = "unknown"
         return WebConversationEvent(
             cursor=event.sequence,
             event_type=event.event_type,

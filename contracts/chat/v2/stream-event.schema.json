@@ -1,5 +1,23 @@
 {
   "$defs": {
+    "ChatActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "queued",
+            "running"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ChatActivity",
+      "type": "object"
+    },
     "ConversationEvent": {
       "additionalProperties": false,
       "properties": {
@@ -37,6 +55,30 @@
         "payload"
       ],
       "title": "ConversationEvent",
+      "type": "object"
+    },
+    "StreamActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChatActivity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": "2",
+          "default": "2",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "title": "StreamActivity",
       "type": "object"
     },
     "StreamDone": {
@@ -88,6 +130,9 @@
   "anyOf": [
     {
       "$ref": "#/$defs/ConversationEvent"
+    },
+    {
+      "$ref": "#/$defs/StreamActivity"
     },
     {
       "$ref": "#/$defs/StreamFailure"

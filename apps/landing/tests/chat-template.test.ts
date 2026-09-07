@@ -19,4 +19,7 @@ test("chat controls expose native mobile-friendly semantics", async () => {
   assert.match(styles, /\.chat-send-label\{position:absolute;width:1px/);
   assert.match(styles, /\.chat-close\{[^}]*width:44px[^}]*height:44px/);
   assert.match(styles, /\.chat-row textarea\{[^}]*overflow-y:hidden/);
+  assert.match(styles, /\.chat-suggestions\[hidden\]\{display:none\}/);
+  assert.match(markup, /class="chat-activity" role="status" aria-live="polite" aria-atomic="true" hidden/);
+  assert.match(styles, /@media\(prefers-reduced-motion:reduce\)\{\.chat-activity::before\{animation:none!important\}/);
 });

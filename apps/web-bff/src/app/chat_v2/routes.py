@@ -23,6 +23,7 @@ from app.chat_v2.contracts import (
     PrivateMessageRequest,
     PrivateResetRequest,
     ResetResponse,
+    StreamActivity,
     StreamDone,
     StreamFailure,
     TranscriptConsent,
@@ -92,6 +93,7 @@ _EVENT_RESPONSES = {
                         ConversationEvent.model_json_schema(),
                         StreamFailure.model_json_schema(),
                         StreamDone.model_json_schema(),
+                        StreamActivity.model_json_schema(),
                     ]
                 },
             }
@@ -348,6 +350,7 @@ async def _event_stream(
     page = first_page
     started_at = time.monotonic()
     heartbeat_at = started_at
+    activity_snapshot: str | None = None
     try:
         while time.monotonic() - started_at < settings.chat_v2_stream_max_seconds:
             if await request.is_disconnected():
@@ -367,6 +370,11 @@ async def _event_stream(
                     limit=settings.chat_v2_event_page_size,
                 )
                 continue
+            # Activity is a current, ephemeral snapshot, never a replayed cursor event.
+            current_activity = StreamActivity(activity=page.activity).model_dump_json()
+            if current_activity != activity_snapshot:
+                yield f"event: chat.activity\ndata: {current_activity}\n\n"
+                activity_snapshot = current_activity
             now = time.monotonic()
             if now - heartbeat_at >= settings.chat_v2_heartbeat_seconds:
                 yield ": heartbeat\n\n"

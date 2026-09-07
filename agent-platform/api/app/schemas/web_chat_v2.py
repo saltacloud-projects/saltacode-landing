@@ -41,10 +41,17 @@ class WebMessageAccepted(StrictContract):
     duplicate: bool
 
 
+class WebChatActivity(StrictContract):
+    status: Literal["queued", "running"]
+
+
 class WebHistoryMessage(StrictContract):
     message_id: UUID
     client_message_id: str = Field(min_length=1, max_length=255)
     role: Literal["user", "assistant"]
+    author_type: Literal["visitor", "agent", "operator", "system", "unknown"] = (
+        "unknown"
+    )
     content: str = Field(max_length=16_000)
     status: str = Field(min_length=1, max_length=30)
     created_at: datetime
@@ -55,6 +62,7 @@ class WebHistoryResponse(StrictContract):
     control_mode: Literal["automated", "paused", "human", "closed"]
     latest_event_id: int = Field(ge=0)
     messages: list[WebHistoryMessage]
+    activity: WebChatActivity | None = None
 
 
 class WebConversationEvent(StrictContract):
@@ -70,6 +78,7 @@ class WebEventsResponse(StrictContract):
     next_cursor: int = Field(ge=0)
     has_more: bool
     events: list[WebConversationEvent]
+    activity: WebChatActivity | None = None
 
 
 class WebSessionResetRequest(StrictContract):

@@ -13,6 +13,7 @@ from app.chat_v2.contracts import (
     HistoryResponse,
     MessageAccepted,
     ResetResponse,
+    StreamActivity,
     StreamDone,
     StreamFailure,
 )
@@ -29,7 +30,7 @@ CONTRACTS: dict[Path, dict[str, object]] = {
     Path("v2/message-accepted.schema.json"): MessageAccepted.model_json_schema(),
     Path("v2/history.schema.json"): HistoryResponse.model_json_schema(),
     Path("v2/stream-event.schema.json"): TypeAdapter(
-        ConversationEvent | StreamFailure | StreamDone
+        ConversationEvent | StreamActivity | StreamFailure | StreamDone
     ).json_schema(),
     Path("v2/session-reset-request.schema.json"): BrowserResetRequest.model_json_schema(),
     Path("v2/session-reset-response.schema.json"): ResetResponse.model_json_schema(),

@@ -142,10 +142,15 @@ class MessageAccepted(StrictContract):
     duplicate: bool
 
 
+class ChatActivity(StrictContract):
+    status: Literal["queued", "running"]
+
+
 class HistoryMessage(StrictContract):
     message_id: UUID
     client_message_id: str = Field(min_length=1, max_length=255)
     role: Literal["user", "assistant"]
+    author_type: Literal["visitor", "agent", "operator", "system", "unknown"] = "unknown"
     content: str = Field(max_length=16_000)
     status: str = Field(min_length=1, max_length=30)
     created_at: datetime
@@ -156,6 +161,7 @@ class HistoryResponse(StrictContract):
     control_mode: Literal["automated", "paused", "human", "closed"]
     latest_event_id: int = Field(ge=0)
     messages: list[HistoryMessage]
+    activity: ChatActivity | None = None
 
 
 class ConversationEvent(StrictContract):
@@ -178,6 +184,7 @@ class EventsResponse(StrictContract):
     next_cursor: int = Field(ge=0)
     has_more: bool
     events: list[ConversationEvent]
+    activity: ChatActivity | None = None
 
 
 class PrivateResetRequest(StrictContract):
@@ -190,6 +197,11 @@ class PrivateResetRequest(StrictContract):
 class ResetResponse(StrictContract):
     status: Literal["active"]
     latest_event_id: int = Field(ge=0)
+
+
+class StreamActivity(StrictContract):
+    schema_version: Literal["2"] = "2"
+    activity: ChatActivity | None = None
 
 
 class StreamFailure(StrictContract):

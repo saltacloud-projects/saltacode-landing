@@ -1,9 +1,12 @@
 import type { ChatControlMode, ChatTranscriptMessage, PendingChatMessage } from "./chat-transcript";
+import { parseChatAuthor, type ChatAuthorType } from "./chat-presentation.ts";
+import type { ChatActivity } from "./chat-activity";
 
 export interface ChatHistory {
   status: "active" | "closed";
   control_mode: ChatControlMode;
   latest_event_id: number;
+  activity?: ChatActivity | null;
   messages: Array<{
     message_id: string;
     client_message_id: string;
@@ -11,6 +14,7 @@ export interface ChatHistory {
     content: string;
     status: string;
     created_at: string;
+    author_type?: ChatAuthorType;
   }>;
 }
 
@@ -114,6 +118,7 @@ export async function resetServerChat(
 }
 
 export function mapServerMessage(message: ChatHistory["messages"][number]): ChatTranscriptMessage {
+  const authorType = parseChatAuthor(message.author_type);
   return {
     id: message.message_id,
     clientMessageId: message.client_message_id,
@@ -121,5 +126,6 @@ export function mapServerMessage(message: ChatHistory["messages"][number]): Chat
     text: message.content,
     state: message.status === "completed" ? "completed" : "accepted",
     createdAt: message.created_at,
+    ...(authorType ? { authorType } : {}),
   };
 }

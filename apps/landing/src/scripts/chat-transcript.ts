@@ -1,3 +1,6 @@
+import { parseChatAuthor, type ChatAuthorType } from "./chat-presentation.ts";
+import type { ChatEvent } from "./chat-stream";
+
 export const CHAT_TRANSCRIPT_STORAGE_KEY = "saltacode-chat-transcript";
 export const CHAT_TRANSCRIPT_VERSION = 2;
 export const CHAT_TRANSCRIPT_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -16,12 +19,14 @@ export interface ChatTranscriptMessage {
   text: string;
   state: ChatTranscriptState;
   createdAt: string;
+  authorType?: ChatAuthorType;
 }
 
 export interface PendingChatMessage {
   clientMessageId: string;
   text: string;
   status: "accepted" | "sending";
+  createdAt?: string;
 }
 
 export interface ChatTranscript {
@@ -68,6 +73,7 @@ function normalizeMessage(value: unknown): ChatTranscriptMessage | null {
   if (typeof candidate.text !== "string" || !candidate.text.trim()) return null;
   if (!MESSAGE_STATES.includes((candidate.state ?? "") as ChatTranscriptState)) return null;
   if (typeof candidate.createdAt !== "string" || !Number.isFinite(Date.parse(candidate.createdAt))) return null;
+  const authorType = parseChatAuthor(candidate.authorType);
   return {
     id: candidate.id.slice(0, 255),
     clientMessageId: candidate.clientMessageId.slice(0, 255),
@@ -75,6 +81,7 @@ function normalizeMessage(value: unknown): ChatTranscriptMessage | null {
     text: candidate.text.slice(0, MAX_MESSAGE_CHARACTERS),
     state: candidate.state!,
     createdAt: candidate.createdAt,
+    ...(authorType ? { authorType } : {}),
   };
 }
 
@@ -88,6 +95,8 @@ function normalizePending(value: unknown): PendingChatMessage | null {
     clientMessageId: candidate.clientMessageId,
     text: candidate.text.slice(0, MAX_MESSAGE_CHARACTERS),
     status: candidate.status,
+    ...(typeof candidate.createdAt === "string" && Number.isFinite(Date.parse(candidate.createdAt))
+      ? { createdAt: candidate.createdAt } : {}),
   };
 }
 
@@ -146,6 +155,7 @@ export function applyChatEvent(transcript: ChatTranscript, event: ChatEvent): Ch
     if (pending) pending.status = "accepted";
   }
   if (content && messageId) {
+    const authorType = parseChatAuthor(payload.author_type);
     receivedRole = payload.role === "user" ? "user" : "assistant";
     const nextMessage: ChatTranscriptMessage = {
       id: messageId,
@@ -154,6 +164,7 @@ export function applyChatEvent(transcript: ChatTranscript, event: ChatEvent): Ch
       text: content,
       state: "completed",
       createdAt: event.occurred_at ?? new Date().toISOString(),
+      ...(authorType ? { authorType } : {}),
     };
     const index = transcript.messages.findIndex((message) => message.id === messageId);
     if (index >= 0) transcript.messages[index] = nextMessage;
@@ -176,6 +187,7 @@ export function applyChatEvent(transcript: ChatTranscript, event: ChatEvent): Ch
         : "No pude completar esa respuesta. Podés reintentar o contactar al equipo.",
       state: "error",
       createdAt: event.occurred_at ?? new Date().toISOString(),
+      authorType: "system",
     });
   }
   if (mode && CONTROL_MODES.includes(mode)) {
@@ -263,4 +275,3 @@ export function clearChatTranscript(storage: ChatTranscriptStorage): boolean {
     return false;
   }
 }
-import type { ChatEvent } from "./chat-stream";

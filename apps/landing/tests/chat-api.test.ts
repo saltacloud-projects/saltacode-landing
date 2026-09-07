@@ -86,3 +86,9 @@ test("server history maps to the local cache without changing identity", () => {
     createdAt: "2026-09-06T00:00:00Z",
   });
 });
+
+test("history preserves explicit operator authorship without guessing from assistant role", () => {
+  const message = { ...history.messages[0]!, role: "assistant" as const };
+  assert.equal(mapServerMessage(message).authorType, undefined);
+  assert.equal(mapServerMessage({ ...message, author_type: "operator" }).authorType, "operator");
+});

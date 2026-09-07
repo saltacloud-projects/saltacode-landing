@@ -7,6 +7,7 @@ export interface ChatEvent {
   code?: string;
   retryable?: boolean;
   outcome?: string;
+  activity?: unknown;
 }
 
 export interface ChatEventStreamHandlers {
@@ -20,6 +21,7 @@ export interface ReconnectChatOptions extends ChatEventStreamHandlers {
   signal: AbortSignal;
   onCursorExpired: () => Promise<number>;
   onRetry?: (attempt: number) => void;
+  onDisconnect?: () => void;
   wait?: (delayMs: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
 }
@@ -137,6 +139,8 @@ export async function reconnectChatEvents(options: ReconnectChatOptions): Promis
       if (options.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       attempt += 1;
       options.onRetry?.(attempt);
+    } finally {
+      options.onDisconnect?.();
     }
 
     if (!options.isActive() || options.signal.aborted) return;

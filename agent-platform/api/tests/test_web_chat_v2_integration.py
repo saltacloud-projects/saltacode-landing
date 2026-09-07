@@ -310,6 +310,8 @@ async def test_durable_message_history_events_scope_and_reset(web_route_graph):
     assert conflict.status_code == 409
     assert second.status_code == 202
     assert history.status_code == 200
+    assert history.json()["activity"] == {"status": "queued"}
+    assert all(item["author_type"] == "visitor" for item in history.json()["messages"])
     assert [item["client_message_id"] for item in history.json()["messages"]] == [
         str(first_message_id),
         str(second_message_id),
@@ -328,6 +330,7 @@ async def test_durable_message_history_events_scope_and_reset(web_route_graph):
     assert reset.status_code == 200
     assert closed_message.status_code == 423
     assert replacement_history.status_code == 200
+    assert replacement_history.json()["activity"] is None
     assert replacement_history.json()["messages"] == []
     assert replacement_history.json()["latest_event_id"] == 0
     assert repeated_reset.status_code == 200

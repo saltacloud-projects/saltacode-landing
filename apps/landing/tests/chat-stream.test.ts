@@ -52,6 +52,39 @@ test("rejects duplicate or out-of-order event cursors", async () => {
   );
 });
 
+test("ephemeral activity frames never consume or replay a durable cursor", async () => {
+  const received: string[] = [];
+  const activity = `event: chat.activity\ndata: ${JSON.stringify({ schema_version: "2", activity: { status: "running" } })}\n\n`;
+  const cursor = await consumeChatEventStream(streamOf(activity), 7, {
+    isActive: () => true,
+    onEvent: (item) => {
+      received.push(item.event_type!);
+      assert.equal(item.cursor, undefined);
+      assert.deepEqual(item.activity, { status: "running" });
+    },
+  });
+  assert.equal(cursor, 7);
+  assert.deepEqual(received, ["chat.activity"]);
+});
+
+test("even a graceful stream closure clears ephemeral activity before reconnect", async () => {
+  let active = true;
+  let disconnected = 0;
+  await reconnectChatEvents({
+    fetcher: async () => new Response(streamOf()),
+    initialCursor: 0,
+    signal: new AbortController().signal,
+    isActive: () => active,
+    onCursorExpired: async () => 0,
+    onEvent: () => undefined,
+    onDisconnect: () => {
+      disconnected += 1;
+      active = false;
+    },
+  });
+  assert.equal(disconnected, 1);
+});
+
 test("reconnects from the last consumed event without replaying rendered messages", async () => {
   const headers: string[] = [];
   const received: number[] = [];

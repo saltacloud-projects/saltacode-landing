@@ -8,6 +8,8 @@ import {
   type ChatHistory,
 } from "./chat-api";
 import { createClientMessageId } from "./client-message-id";
+import { chatAuthorLabel, chatMessageStatus, chatMessageTime } from "./chat-presentation";
+import { chatActivityLabel, parseChatActivity, type ChatActivity } from "./chat-activity";
 import { reconnectChatEvents, type ChatEvent } from "./chat-stream";
 import { chatMarkup, chatResumeMarkup } from "./chat-template";
 import {
@@ -53,6 +55,8 @@ let posting = false;
 let acceptedForPage = false;
 let resettingPrivacy = false;
 let hasServerSession = false;
+let activity: ChatActivity | null = null;
+const renderedMessages = new Map<string, { signature: string; element: HTMLElement }>();
 
 interface CommercialContactController {
   clearSensitiveValue: () => void;
@@ -122,6 +126,22 @@ function controlStatus(mode: ChatControlMode): string {
   return "Conversación conectada.";
 }
 
+function renderActivity(): void {
+  const indicator = dialog?.querySelector<HTMLElement>(".chat-activity");
+  if (!indicator) return;
+  const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 96;
+  const label = chatActivityLabel(activity, transcript.controlMode);
+  indicator.hidden = !label;
+  indicator.dataset.state = activity?.status ?? "idle";
+  if (indicator.textContent !== label) indicator.textContent = label;
+  if (wasNearBottom) log.scrollTop = log.scrollHeight;
+}
+
+function clearActivity(): void {
+  activity = null;
+  renderActivity();
+}
+
 function setPosting(value: boolean): void {
   posting = value;
   sendButton.disabled = value || transcript.controlMode === "closed";
@@ -132,14 +152,35 @@ function setPosting(value: boolean): void {
 
 function renderMessage(message: ChatTranscriptMessage): HTMLElement {
   const element = document.createElement("article");
+  const metadata = document.createElement("header");
+  const author = document.createElement("strong");
   const paragraph = document.createElement("p");
   element.className = "chat-message";
   element.dataset.role = message.role;
+  element.dataset.author = message.authorType ?? "unknown";
   element.dataset.state = message.state;
   element.dataset.messageId = message.id;
   element.dataset.serverMessage = "true";
+  metadata.className = "chat-message-meta";
+  author.textContent = chatAuthorLabel(message);
+  metadata.append(author);
+  const timestamp = chatMessageTime(message.createdAt);
+  if (timestamp) {
+    const time = document.createElement("time");
+    time.dateTime = message.createdAt;
+    time.textContent = timestamp.label;
+    time.title = timestamp.title;
+    metadata.append(time);
+  }
   paragraph.textContent = message.text;
-  element.append(paragraph);
+  element.append(metadata, paragraph);
+  const stateLabel = chatMessageStatus(message);
+  if (stateLabel) {
+    const state = document.createElement("small");
+    state.className = "chat-message-state";
+    state.textContent = stateLabel;
+    element.append(state);
+  }
   return element;
 }
 
@@ -153,30 +194,57 @@ function visibleMessages(): ChatTranscriptMessage[] {
       role: "user" as const,
       text: message.text,
       state: message.status === "accepted" ? "accepted" as const : "pending" as const,
-      createdAt: new Date().toISOString(),
+      createdAt: message.createdAt ?? "",
     }));
   return [...transcript.messages, ...optimistic];
 }
 
 function renderTranscript(): void {
-  log.querySelectorAll("[data-server-message], [data-transient]").forEach((element) => element.remove());
+  const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 96;
+  log.querySelectorAll("[data-transient]").forEach((element) => element.remove());
   const suggestions = log.querySelector<HTMLElement>(".chat-suggestions");
   const messages = visibleMessages();
-  for (const message of messages) log.insertBefore(renderMessage(message), suggestions ?? null);
+  const ids = new Set(messages.map((message) => message.id));
+  for (const [id, rendered] of renderedMessages) {
+    if (ids.has(id)) continue;
+    rendered.element.remove();
+    renderedMessages.delete(id);
+  }
+  let previous = log.querySelector<HTMLElement>("[data-intro]");
+  for (const message of messages) {
+    const signature = JSON.stringify(message);
+    let rendered = renderedMessages.get(message.id);
+    if (rendered?.signature !== signature) {
+      const element = renderMessage(message);
+      rendered?.element.replaceWith(element);
+      rendered = { signature, element };
+      renderedMessages.set(message.id, rendered);
+    }
+    if (previous?.nextElementSibling !== rendered.element) previous?.after(rendered.element);
+    previous = rendered.element;
+  }
   if (suggestions) suggestions.hidden = messages.length > 0;
-  log.scrollTop = log.scrollHeight;
+  if (wasNearBottom) log.scrollTop = log.scrollHeight;
+  const modeLabel = log.closest(".chat-layout")?.querySelector<HTMLElement>("[data-chat-mode]");
+  if (modeLabel) modeLabel.textContent = transcript.controlMode === "automated"
+    ? "Asistencia IA · El equipo puede intervenir"
+    : controlStatus(transcript.controlMode);
+  renderActivity();
   setPosting(posting);
 }
 
 function showTransientError(text: string, retry?: PendingChatMessage): void {
   const element = document.createElement("article");
   const paragraph = document.createElement("p");
+  const author = document.createElement("strong");
+  author.className = "chat-message-meta";
+  author.textContent = "Sistema";
   element.className = "chat-message";
   element.dataset.role = "assistant";
   element.dataset.state = "error";
   element.dataset.transient = "true";
   paragraph.textContent = text;
-  element.append(paragraph);
+  element.append(author, paragraph);
   if (retry) {
     const button = document.createElement("button");
     button.className = "chat-retry";
@@ -206,6 +274,7 @@ function reconcilePending(history: ChatHistory): void {
 async function synchronizeHistory(): Promise<ChatHistory | null> {
   synchronization ??= loadOrUpgradeServerHistory().finally(() => { synchronization = undefined; });
   const history = await synchronization;
+  activity = parseChatActivity(history?.activity);
   if (!history) {
     hasServerSession = false;
     transcript.messages = [];
@@ -228,15 +297,26 @@ async function synchronizeHistory(): Promise<ChatHistory | null> {
 }
 
 function applyEvent(event: ChatEvent): void {
+  if (event.event_type === "chat.activity") {
+    activity = parseChatActivity(event.activity);
+    renderActivity();
+    return;
+  }
   const result = applyChatEvent(transcript, event);
   if (result.receivedRole) {
+    if (result.receivedRole === "assistant") clearActivity();
     status.textContent = result.receivedRole === "assistant" ? "Respuesta recibida." : "Mensaje recibido.";
   }
-  if (result.failed) status.textContent = "No fue posible completar la respuesta.";
+  if (result.failed) {
+    clearActivity();
+    status.textContent = "No fue posible completar la respuesta.";
+  }
   if (event.event_type === "chat.error") {
+    clearActivity();
     status.textContent = "La conexión se interrumpió. Intentando reconectar…";
   }
   if (result.controlChanged) {
+    clearActivity();
     status.textContent = controlStatus(transcript.controlMode);
     if (transcript.controlMode === "closed") streamController?.abort();
   }
@@ -283,17 +363,23 @@ function startEventStream(): void {
     signal: controller.signal,
     isActive: () => Boolean(dialog?.open) && streamController === controller,
     onEvent: applyEvent,
+    onDisconnect: clearActivity,
     onCursorExpired: async () => (await synchronizeHistory())?.latest_event_id ?? 0,
-    onRetry: () => { status.textContent = "Reconectando la conversación…"; },
+    onRetry: () => {
+      clearActivity();
+      status.textContent = "Reconectando la conversación…";
+    },
   });
 }
 
 async function deliverMessage(message: PendingChatMessage, isNew: boolean): Promise<void> {
   if (posting || !hasCurrentConsent() || transcript.controlMode === "closed") return;
   if (isNew) {
+    message.createdAt = new Date().toISOString();
     transcript.pending = [...transcript.pending, message].slice(-8);
     persistTranscript();
     renderTranscript();
+    log.scrollTop = log.scrollHeight;
   }
   composer.value = "";
   composer.style.height = "48px";
@@ -314,7 +400,7 @@ async function deliverMessage(message: PendingChatMessage, isNew: boolean): Prom
       role: "user",
       text: message.text,
       state: "accepted",
-      createdAt: new Date().toISOString(),
+      createdAt: message.createdAt ?? "",
     };
     const inboundIndex = transcript.messages.findIndex((item) => item.id === accepted.message_id);
     if (inboundIndex >= 0) transcript.messages[inboundIndex] = inbound;
@@ -326,7 +412,7 @@ async function deliverMessage(message: PendingChatMessage, isNew: boolean): Prom
     renderTranscript();
     status.textContent = accepted.duplicate
       ? "Mensaje recuperado sin duplicarlo."
-      : "Mensaje recibido por el asistente.";
+      : "Mensaje recibido.";
     startEventStream();
   } catch (error) {
     if (error instanceof ChatApiError && error.status === 409) {
@@ -356,6 +442,7 @@ async function deliverMessage(message: PendingChatMessage, isNew: boolean): Prom
 }
 
 async function resumeConversation(launch?: PendingLaunch): Promise<void> {
+  clearActivity();
   try {
     const history = await synchronizeHistory();
     const persistedClientIds = new Set(history?.messages.map((message) => message.client_message_id) ?? []);
@@ -441,6 +528,7 @@ async function resetConversation(): Promise<void> {
     }
     streamController?.abort();
     transcript = emptyChatTranscript();
+    clearActivity();
     transcript.latestEventId = cursor;
     clearChatTranscript(localStorage);
     renderTranscript();
@@ -464,7 +552,7 @@ function createDialog(): HTMLDialogElement {
   sendButton = element.querySelector(".chat-send")!;
   sendLabel = element.querySelector(".chat-send-label")!;
   log = element.querySelector(".chat-log")!;
-  status = element.querySelector('[role="status"]')!;
+  status = element.querySelector('[data-chat-status]')!;
   gate = element.querySelector(".chat-consent-gate")!;
   gateAccept = element.querySelector(".chat-consent-accept")!;
   gateQuestion = element.querySelector(".chat-consent-question")!;
@@ -510,6 +598,7 @@ function createDialog(): HTMLDialogElement {
     }
   });
   element.addEventListener("close", () => {
+    clearActivity();
     streamController?.abort();
     streamController = undefined;
     pendingLaunch = undefined;
@@ -557,6 +646,7 @@ function resetChatPrivacy(): void {
   commercialController = undefined;
   commercialControllerLoading = undefined;
   clearChatTranscript(localStorage);
+  renderedMessages.clear();
   transcript = emptyChatTranscript();
   hasServerSession = false;
   if (dialog?.open) dialog.close();

@@ -48,7 +48,7 @@ Version 9 of the provisional local budgets extends the repeatable 2026-08-24 Ast
 | Additional interior-route CSS | <= 5 KiB raw | Deterministic build assertion |
 | Initial executable JavaScript | <= 5.75 KiB raw | Deterministic build assertion |
 | Non-chat executable JavaScript | <= 7 KiB raw | Deterministic build assertion |
-| Lazy chat chunk | <= 23 KiB raw | Deterministic build assertion |
+| Lazy chat chunk | <= 25 KiB raw | Deterministic build assertion |
 | Deferred chat CSS | <= 10 KiB raw | Deterministic build assertion |
 | On-demand commercial-contact JavaScript | <= 10 KiB raw | Deterministic build assertion |
 | On-demand commercial-contact CSS | <= 2.25 KiB raw | Deterministic build assertion |
@@ -108,3 +108,11 @@ Budget changes require measured evidence and review. Never raise a limit only to
 For each release candidate, record changed URLs, redirects, metadata/schema diff, robots/sitemap result, link validation, Lighthouse runs, accessibility checks, asset-budget result, console/network errors, and rollback point. Verify the deployed response, not only the build output.
 
 The scheduled public observability workflow reuses `infrastructure/scripts/verify-public.sh` as a daily, external, state-neutral regression signal for the deployed HTTP contract. Its result is operational evidence for the checks implemented by that script only. It is not ranking evidence, does not query Search Console, and does not collect mobile or desktop Core Web Vitals at the 75th percentile. Those provider and field-data checks remain manual evidence gates until a separately reviewed, privacy-safe data source is configured.
+
+The 2026-09-07 live Inbox/chat checkpoint adds explicit author labels, message timestamps,
+non-disruptive transcript reconciliation and server-confirmed queued/running activity.
+The reviewed deferred-chat allowance is 25 KiB raw (previously 23 KiB); it applies only
+to the dynamically imported chat, not initial rendering. The measured candidate is
+24,731 bytes of lazy JavaScript and 10,140 bytes of lazy CSS (unchanged 10-KiB CSS cap).
+Initial JavaScript remains 5,803 bytes. These build figures do not establish field
+performance or search-ranking changes.

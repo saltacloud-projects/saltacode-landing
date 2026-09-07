@@ -263,3 +263,42 @@ async def test_history_and_reset_responses_do_not_expose_internal_ids(monkeypatc
         "latest_event_id": 0,
     }
     assert db.commits == 1
+
+
+@pytest.mark.parametrize(
+    ("role", "origin", "has_execution", "expected"),
+    [
+        ("user", None, False, "visitor"),
+        ("assistant", "operator", False, "operator"),
+        ("assistant", None, True, "agent"),
+        ("assistant", None, False, "unknown"),
+    ],
+)
+def test_author_requires_message_evidence(role, origin, has_execution, expected):
+    message = SimpleNamespace(role=role, metadata_json={"origin": origin})
+    assert WebChatV2Service._author_type(message, has_execution) == expected
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ({"actor": "human"}, "operator"),
+        ({"execution_id": "private"}, "agent"),
+        ({}, "unknown"),
+    ],
+)
+def test_completed_event_preserves_public_author_without_private_identity(
+    metadata, expected
+):
+    event = SimpleNamespace(
+        sequence=9,
+        event_type="chat.message.completed",
+        created_at=datetime.now(timezone.utc),
+        payload_json={
+            **metadata,
+            "actor_admin_id": "private-admin",
+            "content": "Hello",
+        },
+    )
+    projected = WebChatV2Service._public_event(event)
+    assert projected.payload == {"content": "Hello", "author_type": expected}

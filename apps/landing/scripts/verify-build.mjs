@@ -51,7 +51,7 @@ const BUILD_BUDGETS = Object.freeze({
   additionalInteriorCssBytes: 5 * 1024,
   initialExecutableJavaScriptBytes: 5.75 * 1024,
   nonChatExecutableJavaScriptBytes: 7 * 1024,
-  chatChunkBytes: 23 * 1024,
+  chatChunkBytes: 25 * 1024,
   chatStylesheetBytes: 10 * 1024,
   commercialChatChunkBytes: 10 * 1024,
   commercialChatStylesheetBytes: 2.25 * 1024,

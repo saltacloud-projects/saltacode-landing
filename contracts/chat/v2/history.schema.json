@@ -1,8 +1,38 @@
 {
   "$defs": {
+    "ChatActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "queued",
+            "running"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ChatActivity",
+      "type": "object"
+    },
     "HistoryMessage": {
       "additionalProperties": false,
       "properties": {
+        "author_type": {
+          "default": "unknown",
+          "enum": [
+            "visitor",
+            "agent",
+            "operator",
+            "system",
+            "unknown"
+          ],
+          "title": "Author Type",
+          "type": "string"
+        },
         "client_message_id": {
           "maxLength": 255,
           "minLength": 1,
@@ -54,6 +84,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "activity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ChatActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "control_mode": {
       "enum": [
         "automated",
