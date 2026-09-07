@@ -26,6 +26,7 @@ def _event(name: str, payload: dict) -> str:
 
 async def _authorized_snapshot(
     credentials: HTTPAuthorizationCredentials | None,
+    redis=None,
 ) -> InboxLiveSnapshotOut:
     # Re-decode JWT and re-read persisted account/role/grants every tick.
     async with AsyncSessionLocal() as db:
@@ -40,10 +41,15 @@ async def _authorized_snapshot(
             role_key=admin.role,
             permission=AdminPermission.CONVERSATIONS_READ,
         )
-        return await inbox_live_snapshot(db, admin_user_id=admin.id, agents=agents)
+        return await inbox_live_snapshot(
+            db, admin_user_id=admin.id, agents=agents, redis=redis
+        )
 
 
 async def _stream(request: Request, credentials, initial: InboxLiveSnapshotOut):
+    redis = getattr(
+        getattr(getattr(request, "app", None), "state", None), "redis", None
+    )
     started = time.monotonic()
     last_event = started
     revision = initial.revision
@@ -53,7 +59,7 @@ async def _stream(request: Request, credentials, initial: InboxLiveSnapshotOut):
         if await request.is_disconnected():
             return
         try:
-            snapshot = await _authorized_snapshot(credentials)
+            snapshot = await _authorized_snapshot(credentials, redis=redis)
         except HTTPException:
             yield _event("inbox.access_revoked", {})
             return
@@ -71,7 +77,8 @@ async def stream_inbox(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> StreamingResponse:
-    initial = await _authorized_snapshot(credentials)
+    redis = getattr(request.app.state, "redis", None)
+    initial = await _authorized_snapshot(credentials, redis=redis)
     return StreamingResponse(
         _stream(request, credentials, initial),
         media_type="text/event-stream",

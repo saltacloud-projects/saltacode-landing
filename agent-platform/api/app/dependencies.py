@@ -37,3 +37,8 @@ def get_redis(request: Request) -> aioredis.Redis:
             await redis.set("key", "value")
     """
     return request.app.state.redis
+
+
+def get_optional_redis(request: Request):
+    """Optional ephemeral features must not require Redis to keep chat usable."""
+    return getattr(request.app.state, "redis", None)

@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.schemas.chat_presence import InboxPresence
 from app.schemas.conversation_control import (
     ConversationControlEventOut,
     ConversationControlMode,
@@ -76,6 +77,7 @@ class InboxReadOut(BaseModel):
 
 class InboxLiveSnapshotOut(BaseModel):
     revision: str
+    presence_degraded: bool = False
     unread_conversations: int
     active_conversations: int
     historical_conversations: int
@@ -106,6 +108,7 @@ class InboxConversationOut(BaseModel):
     unread_count: int = 0
     latest_inbound_message_id: UUID | None = None
     agent_activity: InboxAgentActivityOut | None = None
+    presence: InboxPresence = Field(default_factory=InboxPresence)
 
 
 class InboxConversationPageOut(BaseModel):

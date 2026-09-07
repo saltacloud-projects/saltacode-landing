@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_internal_bearer
-from app.dependencies import get_db
+from app.dependencies import get_db, get_optional_redis
+from app.schemas.chat_presence import TypingState
 from app.schemas.web_chat_v2 import (
     ROUTE_KEY_PATTERN,
     WebEventsResponse,
@@ -15,7 +16,9 @@ from app.schemas.web_chat_v2 import (
     WebMessageRequest,
     WebSessionResetRequest,
     WebSessionResetResponse,
+    WebTypingSignal,
 )
+from app.services.chat_presence import PresenceClosedError, PresenceRateLimitError
 from app.services.web_chat_v2 import (
     WebChatConsentRequiredError,
     WebChatRequestConflictError,
@@ -84,6 +87,7 @@ async def history(
     route_key: str = Query(min_length=1, max_length=120, pattern=ROUTE_KEY_PATTERN),
     limit: int = Query(default=100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
 ) -> WebHistoryResponse:
     try:
         return await web_chat_v2_service.history(
@@ -91,6 +95,7 @@ async def history(
             session_id=session_id,
             route_key=route_key,
             limit=limit,
+            redis=redis,
         )
     except WebChatSessionNotFoundError as exc:
         raise HTTPException(
@@ -111,6 +116,7 @@ async def events(
     after: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
 ) -> WebEventsResponse:
     try:
         return await web_chat_v2_service.events_after(
@@ -119,6 +125,7 @@ async def events(
             route_key=route_key,
             after=after,
             limit=limit,
+            redis=redis,
         )
     except WebChatSessionNotFoundError as exc:
         raise HTTPException(
@@ -130,6 +137,28 @@ async def events(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Web chat route is unavailable.",
         ) from exc
+
+
+@router.post("/presence", response_model=TypingState)
+async def typing_presence(
+    request: WebTypingSignal,
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
+) -> TypingState:
+    try:
+        return await web_chat_v2_service.typing_presence(db, request, redis=redis)
+    except WebChatSessionNotFoundError as exc:
+        raise HTTPException(404, "Web chat session was not found.") from exc
+    except PresenceClosedError as exc:
+        raise HTTPException(423, "Web chat session is not available.") from exc
+    except PresenceRateLimitError as exc:
+        raise HTTPException(
+            429, "Typing signal limit exceeded.", headers={"Retry-After": "1"}
+        ) from exc
+    except WebChatConsentRequiredError as exc:
+        raise HTTPException(422, "Transcript consent is required.") from exc
+    except WebChatRouteUnavailableError as exc:
+        raise HTTPException(503, "Web chat route is unavailable.") from exc
 
 
 @router.post("/session/reset", response_model=WebSessionResetResponse)

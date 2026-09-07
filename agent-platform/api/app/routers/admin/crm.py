@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_optional_redis
 from app.models.admin_user import AdminUser
 from app.routers.admin.auth import require_admin, require_permission
 from app.routers.admin.inbox_filters import inbox_message_filters
@@ -163,6 +163,7 @@ async def list_crm_inbox(
         require_crm_scope(AdminPermission.CONVERSATIONS_READ)
     ),
     db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
 ) -> CrmPageOut[CrmInboxOut]:
     if assigned_admin_id is not None and unassigned_only:
         raise HTTPException(
@@ -173,6 +174,7 @@ async def list_crm_inbox(
         db,
         agent_id=scope.agent_ids,
         admin_user_id=admin.id,
+        redis=redis,
         lifecycle=lifecycle,
         message_filters=message_filters,
         channel=channel,

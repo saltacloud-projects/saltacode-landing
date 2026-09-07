@@ -15,6 +15,7 @@ from app.services.chat_execution_activity import (
     active_execution_predicate,
     open_conversation_predicate,
 )
+from app.services.chat_presence import presence_revision
 from app.services.inbox_visibility import unread_message_predicate
 
 
@@ -30,6 +31,7 @@ async def inbox_live_snapshot(
     *,
     admin_user_id: UUID,
     agents: list[AgentOperationAccess],
+    redis=None,
 ) -> InboxLiveSnapshotOut:
     ids = tuple(agent.agent_id for agent in agents)
     scope = ChatConversation.agent_id.in_(ids)
@@ -103,10 +105,13 @@ async def inbox_live_snapshot(
             )
         )
     ).scalar_one()
+    presence = await presence_revision(db, redis, ids)
     metadata = [
         [str(value) for value in conversation_stats],
         [str(value) for value in message_stats],
         [str(value) for value in execution_stats],
+        presence.metadata,
+        presence.degraded,
         receipt_count,
         unread_count,
         sorted(
@@ -117,6 +122,7 @@ async def inbox_live_snapshot(
     revision = hashlib.sha256(json.dumps(metadata).encode()).hexdigest()
     return InboxLiveSnapshotOut(
         revision=revision,
+        presence_degraded=presence.degraded,
         unread_conversations=int(unread_count),
         active_conversations=int(conversation_stats[1]),
         historical_conversations=int(conversation_stats[0] - conversation_stats[1]),

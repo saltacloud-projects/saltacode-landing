@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.chat_presence import TypingSignal, WebPresence
+
 ROUTE_KEY_PATTERN = r"^[a-z0-9][a-z0-9._:-]{0,119}$"
 
 
@@ -31,6 +33,11 @@ class WebMessageRequest(StrictContract):
     content: str = Field(min_length=1, max_length=16_000)
     locale: str = Field(default="es-AR", min_length=2, max_length=35)
     consent: WebTranscriptConsent
+
+
+class WebTypingSignal(TypingSignal):
+    session_id: UUID
+    route_key: str = Field(min_length=1, max_length=120, pattern=ROUTE_KEY_PATTERN)
 
 
 class WebMessageAccepted(StrictContract):
@@ -63,6 +70,7 @@ class WebHistoryResponse(StrictContract):
     latest_event_id: int = Field(ge=0)
     messages: list[WebHistoryMessage]
     activity: WebChatActivity | None = None
+    presence: WebPresence = Field(default_factory=WebPresence)
 
 
 class WebConversationEvent(StrictContract):
@@ -79,6 +87,7 @@ class WebEventsResponse(StrictContract):
     has_more: bool
     events: list[WebConversationEvent]
     activity: WebChatActivity | None = None
+    presence: WebPresence = Field(default_factory=WebPresence)
 
 
 class WebSessionResetRequest(StrictContract):

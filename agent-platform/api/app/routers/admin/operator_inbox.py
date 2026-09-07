@@ -9,10 +9,11 @@ from typing import Literal, NoReturn
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_optional_redis
 from app.models.admin_user import AdminUser
 from app.routers.admin.auth import require_agent_permission
 from app.routers.admin.inbox_filters import inbox_message_filters
+from app.schemas.chat_presence import OperatorTypingSignal, TypingState
 from app.schemas.conversation_control import (
     ConversationControlMode,
     ConversationControlSnapshotOut,
@@ -33,6 +34,13 @@ from app.schemas.operator_inbox import (
 )
 from app.services.admin_agent_access import admin_agent_access_service
 from app.services.admin_rbac import AdminPermission
+from app.services.chat_presence import (
+    PresenceClosedError,
+    PresenceConflictError,
+    PresenceRateLimitError,
+    PresenceScope,
+    publish_presence,
+)
 from app.services.conversation_automation_assignment import (
     ConversationAutomationAssignmentClosedError,
     ConversationAutomationAssignmentConflictError,
@@ -95,6 +103,7 @@ async def list_inbox_conversations(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
 ) -> InboxConversationPageOut:
     if assigned_admin_id is not None and unassigned_only:
         raise HTTPException(
@@ -106,6 +115,7 @@ async def list_inbox_conversations(
             db,
             agent_id=agent_id,
             admin_user_id=admin.id,
+            redis=redis,
             lifecycle=lifecycle,
             message_filters=message_filters,
             channel=channel,
@@ -137,6 +147,7 @@ async def get_inbox_thread(
         require_agent_permission(AdminPermission.CONVERSATIONS_READ)
     ),
     db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
 ) -> InboxThreadOut:
     try:
         return await operator_inbox_service.get_thread(
@@ -145,9 +156,47 @@ async def get_inbox_thread(
             conversation_id=conversation_id,
             message_limit=message_limit,
             admin_user_id=admin.id,
+            redis=redis,
         )
     except ConversationControlError as exc:
         _raise_http_error(exc)
+
+
+@router.post("/{conversation_id}/presence", response_model=TypingState)
+async def operator_typing_presence(
+    agent_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    payload: OperatorTypingSignal,
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.CONVERSATIONS_MANAGE)
+    ),
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(get_optional_redis),
+) -> TypingState:
+    try:
+        conversation = await conversation_control_service.get_snapshot(
+            db, conversation_id=conversation_id, agent_id=agent_id
+        )
+        return await publish_presence(
+            redis,
+            scope=PresenceScope.from_model(conversation),
+            signal=payload,
+            actor="operator",
+            actor_admin_id=admin.id,
+            expected_control_version=payload.expected_control_version,
+        )
+    except ConversationControlError as exc:
+        _raise_http_error(exc)
+    except PresenceConflictError as exc:
+        raise HTTPException(409, "Current human control is required") from exc
+    except PresenceClosedError as exc:
+        raise HTTPException(
+            423, "Conversation does not accept typing presence"
+        ) from exc
+    except PresenceRateLimitError as exc:
+        raise HTTPException(
+            429, "Typing signal limit exceeded", headers={"Retry-After": "1"}
+        ) from exc
 
 
 @router.post("/{conversation_id}/read", response_model=InboxReadOut)

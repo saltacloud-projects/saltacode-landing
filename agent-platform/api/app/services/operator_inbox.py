@@ -30,6 +30,7 @@ from app.schemas.operator_inbox import (
 )
 from app.services.admin_rbac import AdminPermission
 from app.services.chat_execution_activity import open_conversation_predicate
+from app.services.chat_presence import enrich_presence
 from app.services.conversation_control import ConversationNotFoundError
 from app.services.inbox_visibility import (
     enrich_inbox_visibility,
@@ -70,6 +71,7 @@ class OperatorInboxService:
         updated_before: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        redis=None,
     ) -> InboxPage:
         if isinstance(agent_id, uuid.UUID):
             await self._assert_agent_exists(db, agent_id)
@@ -167,6 +169,7 @@ class OperatorInboxService:
         await enrich_inbox_visibility(
             db, conversations=page.items, admin_user_id=admin_user_id
         )
+        await enrich_presence(redis, page.items)
         return page
 
     async def get_thread(
@@ -177,6 +180,7 @@ class OperatorInboxService:
         conversation_id: uuid.UUID,
         message_limit: int = 500,
         admin_user_id: uuid.UUID | None = None,
+        redis=None,
     ) -> InboxThreadOut:
         statement, _, _, _ = self._summary_statement(agent_id)
         row = (
@@ -268,6 +272,7 @@ class OperatorInboxService:
         await enrich_inbox_visibility(
             db, conversations=[thread.conversation], admin_user_id=admin_user_id
         )
+        await enrich_presence(redis, [thread.conversation])
         return thread
 
     async def list_automation_assignments(

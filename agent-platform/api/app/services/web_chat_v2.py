@@ -21,6 +21,7 @@ from app.models.platform import (
     ChatMessage,
     Principal,
 )
+from app.schemas.chat_presence import TypingState, WebPresence
 from app.schemas.web_chat_v2 import (
     WebChatActivity,
     WebConversationEvent,
@@ -31,6 +32,7 @@ from app.schemas.web_chat_v2 import (
     WebMessageRequest,
     WebSessionResetRequest,
     WebSessionResetResponse,
+    WebTypingSignal,
 )
 from app.services.agent_runtime import (
     AgentRuntimeUnavailable,
@@ -38,6 +40,7 @@ from app.services.agent_runtime import (
     agent_runtime_resolver,
 )
 from app.services.chat_execution_activity import active_execution_predicate
+from app.services.chat_presence import PresenceScope, publish_presence, read_presence
 from app.services.conversation_events import (
     ConversationEventService,
     ConversationEventVisibility,
@@ -286,6 +289,7 @@ class WebChatV2Service:
         session_id: uuid.UUID,
         route_key: str,
         limit: int,
+        redis=None,
     ) -> WebHistoryResponse:
         scope = await self._resolve_route_scope(db, route_key)
         conversation = await self._find_session(
@@ -326,6 +330,7 @@ class WebChatV2Service:
             status="closed" if conversation.status == "closed" else "active",
             control_mode=conversation.control_mode,
             activity=await self._activity(db, conversation.id),
+            presence=await self._presence(redis, conversation),
             latest_event_id=conversation.next_event_sequence - 1,
             messages=[
                 WebHistoryMessage(
@@ -349,6 +354,7 @@ class WebChatV2Service:
         route_key: str,
         after: int,
         limit: int,
+        redis=None,
     ) -> WebEventsResponse:
         scope = await self._resolve_route_scope(db, route_key)
         conversation = await self._find_session(
@@ -374,7 +380,28 @@ class WebChatV2Service:
             has_more=has_more,
             events=[self._public_event(event) for event in page],
             activity=await self._activity(db, conversation.id),
+            presence=await self._presence(redis, conversation),
         )
+
+    async def typing_presence(
+        self, db: AsyncSession, request: WebTypingSignal, *, redis=None
+    ) -> TypingState:
+        scope = await self._resolve_route_scope(db, request.route_key)
+        conversation = await self._find_session(
+            db, scope=scope, session_id=request.session_id, for_update=False
+        )
+        self._require_consent(conversation.transcript_consent)
+        return await publish_presence(
+            redis,
+            scope=PresenceScope.from_model(conversation),
+            actor="visitor",
+            signal=request,
+        )
+
+    @staticmethod
+    async def _presence(redis, conversation: ChatConversation) -> WebPresence:
+        states = await read_presence(redis, [PresenceScope.from_model(conversation)])
+        return WebPresence(operator=states[conversation.id].operator)
 
     @staticmethod
     def _author_type(message: ChatMessage, has_execution: bool) -> str:
