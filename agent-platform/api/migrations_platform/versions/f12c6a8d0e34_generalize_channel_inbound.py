@@ -120,6 +120,13 @@ def upgrade() -> None:
     ):
         op.alter_column("channel_inbound_jobs", old_name, new_column_name=new_name)
 
+    # Completed legacy jobs discard their empty payload during the backfill.
+    op.alter_column(
+        "channel_inbound_jobs",
+        "legacy_payload_json",
+        existing_type=postgresql.JSONB(),
+        nullable=True,
+    )
     for column in (
         sa.Column("channel", sa.String(length=30), nullable=True),
         sa.Column("adapter_key", sa.String(length=80), nullable=True),
@@ -174,12 +181,6 @@ def upgrade() -> None:
         "state_version",
     ):
         op.alter_column("channel_inbound_jobs", column_name, nullable=False)
-    op.alter_column(
-        "channel_inbound_jobs",
-        "legacy_payload_json",
-        existing_type=postgresql.JSONB(),
-        nullable=True,
-    )
     op.alter_column(
         "channel_inbound_jobs",
         "status",
@@ -519,6 +520,12 @@ def downgrade() -> None:
         ("terminal_at", "completed_at"),
     ):
         op.alter_column("channel_inbound_jobs", old_name, new_column_name=new_name)
+    op.alter_column(
+        "channel_inbound_jobs",
+        "payload_json",
+        existing_type=postgresql.JSONB(),
+        nullable=False,
+    )
     op.execute("ALTER TABLE channel_inbound_jobs RENAME TO whatsapp_inbound_jobs")
     for old_name, new_name in (
         (

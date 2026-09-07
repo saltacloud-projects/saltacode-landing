@@ -9,8 +9,10 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from alembic.script import ScriptDirectory
-from sqlalchemy import delete, select, text
+from sqlalchemy import Connection, delete, inspect, select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.core.database import AsyncSessionLocal, engine
@@ -42,7 +44,7 @@ def test_migration_preserves_terminal_and_quarantines_unfinished_legacy_jobs() -
     asyncio.run(engine.dispose())
     try:
         command.downgrade(config, _DOWN_REVISION)
-        asyncio.run(_insert_legacy_graph(ids))
+        asyncio.run(_insert_legacy_graph_from_original_schema(config, ids))
         asyncio.run(engine.dispose())
 
         command.upgrade(config, _REVISION)
@@ -59,6 +61,8 @@ def test_migration_preserves_terminal_and_quarantines_unfinished_legacy_jobs() -
         asyncio.run(_delete_jobs(ids))
         asyncio.run(engine.dispose())
         command.downgrade(config, _DOWN_REVISION)
+        asyncio.run(_assert_legacy_payload_not_nullable())
+        asyncio.run(engine.dispose())
         command.upgrade(config, _REVISION)
     finally:
         asyncio.run(engine.dispose())
@@ -68,6 +72,38 @@ def test_migration_preserves_terminal_and_quarantines_unfinished_legacy_jobs() -
 
 
 _STATUSES = ("completed", "queued", "processing", "failed")
+
+
+async def _insert_legacy_graph_from_original_schema(
+    config: Config, ids: dict[str, object]
+) -> None:
+    original_migration = (
+        ScriptDirectory.from_config(config).get_revision("c6d7e8f9a0b1").module
+    )
+
+    def recreate(connection: Connection) -> None:
+        # A downgrade-derived fixture can hide drift from the original DDL.
+        with Operations.context(MigrationContext.configure(connection)):
+            original_migration.downgrade()
+            original_migration.upgrade()
+
+    async with engine.begin() as connection:
+        await connection.run_sync(recreate)
+    await _assert_legacy_payload_not_nullable()
+    await _insert_legacy_graph(ids)
+
+
+async def _assert_legacy_payload_not_nullable() -> None:
+    async with engine.connect() as connection:
+        columns = await connection.run_sync(
+            lambda sync_connection: inspect(sync_connection).get_columns(
+                "whatsapp_inbound_jobs"
+            )
+        )
+    payload_column = next(
+        column for column in columns if column["name"] == "payload_json"
+    )
+    assert payload_column["nullable"] is False
 
 
 async def _insert_legacy_graph(ids: dict[str, object]) -> None:
