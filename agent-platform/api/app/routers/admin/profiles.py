@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db
 from app.models.admin_user import AdminUser
 from app.models.agent_profile import AgentProfile
+from app.models.audit_log import AuditLog
 from app.routers.admin.auth import (
     require_admin_role,
     require_permission,
@@ -85,17 +86,40 @@ async def create_profile(
 @router.patch(
     "/{profile_id}",
     response_model=ProfileOut,
-    dependencies=[Depends(require_profile_permission(AdminPermission.ALL))],
 )
 async def update_profile(
-    profile_id: str, data: ProfileUpdate, db: AsyncSession = Depends(get_db)
+    profile_id: str,
+    data: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_profile_permission(AdminPermission.ALL)),
 ):
     profile = await _get_or_404(db, profile_id)
     if data.slug is not None and data.slug != profile.slug:
         await _require_available_slug(db, data.slug)
-    for field, value in data.model_dump(exclude_none=True).items():
+    values = data.model_dump(exclude_none=True)
+    changed_fields = sorted(
+        field for field, value in values.items() if getattr(profile, field) != value
+    )
+    for field, value in values.items():
         setattr(profile, field, value)
     await _flush_profile(db)
+    if changed_fields:
+        # Prompts may include private operating instructions. Audit the change,
+        # never duplicate their content in a second persistence surface.
+        db.add(
+            AuditLog(
+                agent_id=profile.id,
+                phone_number="admin",
+                channel="admin",
+                input_type="text",
+                intent="agent.profile.updated",
+                status="success",
+                extra_metadata={
+                    "actor_admin_id": str(admin.id),
+                    "changed_fields": changed_fields,
+                },
+            )
+        )
     await db.refresh(profile)
     return ProfileOut.from_orm_model(profile)
 

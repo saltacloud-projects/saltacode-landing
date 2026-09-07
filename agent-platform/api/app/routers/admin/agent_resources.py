@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
+from app.models.admin_user import AdminUser
+from app.models.audit_log import AuditLog
 from app.models.authorized_user import AuthorizedUser
 from app.models.integration_source import IntegrationSource
 from app.models.knowledge_block import KnowledgeBlock
@@ -107,14 +109,32 @@ async def list_agent_tools(agent_id: str, db: AsyncSession = Depends(get_db)):
 @router.put(
     "/{agent_id}/tools/{tool_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_agent_permission(AdminPermission.TOOLS_MANAGE))],
 )
 async def assign_agent_tool(
-    agent_id: str, tool_id: str, db: AsyncSession = Depends(get_db)
+    agent_id: str,
+    tool_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_agent_permission(AdminPermission.TOOLS_MANAGE)),
 ):
     parsed_agent_id = await _agent_or_404(db, agent_id)
     parsed_tool_id = await _resource_or_404(db, ToolConfig, tool_id, "Tool")
     await agent_resource_service.assign_tool(db, parsed_agent_id, parsed_tool_id)
+    # PUT is idempotent: a repeated command ensures the existing binding rather
+    # than creating it again. Do not claim creation when no row was inserted.
+    db.add(
+        AuditLog(
+            agent_id=parsed_agent_id,
+            phone_number="admin",
+            channel="admin",
+            input_type="text",
+            intent="agent.tool.binding.ensured",
+            status="success",
+            extra_metadata={
+                "actor_admin_id": str(admin.id),
+                "tool_id": str(parsed_tool_id),
+            },
+        )
+    )
     return None
 
 
