@@ -135,7 +135,9 @@ class AdminAgentGrantUpdate(BaseModel):
 
 class ProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    slug: str = Field(min_length=1, max_length=100)
+    slug: str = Field(
+        min_length=1, max_length=100, pattern=r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$"
+    )
     is_public: bool = False
     retention_days: int = Field(default=30, ge=1, le=365)
     description: str | None = None
@@ -145,18 +147,47 @@ class ProfileCreate(BaseModel):
     unauthorized_message: str = ""
     error_message: str = ""
 
+    @field_validator(
+        "name",
+        "slug",
+        "prompt_identity",
+        "prompt_domain",
+        "prompt_guardrails",
+        mode="before",
+    )
+    @classmethod
+    def trim_required_text(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
 
 class ProfileUpdate(BaseModel):
-    name: str | None = None
-    slug: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    slug: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$",
+    )
     is_public: bool | None = None
     retention_days: int | None = Field(default=None, ge=1, le=365)
     description: str | None = None
-    prompt_identity: str | None = None
-    prompt_domain: str | None = None
-    prompt_guardrails: str | None = None
+    prompt_identity: str | None = Field(default=None, min_length=1)
+    prompt_domain: str | None = Field(default=None, min_length=1)
+    prompt_guardrails: str | None = Field(default=None, min_length=1)
     unauthorized_message: str | None = None
     error_message: str | None = None
+
+    @field_validator(
+        "name",
+        "slug",
+        "prompt_identity",
+        "prompt_domain",
+        "prompt_guardrails",
+        mode="before",
+    )
+    @classmethod
+    def trim_required_text(cls, value: str | None) -> str | None:
+        return value.strip() if isinstance(value, str) else value
 
 
 class ProfileOut(BaseModel):

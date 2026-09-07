@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
@@ -53,6 +54,7 @@ async def create_profile(
     admin: AdminUser = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_available_slug(db, data.slug)
     profile = AgentProfile(
         name=data.name,
         slug=data.slug,
@@ -65,10 +67,10 @@ async def create_profile(
         unauthorized_message=data.unauthorized_message,
         error_message=data.error_message,
         is_active=False,
-        created_by="admin_panel",
+        created_by=str(admin.id),
     )
     db.add(profile)
-    await db.flush()
+    await _flush_profile(db)
     await admin_agent_access_service.ensure_grant(
         db,
         admin_user_id=admin.id,
@@ -89,9 +91,11 @@ async def update_profile(
     profile_id: str, data: ProfileUpdate, db: AsyncSession = Depends(get_db)
 ):
     profile = await _get_or_404(db, profile_id)
+    if data.slug is not None and data.slug != profile.slug:
+        await _require_available_slug(db, data.slug)
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(profile, field, value)
-    await db.flush()
+    await _flush_profile(db)
     await db.refresh(profile)
     return ProfileOut.from_orm_model(profile)
 
@@ -120,3 +124,20 @@ async def _get_or_404(db: AsyncSession, profile_id: str) -> AgentProfile:
     if not profile:
         raise HTTPException(status_code=404, detail="Perfil no encontrado")
     return profile
+
+
+async def _require_available_slug(db: AsyncSession, slug: str) -> None:
+    result = await db.execute(select(AgentProfile.id).where(AgentProfile.slug == slug))
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="agent_slug_conflict")
+
+
+async def _flush_profile(db: AsyncSession) -> None:
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # Concurrent creates can pass the availability check; PostgreSQL remains authoritative.
+        if getattr(exc.orig, "sqlstate", None) != "23505":
+            raise
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="agent_slug_conflict") from exc
