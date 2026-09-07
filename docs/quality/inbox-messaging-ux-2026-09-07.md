@@ -4,7 +4,8 @@ This iteration borrows familiar messaging navigation from the supplied WhatsApp
 reference, not its branding or its unrelated features. Conversations remain part
 of the multi-channel CRM, with human control, agent assignment and audit intact.
 
-Status: implementation and local acceptance complete; production acceptance pending.
+Status: deployed and verified on 2026-09-07 at
+`https://panel.saltacode.com.ar/inbox`.
 
 ## Everyday workflow
 
@@ -87,7 +88,7 @@ staff identities and provider secrets are not part of this preview contract.
 - [x] Panel: presets/custom dates, invalid edits, search, filtered totals and offset reset.
 - [x] Live behavior: selection, drafts, focus, unread acknowledgements and reconnection.
 - [x] Desktop/mobile: 320 and 390 px, keyboard navigation, visible controls, independent scrolling.
-- [ ] Exact-source quality gate, release receipt and authenticated production checks.
+- [x] Exact-source quality gate, release receipt and authenticated production checks.
 
 Local scope gates passed: 496 API unit tests, 165 PostgreSQL integration tests and
 110 panel E2E tests, including ten new workspace cases. Browser cases cover daylight
@@ -97,6 +98,54 @@ messages, unknown legacy authors and long unbroken content at 320/390/1440 px.
 Computed CSS checks distinguish staff and visitor backgrounds; unsupported Tailwind
 alpha variants with hexadecimal theme variables were replaced locally with `color-mix`.
 This is not a claim of complete screen-reader or physical-device certification.
+
+## Production acceptance
+
+| Boundary | Verified result |
+|---|---|
+| Source | API commit `5c19914c`; panel and contract commit `d1cf80957b18`. |
+| Platform release | `git-d1cf80957b18-20260907T223358Z`; API, panel and four durable workers match receipt image IDs and are healthy. |
+| Schema and data | Revision remains `f15f9d1a3b67`; all 193 pre-existing message bodies, authors, timestamps and IDs, and all 38 conversation IDs are preserved. No migration. |
+| Other services | All 40 pre-existing containers outside the platform application release are unchanged, including landing, BFF and persistent stores. |
+| Authentication and live updates | Unauthenticated Inbox/SSE return 401; authenticated SSE is `no-store`, with snapshot at 0.107 seconds and heartbeat at 16.170 seconds in this sample. |
+| Real API filters | Global and agent-scoped canonical routes pass literal search, preview provenance, inclusive/exclusive dates, invalid-input 422 and count-before-pagination checks. |
+| Served UI | Chromium at 1440 and 320 px, Firefox at 390 px: custom dates, existing synthetic thread, explicit operator authorship, different bubble colors, reachable closed-thread footer, keyboard back and no page overflow or uncaught errors. |
+| Public site | Eleven read-only route checks pass; landing/BFF stay on `git-ef53c51c5195-20260907T203713Z`. No DNS, Tunnel, port or indexable-content changes. |
+
+`pnpm verify` passed on the clean exact source candidate before deployment: 496 API
+unit tests, 165 PostgreSQL integration tests, 98 BFF tests, 110 panel E2E tests and
+33 landing unit tests, plus build, contract, infrastructure and agentic gates.
+Local ShellCheck was unavailable; this iteration changes no shell source.
+
+The production browser check reused an already closed synthetic conversation.
+It sent no new messages, changed no ownership or opportunities, and performed no
+read acknowledgements. The unread production result was zero for the test operator;
+non-empty unread cases are covered by local database and browser tests, not by
+creating production traffic. Active-composer geometry is covered locally; the
+production synthetic thread correctly exposes a closed-history notice instead.
+
+Protected evidence is stored under
+`/var/lib/saltacode-agent-platform/backups/20260907T223358Z-pre-inbox-messaging-ux/`:
+database backup, exact gate and deploy logs, API/browser acceptance, independent
+release verification, history comparison and private screenshots. The immutable
+receipt is under `/var/lib/saltacode-agent-platform/receipts/` using the release tag.
+Credentials and transcript snapshots remain outside Git. This same-host backup is
+not off-host disaster recovery; no new restore rehearsal was performed for this
+schema-unchanged iteration.
+
+Rollback boundary: restore the complete platform application release
+`git-182153ebbff8-20260907T211626Z` through the receipt-based procedure, without a
+database downgrade or a site rollback. Do not mix the new panel with the old API:
+the new filters require both components. No Git push was performed.
+
+## Separate follow-up
+
+Acceptance exposed an existing proxy hardening gap: requesting the agent-scoped
+Inbox API without its canonical trailing slash returns a 307 pointing at the
+internal upstream origin. The panel already uses the canonical slash, and both
+supported list paths passed. Track forwarded-host/redirect handling as a separate
+infrastructure fix with an external redirect regression test; it is not included
+in this messaging UX release.
 
 See the preceding [live Inbox contract](live-inbox-chat-2026-09-07.md) for durable
 read receipts and truthful activity semantics.
