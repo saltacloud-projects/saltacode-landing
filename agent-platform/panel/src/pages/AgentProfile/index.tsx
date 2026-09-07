@@ -1,4 +1,4 @@
-import { Bot, CircleCheck, ExternalLink, LoaderCircle, Power, Save } from "lucide-react";
+import { Bot, CircleCheck, ExternalLink, LoaderCircle, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
@@ -6,6 +6,8 @@ import type { AgentProfile } from "../../agents/types";
 import { api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
+import { AgentCreateForm } from "./AgentCreateForm";
+import { AgentSetupPanel } from "./AgentSetupPanel";
 
 const INPUT =
   "w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]";
@@ -29,19 +31,8 @@ const PROMPTS: {
 
 export default function ProfilesPage() {
   const { user } = useAuth();
-  const { profiles, loading, error, refreshProfiles } = useAgentWorkspace();
-  const canEdit = hasPermission(user, PERMISSIONS.ALL);
-  const [activating, setActivating] = useState<string | null>(null);
-
-  const activate = async (id: string) => {
-    setActivating(id);
-    try {
-      await api(`/profiles/${id}/activate`, { method: "POST" });
-      await refreshProfiles();
-    } finally {
-      setActivating(null);
-    }
-  };
+  const { profiles, loading, error } = useAgentWorkspace();
+  const canCreate = hasPermission(user, PERMISSIONS.ALL);
 
   return (
     <div className="max-w-6xl">
@@ -50,10 +41,15 @@ export default function ProfilesPage() {
         <div>
           <h2 className="text-xl font-semibold">Agentes</h2>
           <p className="text-sm text-[var(--text-muted)]">
-            Elegí un agente para administrar su espacio de trabajo.
+            Identidades independientes con instrucciones, modelo, límites y recursos propios.
           </p>
         </div>
       </header>
+      {canCreate && (
+        <div className="mb-6">
+          <AgentCreateForm />
+        </div>
+      )}
       {error && (
         <div
           className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
@@ -86,31 +82,16 @@ export default function ProfilesPage() {
                 {profile.description || "Sin descripción"}
               </p>
               <p className="mt-3 text-xs text-[var(--text-muted)]">
-                {profile.is_public ? "Disponible para web" : "Sin exposición web"} · historial{" "}
-                {profile.retention_days} días
+                {profile.is_public ? "Permite ruta web pública" : "Exposición web no permitida"} ·
+                historial {profile.retention_days} días
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
-                  to={`/agents/${profile.id}/overview`}
+                  to={`/agents/${profile.id}/identity`}
                   className="flex items-center gap-1 rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-white"
                 >
-                  <ExternalLink size={14} /> Abrir espacio
+                  <ExternalLink size={14} /> Configurar agente
                 </Link>
-                {canEdit && !profile.is_active && (
-                  <button
-                    type="button"
-                    onClick={() => activate(profile.id)}
-                    disabled={activating === profile.id}
-                    className="flex items-center gap-1 rounded border border-[var(--border-color)] px-3 py-1.5 text-sm disabled:opacity-50"
-                  >
-                    {activating === profile.id ? (
-                      <LoaderCircle className="animate-spin" size={14} />
-                    ) : (
-                      <Power size={14} />
-                    )}{" "}
-                    Activar
-                  </button>
-                )}
               </div>
             </article>
           ))}
@@ -151,7 +132,15 @@ export function AgentIdentityPage() {
       void is_active;
       void created_at;
       void updated_at;
-      await api(`/profiles/${selectedAgent.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const changes = Object.fromEntries(
+        Object.entries(body).filter(
+          ([key, value]) => value !== selectedAgent[key as keyof AgentProfile],
+        ),
+      );
+      await api(`/profiles/${selectedAgent.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(changes),
+      });
       await refreshProfiles();
       setNotice("Identidad guardada.");
     } catch (value) {
@@ -167,7 +156,7 @@ export function AgentIdentityPage() {
         <div>
           <h2 className="text-xl font-semibold">Identidad de {selectedAgent.name}</h2>
           <p className="text-sm text-[var(--text-muted)]">
-            Perfil, comportamiento, disponibilidad y retención del agente seleccionado.
+            Instrucciones persistentes, exposición permitida y retención de este agente.
           </p>
         </div>
         {canEdit && (
@@ -182,6 +171,7 @@ export function AgentIdentityPage() {
           </button>
         )}
       </header>
+      <AgentSetupPanel agent={selectedAgent} />
       {notice && (
         <p
           className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-400"
@@ -236,7 +226,7 @@ export function AgentIdentityPage() {
             checked={draft.is_public}
             onChange={(event) => setDraft({ ...draft, is_public: event.target.checked })}
           />{" "}
-          Disponible para selección web pública
+          Permitir exposición mediante una ruta web pública
         </label>
         <label className="text-sm md:col-span-2">
           Descripción
