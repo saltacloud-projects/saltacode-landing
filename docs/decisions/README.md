@@ -38,3 +38,4 @@ An accepted ADR changes through a new ADR, not by silently rewriting its origina
 |---|---|---|
 | [0001](0001-incremental-architecture.md) | Accepted | Evolve architecture incrementally from evidenced needs. |
 | [0002](0002-agentic-tooling-and-mutation-boundaries.md) | Accepted | Keep agentic governance portable and deny external/global mutations by default. |
+| [0003](0003-crm-first-agent-platform.md) | Accepted | Organize CRM operations independently from agent configuration and keep commercial policy explicit. |
