@@ -574,9 +574,15 @@ async def test_whatsapp_keeps_route_access_owner_but_runs_private_acting_agent(
         "app.services.tools.dynamic.sync_http_api_tools",
         AsyncMock(),
     )
+    from app.services.tools.registry import ToolRegistry
+
+    worker_registry = ToolRegistry()
+    monkeypatch.setattr(module, "tool_registry", worker_registry)
+    monkeypatch.setattr("app.services.tools.bootstrap.tool_registry", worker_registry)
+    available_tools = AsyncMock(return_value=[])
     monkeypatch.setattr(
         "app.services.tool_policy.tool_policy_service.available_tools",
-        AsyncMock(return_value=[]),
+        available_tools,
     )
     service = PipelineService()
     monkeypatch.setattr(service, "_build_automation_guard", lambda **_kwargs: guard)
@@ -602,6 +608,10 @@ async def test_whatsapp_keeps_route_access_owner_but_runs_private_acting_agent(
     )
 
     assert access.await_args.kwargs["profile"] is routing_profile
+    assert available_tools.await_args.args[2] == {
+        "commercial_quote_contact_request",
+        "rag_documento_enviar",
+    }
     resolve_acting.assert_awaited_once_with(
         ANY,
         acting_profile.id,

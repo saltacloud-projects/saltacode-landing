@@ -12,10 +12,13 @@ from sqlalchemy import delete, select
 
 from app.core.database import AsyncSessionLocal, engine
 from app.models.agent_profile import AgentProfile
+from app.models.agent_resource_binding import AgentToolBinding
 from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.conversation_event import ConversationEvent
 from app.models.platform import ChatConversation, ChatExecution, ChatMessage, Principal
+from app.models.tool_config import ToolConfig
 from app.services.agent_loop import AgentLoopResult
+from app.services.tools.registry import ToolRegistry
 from app.services.web_execution_queue import WebExecutionQueueService
 from app.services.web_execution_runner import (
     WebExecutionRunner,
@@ -254,6 +257,76 @@ async def test_runner_executes_neutral_context_and_persists_public_completion(
     assert output.role == "assistant"
     assert completed_event.visibility == "public"
     assert completed_event.payload_json["content"] == "Durable answer"
+
+
+@pytest.mark.asyncio
+async def test_fresh_runner_offers_and_executes_bound_native_contact_tool(
+    runner_graph, monkeypatch
+):
+    registry = ToolRegistry()
+    for module in (
+        "app.services.tools.bootstrap",
+        "app.services.tools.dynamic",
+        "app.services.web_execution_runner",
+    ):
+        monkeypatch.setattr(f"{module}.tool_registry", registry)
+    monkeypatch.setattr("app.services.tools.dynamic._http_api_tool_names", set())
+    tool_name = "commercial_quote_contact_request"
+    async with AsyncSessionLocal() as db:
+        tool = (
+            await db.execute(
+                select(ToolConfig).where(ToolConfig.tool_name == tool_name)
+            )
+        ).scalar_one()
+        db.add(AgentToolBinding(agent_id=runner_graph.acting_agent.id, tool_id=tool.id))
+        await db.commit()
+    execution_id, _ = await _enqueue(runner_graph, "runner-native-contact")
+
+    async def agent_loop(**kwargs):
+        assert [tool["tool_name"] for tool in kwargs["available_tools"]] == [tool_name]
+        assert set(kwargs["tool_configs"][tool_name]["params_schema"]) == {
+            "title",
+            "summary",
+            "preferred_delivery_channel",
+        }
+        result = await registry.invoke(
+            tool_name,
+            {
+                "title": "Website estimate",
+                "summary": "Synthetic website requirements",
+                "preferred_delivery_channel": "email",
+            },
+            kwargs["request_id"],
+            kwargs["execution_context"],
+        )
+        assert result.status == "success"
+        assert result.result["consent_status"] == "not_captured"
+        return AgentLoopResult(
+            response_text="Please confirm your contact details in the form.",
+            tools_used=[tool_name],
+            status="success",
+        )
+
+    runner = WebExecutionRunner(
+        worker_id="cold-native-worker",
+        lease_duration=timedelta(minutes=5),
+        runtime_resolver=_RuntimeResolver(runner_graph),
+        agent_loop=agent_loop,
+    )
+    assert await runner.run_once() is True
+    async with AsyncSessionLocal() as db:
+        execution = await db.get(ChatExecution, execution_id)
+        assert execution.status == "completed"
+        event = (
+            await db.execute(
+                select(ConversationEvent).where(
+                    ConversationEvent.conversation_id == runner_graph.conversation_id,
+                    ConversationEvent.event_type == "commercial.contact.requested",
+                )
+            )
+        ).scalar_one()
+        assert event.agent_id == runner_graph.routing_agent.id
+        assert event.payload_json["preferred_delivery_channel"] == "email"
 
 
 @pytest.mark.asyncio

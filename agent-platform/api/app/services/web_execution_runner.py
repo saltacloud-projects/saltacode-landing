@@ -25,6 +25,7 @@ from app.services.agent_runtime import (
     agent_runtime_resolver,
 )
 from app.services.tool_policy import ToolPolicyService, tool_policy_service
+from app.services.tools.bootstrap import sync_runtime_tools
 from app.services.tools.registry import tool_registry
 from app.services.web_execution_queue import (
     ClaimedWebExecution,
@@ -230,6 +231,7 @@ class WebExecutionRunner:
             scopes=set(),
             allowed_source_ids=set(),
         )
+        await sync_runtime_tools(db)
         tools = await self._policy.available_tools(
             db,
             context,

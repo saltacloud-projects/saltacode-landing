@@ -633,9 +633,9 @@ class PipelineService:
                     # runtime. Sin permisos por usuario: el agente es uno para todos.
                     # -----------------------------------------------------------
                     try:
-                        from app.services.tools.dynamic import sync_http_api_tools
+                        from app.services.tools.bootstrap import sync_runtime_tools
 
-                        await sync_http_api_tools(db)
+                        await sync_runtime_tools(db)
                     except Exception as e:
                         logger.warning(
                             "http_api_tools_sync_before_pipeline_failed",

@@ -84,14 +84,10 @@ async def lifespan(app: FastAPI):
     # Las capacidades nativas se registran siempre; su disponibilidad efectiva
     # sigue dependiendo de la configuración persistida y del binding por agente.
     # La búsqueda RAG automática no pasa por tool_registry.
-    from app.services.tools.adapters.commercial_quote_contact_request import (
-        register_commercial_quote_contact_request_tool,
-    )
-    from app.services.tools.adapters.rag import register_rag_tools
+    from app.services.tools.bootstrap import register_native_tools, sync_runtime_tools
     from app.services.tools.registry import tool_registry
 
-    register_commercial_quote_contact_request_tool(tool_registry)
-    register_rag_tools(tool_registry)
+    register_native_tools()
 
     # Source-bound declarative tools are loaded from PostgreSQL. Credentials are
     # decrypted only at invocation time and never stored in runtime metadata.
@@ -99,13 +95,14 @@ async def lifespan(app: FastAPI):
     # Protegido: si la columna aún no existe (migración pendiente), no corta el arranque.
     try:
         from app.core.database import AsyncSessionLocal as _ToolsSession
-        from app.services.tools.dynamic import sync_http_api_tools
 
         async with _ToolsSession() as _tools_db:
-            _n_http = await sync_http_api_tools(_tools_db)
+            _n_http = await sync_runtime_tools(_tools_db)
         logger.info("http_api_tools_registered", extra={"count": _n_http})
     except Exception as e:
-        logger.error("http_api_tools_sync_failed", extra={"error": str(e)})
+        logger.error(
+            "http_api_tools_sync_failed", extra={"error_type": type(e).__name__}
+        )
 
     llm_mode = "openai" if settings.openai_api_key else "rules"
     wa_mode = "live" if settings.whatsapp_token else "disabled"

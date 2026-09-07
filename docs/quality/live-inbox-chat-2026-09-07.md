@@ -68,7 +68,13 @@ had zero tool bindings, no progression policy and no handoff destination. Generi
 persisted prompts/knowledge encouraged qualification but did not activate the native
 contact-request tool. This is not a dropped inbound message or an LLM outage.
 
-The bounded correction is an explicit tool binding, guided progression with the
+Real-provider acceptance then exposed two additional code defects: durable web workers
+did not register the native capabilities that the API process registered, and the public
+event projection discarded the three descriptors required by the contact form. The fix
+initializes the process-local tool catalog in each execution owner and preserves only
+bounded, sanitized commercial form descriptors for the matching event type.
+
+The bounded correction also includes an explicit tool binding, guided progression with the
 current agent and persisted prompt instructions to offer structured contact/consent
 capture on an explicit quote request even when some project details are pending.
 Existing free-text contact data is not silently converted into consent or replayed.
@@ -89,3 +95,13 @@ immutable production candidate is deployed. No DNS, Tunnel or public indexable c
 changes are part of this unit. Lazy chat budget adjustment is documented in
 [the SEO/performance contract](seo-performance-contract.md); field CWV and rankings
 are not inferred from these local checks.
+
+## Strict-consumer rollout compatibility
+
+The presentation fields are optional in the new schemas, but the prior BFF uses
+`extra=forbid` when consuming private history/event pages. Consequently this change
+requires coordinated API/BFF rollout: update the tolerant new BFF before exposing new
+API fields when sequencing release units. Do not roll back the site BFF to the old
+strict contract while leaving the new Agent API running. Agent-only forward fixes
+retain the new contract. The generic site receipt cannot prove this cross-unit
+semantic compatibility; this is an explicit release gate.

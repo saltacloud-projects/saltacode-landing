@@ -14,6 +14,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.core.database import engine
 from app.core.logging import setup_logging
+from app.services.tools.bootstrap import register_native_tools
 from app.services.web_execution_runner import WebExecutionRunner
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,7 @@ async def _run_healthcheck() -> None:
 
 
 async def _run_worker() -> None:
+    register_native_tools()
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signal_number in (signal.SIGINT, signal.SIGTERM):
