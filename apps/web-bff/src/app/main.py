@@ -50,19 +50,25 @@ def _build_web_chat_v2_client(settings: Settings) -> WebChatV2Client:
     )
 
 
-def _build_rate_limiter(settings: Settings) -> RateLimiter:
+def _build_rate_limiter(settings: Settings, *, presence: bool = False) -> RateLimiter:
+    requests = settings.presence_rate_limit_requests if presence else settings.rate_limit_requests
+    window_seconds = (
+        settings.presence_rate_limit_window_seconds
+        if presence
+        else settings.rate_limit_window_seconds
+    )
     if settings.rate_limit_backend == "memory":
         return InMemoryFixedWindowRateLimiter(
-            requests=settings.rate_limit_requests,
-            window_seconds=settings.rate_limit_window_seconds,
+            requests=requests,
+            window_seconds=window_seconds,
         )
     redis_url = settings.resolve_redis_url()
     if redis_url is None:
         raise ValueError("Redis rate-limit backend requires a Redis URL")
     return RedisFixedWindowRateLimiter.from_url(
         url=redis_url,
-        requests=settings.rate_limit_requests,
-        window_seconds=settings.rate_limit_window_seconds,
+        requests=requests,
+        window_seconds=window_seconds,
         connect_timeout_seconds=settings.redis_connect_timeout_seconds,
         response_timeout_seconds=settings.redis_response_timeout_seconds,
     )
@@ -73,6 +79,7 @@ def create_app(
     agent_gateway: AgentGateway | None = None,
     rate_limiter: RateLimiter | None = None,
     web_chat_v2_client: WebChatV2Client | None = None,
+    presence_rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_settings()
 
@@ -85,7 +92,10 @@ def create_app(
             try:
                 await application.state.web_chat_v2_client.aclose()
             finally:
-                await application.state.rate_limiter.aclose()
+                try:
+                    await application.state.rate_limiter.aclose()
+                finally:
+                    await application.state.presence_rate_limiter.aclose()
 
     app = FastAPI(
         title=resolved_settings.app_name,
@@ -97,6 +107,9 @@ def create_app(
 
     app.state.settings = resolved_settings
     app.state.rate_limiter = rate_limiter or _build_rate_limiter(resolved_settings)
+    app.state.presence_rate_limiter = presence_rate_limiter or _build_rate_limiter(
+        resolved_settings, presence=True
+    )
     app.state.agent_gateway = agent_gateway or _build_agent_gateway(resolved_settings)
     app.state.web_chat_v2_client = web_chat_v2_client or _build_web_chat_v2_client(
         resolved_settings

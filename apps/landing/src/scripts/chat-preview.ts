@@ -10,6 +10,7 @@ import {
 import { createClientMessageId } from "./client-message-id";
 import { chatAuthorLabel, chatMessageStatus, chatMessageTime } from "./chat-presentation";
 import { chatActivityLabel, parseChatActivity, type ChatActivity } from "./chat-activity";
+import type { ChatPresenceController } from "./chat-presence";
 import { reconnectChatEvents, type ChatEvent } from "./chat-stream";
 import { chatMarkup, chatResumeMarkup } from "./chat-template";
 import {
@@ -56,6 +57,9 @@ let acceptedForPage = false;
 let resettingPrivacy = false;
 let hasServerSession = false;
 let activity: ChatActivity | null = null;
+let presence: ChatPresenceController | undefined;
+let presenceLoading: Promise<ChatPresenceController | undefined> | undefined;
+let presenceGeneration = 0;
 const renderedMessages = new Map<string, { signature: string; element: HTMLElement }>();
 
 interface CommercialContactController {
@@ -126,19 +130,58 @@ function controlStatus(mode: ChatControlMode): string {
   return "Conversación conectada.";
 }
 
+function invalidatePresence(): void {
+  presenceGeneration += 1;
+  presenceLoading = undefined;
+}
+
+function ensurePresence(): Promise<ChatPresenceController | undefined> {
+  if (presence) return Promise.resolve(presence);
+  if (!hasServerSession || !dialog?.open || transcript.controlMode === "closed") return Promise.resolve(undefined);
+  const generation = presenceGeneration;
+  // Typing is optional and only useful after the server has acknowledged a conversation.
+  presenceLoading ??= import("./chat-presence").then((module) => {
+    if (generation !== presenceGeneration || !dialog?.open || !hasServerSession || transcript.controlMode === "closed" || document.visibilityState !== "visible") return;
+    presence = module.createChatPresence({
+      instanceId: createClientMessageId(),
+      canSend: () => Boolean(dialog?.open) && hasServerSession && hasCurrentConsent() &&
+        document.visibilityState === "visible" && document.hasFocus() &&
+        document.activeElement === composer && !composer.disabled && !posting &&
+        transcript.controlMode !== "closed",
+      onChange: renderActivity,
+    });
+    return presence;
+  }).catch(() => undefined).finally(() => {
+    if (generation === presenceGeneration) presenceLoading = undefined;
+  });
+  return presenceLoading;
+}
+
+function receiveOperatorPresence(value: unknown): void {
+  const generation = presenceGeneration;
+  void ensurePresence().then((controller) => {
+    if (generation === presenceGeneration && dialog?.open && document.visibilityState === "visible" && transcript.controlMode === "human") {
+      controller?.receive(value);
+    }
+  });
+}
+
 function renderActivity(): void {
   const indicator = dialog?.querySelector<HTMLElement>(".chat-activity");
   if (!indicator) return;
   const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 96;
-  const label = chatActivityLabel(activity, transcript.controlMode);
+  const humanLabel = presence?.label(transcript.controlMode) ?? "";
+  const label = humanLabel || chatActivityLabel(activity, transcript.controlMode);
   indicator.hidden = !label;
-  indicator.dataset.state = activity?.status ?? "idle";
+  indicator.dataset.state = humanLabel ? "operator" : activity?.status ?? "idle";
   if (indicator.textContent !== label) indicator.textContent = label;
   if (wasNearBottom) log.scrollTop = log.scrollHeight;
 }
 
 function clearActivity(): void {
+  invalidatePresence();
   activity = null;
+  presence?.clear();
   renderActivity();
 }
 
@@ -274,7 +317,9 @@ function reconcilePending(history: ChatHistory): void {
 async function synchronizeHistory(): Promise<ChatHistory | null> {
   synchronization ??= loadOrUpgradeServerHistory().finally(() => { synchronization = undefined; });
   const history = await synchronization;
+  invalidatePresence();
   activity = parseChatActivity(history?.activity);
+  presence?.clear();
   if (!history) {
     hasServerSession = false;
     transcript.messages = [];
@@ -286,9 +331,13 @@ async function synchronizeHistory(): Promise<ChatHistory | null> {
     return null;
   }
   hasServerSession = true;
+  void ensurePresence();
   transcript.messages = history.messages.map(mapServerMessage);
   transcript.latestEventId = history.latest_event_id;
   transcript.controlMode = history.control_mode;
+  if (dialog?.open && document.visibilityState === "visible" && history.control_mode === "human") {
+    receiveOperatorPresence(history.presence);
+  }
   reconcilePending(history);
   persistTranscript();
   renderTranscript();
@@ -297,6 +346,12 @@ async function synchronizeHistory(): Promise<ChatHistory | null> {
 }
 
 function applyEvent(event: ChatEvent): void {
+  if (event.event_type === "chat.presence") {
+    if (dialog?.open && document.visibilityState === "visible" && transcript.controlMode === "human") {
+      receiveOperatorPresence(event.presence);
+    } else presence?.clear();
+    return;
+  }
   if (event.event_type === "chat.activity") {
     activity = parseChatActivity(event.activity);
     renderActivity();
@@ -313,12 +368,17 @@ function applyEvent(event: ChatEvent): void {
   }
   if (event.event_type === "chat.error") {
     clearActivity();
+    presence?.stop();
     status.textContent = "La conexión se interrumpió. Intentando reconectar…";
   }
   if (result.controlChanged) {
     clearActivity();
     status.textContent = controlStatus(transcript.controlMode);
-    if (transcript.controlMode === "closed") streamController?.abort();
+    if (transcript.controlMode === "closed") {
+      invalidatePresence();
+      presence?.stop();
+      streamController?.abort();
+    }
   }
   if (event.event_type?.includes("control")) void synchronizeHistory().catch(() => undefined);
   persistTranscript();
@@ -363,7 +423,12 @@ function startEventStream(): void {
     signal: controller.signal,
     isActive: () => Boolean(dialog?.open) && streamController === controller,
     onEvent: applyEvent,
-    onDisconnect: clearActivity,
+    onDisconnect: () => {
+      if (streamController === controller) {
+        clearActivity();
+        presence?.stop();
+      }
+    },
     onCursorExpired: async () => (await synchronizeHistory())?.latest_event_id ?? 0,
     onRetry: () => {
       clearActivity();
@@ -374,6 +439,7 @@ function startEventStream(): void {
 
 async function deliverMessage(message: PendingChatMessage, isNew: boolean): Promise<void> {
   if (posting || !hasCurrentConsent() || transcript.controlMode === "closed") return;
+  presence?.stop();
   if (isNew) {
     message.createdAt = new Date().toISOString();
     transcript.pending = [...transcript.pending, message].slice(-8);
@@ -408,6 +474,7 @@ async function deliverMessage(message: PendingChatMessage, isNew: boolean): Prom
     const pending = transcript.pending.find((item) => item.clientMessageId === message.clientMessageId);
     if (pending) pending.status = "accepted";
     hasServerSession = true;
+    void ensurePresence();
     persistTranscript();
     renderTranscript();
     status.textContent = accepted.duplicate
@@ -511,6 +578,10 @@ function configureWhatsappLink(element: HTMLDialogElement): void {
 
 async function resetConversation(): Promise<void> {
   if (!window.confirm("¿Querés cerrar esta conversación e iniciar una nueva?")) return;
+  presence?.stop();
+  invalidatePresence();
+  presence?.clear();
+  presence = undefined;
   setPosting(true);
   try {
     let cursor = 0;
@@ -589,7 +660,11 @@ function createDialog(): HTMLDialogElement {
       if (text) void deliverMessage({ text, clientMessageId: createClientMessageId(), status: "sending" }, true);
     }
   });
-  composer.addEventListener("input", resizeComposer);
+  composer.addEventListener("input", () => {
+    resizeComposer();
+    presence?.edit(Boolean(composer.value.trim()));
+  });
+  composer.addEventListener("blur", () => presence?.stop());
   element.querySelector(".chat-suggestions")!.addEventListener("click", (event) => {
     const suggestion = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
     if (suggestion) {
@@ -598,6 +673,8 @@ function createDialog(): HTMLDialogElement {
     }
   });
   element.addEventListener("close", () => {
+    invalidatePresence();
+    presence?.stop();
     clearActivity();
     streamController?.abort();
     streamController = undefined;
@@ -636,6 +713,11 @@ function openDialog(launcher: HTMLFormElement, input: HTMLInputElement | null, t
 }
 
 function resetChatPrivacy(): void {
+  presence?.stop();
+  invalidatePresence();
+  presence?.clear();
+  presence = undefined;
+  clearActivity();
   resettingPrivacy = true;
   acceptedForPage = false;
   pendingLaunch = undefined;
@@ -658,6 +740,24 @@ function resetChatPrivacy(): void {
 }
 
 window.addEventListener(PRIVACY_RESET_EVENT, resetChatPrivacy);
+window.addEventListener("blur", () => {
+  presence?.stop();
+  clearActivity();
+});
+window.addEventListener("pagehide", () => {
+  invalidatePresence();
+  presence?.stop();
+  clearActivity();
+  streamController?.abort();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") {
+    invalidatePresence();
+    presence?.stop();
+    clearActivity();
+    streamController?.abort();
+  } else if (dialog?.open) startEventStream();
+});
 
 export function initializeChatResume(launcher: HTMLFormElement): void {
   if (!hasCurrentConsent()) {

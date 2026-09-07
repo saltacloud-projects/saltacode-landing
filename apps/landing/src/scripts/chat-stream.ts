@@ -8,6 +8,7 @@ export interface ChatEvent {
   retryable?: boolean;
   outcome?: string;
   activity?: unknown;
+  presence?: unknown;
 }
 
 export interface ChatEventStreamHandlers {

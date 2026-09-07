@@ -22,12 +22,19 @@ class SignedSessionManager:
         self._secret = secret.encode("utf-8")
 
     def resolve(self, cookie_value: str | None) -> SessionResolution:
+        existing = self.existing(cookie_value)
+        if existing is not None:
+            return existing
+        session_id = uuid4()
+        return SessionResolution(session_id, self._encode(session_id), True)
+
+    def existing(self, cookie_value: str | None) -> SessionResolution | None:
+        """Validate an existing session without allocating a replacement identity."""
         if cookie_value:
             parsed = self._verify(cookie_value)
             if parsed is not None:
                 return SessionResolution(parsed, cookie_value, False)
-        session_id = uuid4()
-        return SessionResolution(session_id, self._encode(session_id), True)
+        return None
 
     def _encode(self, session_id: UUID) -> str:
         value = str(session_id)
@@ -39,6 +46,8 @@ class SignedSessionManager:
             value, supplied_signature = cookie_value.split(".", 1)
             session_id = UUID(value)
         except (ValueError, AttributeError):
+            return None
+        if not supplied_signature.isascii():
             return None
         expected = hmac.new(
             self._secret, str(session_id).encode("ascii"), hashlib.sha256

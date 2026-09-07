@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "client_instance_id": {
+      "format": "uuid",
+      "title": "Client Instance Id",
+      "type": "string"
+    },
+    "sequence": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "typing": {
+      "title": "Typing",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "client_instance_id",
+    "sequence",
+    "typing"
+  ],
+  "title": "BrowserPresenceRequest",
+  "type": "object"
+}

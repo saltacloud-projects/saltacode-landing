@@ -51,7 +51,9 @@ const BUILD_BUDGETS = Object.freeze({
   additionalInteriorCssBytes: 5 * 1024,
   initialExecutableJavaScriptBytes: 5.75 * 1024,
   nonChatExecutableJavaScriptBytes: 7 * 1024,
-  chatChunkBytes: 25 * 1024,
+  chatChunkBytes: 26 * 1024,
+  presenceChunkBytes: 2 * 1024,
+  chatWithPresenceBytes: 28 * 1024,
   chatStylesheetBytes: 10 * 1024,
   commercialChatChunkBytes: 10 * 1024,
   commercialChatStylesheetBytes: 2.25 * 1024,
@@ -140,6 +142,13 @@ const allRouteCssPaths = new Set([...pages.values()].flatMap((markup) => [...sty
 const additionalCssPaths = new Set([...allRouteCssPaths].filter((path) => !homeCssPaths.has(path)));
 const chatChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)chat-preview\.[^/]+\.js$/.test(file.path));
 if (!chatChunk) throw new Error("The lazy chat chunk was not emitted.");
+const presenceChunk = buildFiles.find((file) => file.extension === ".js" && /(?:^|\/)chat-presence\.[^/]+\.js$/.test(file.path));
+if (!presenceChunk) throw new Error("The session-only presence chunk was not emitted.");
+const chatBundle = await readFile(resolve(dist, chatChunk.path), "utf8");
+const dynamicChatImports = [...chatBundle.matchAll(/\bimport\(\s*["'`]([^"'`]+)["'`]\s*\)/g)].map((match) => match[1]);
+if (index.includes(`/${presenceChunk.path}`) || !dynamicChatImports.includes(`./${presenceChunk.path.split("/").at(-1)}`)) {
+  throw new Error("Presence must remain a dynamic, session-only chat dependency.");
+}
 const chatStylesheet = buildFiles.find((file) => file.extension === ".css" && /(?:^|\/)chat-preview\.[^/]+\.css$/.test(file.path));
 if (!chatStylesheet) throw new Error("The deferred chat stylesheet was not emitted.");
 if (index.includes(`/${chatStylesheet.path}`)) throw new Error("The chat stylesheet must remain outside the initial page path.");
@@ -158,8 +167,10 @@ const measuredBuild = Object.freeze({
   coreCssBytes: bytesForPaths(homeCssPaths),
   additionalInteriorCssBytes: bytesForPaths(additionalCssPaths),
   initialExecutableJavaScriptBytes: initialExternalBytes + inlineBytes,
-  nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes - commercialChatChunk.bytes - privacyChunk.bytes,
+  nonChatExecutableJavaScriptBytes: totalJavaScript - chatChunk.bytes - presenceChunk.bytes - commercialChatChunk.bytes - privacyChunk.bytes,
   chatChunkBytes: chatChunk.bytes,
+  presenceChunkBytes: presenceChunk.bytes,
+  chatWithPresenceBytes: chatChunk.bytes + presenceChunk.bytes,
   chatStylesheetBytes: chatStylesheet.bytes,
   commercialChatChunkBytes: commercialChatChunk.bytes,
   commercialChatStylesheetBytes: commercialChatStylesheet.bytes,
@@ -175,6 +186,8 @@ const budgetResults = [
   ["initial executable JavaScript", measuredBuild.initialExecutableJavaScriptBytes, BUILD_BUDGETS.initialExecutableJavaScriptBytes],
   ["non-chat executable JavaScript", measuredBuild.nonChatExecutableJavaScriptBytes, BUILD_BUDGETS.nonChatExecutableJavaScriptBytes],
   ["lazy chat chunk", measuredBuild.chatChunkBytes, BUILD_BUDGETS.chatChunkBytes],
+  ["session-only presence JavaScript", measuredBuild.presenceChunkBytes, BUILD_BUDGETS.presenceChunkBytes],
+  ["total chat and presence JavaScript", measuredBuild.chatWithPresenceBytes, BUILD_BUDGETS.chatWithPresenceBytes],
   ["deferred chat CSS", measuredBuild.chatStylesheetBytes, BUILD_BUDGETS.chatStylesheetBytes],
   ["on-demand commercial chat JavaScript", measuredBuild.commercialChatChunkBytes, BUILD_BUDGETS.commercialChatChunkBytes],
   ["on-demand commercial chat CSS", measuredBuild.commercialChatStylesheetBytes, BUILD_BUDGETS.commercialChatStylesheetBytes],

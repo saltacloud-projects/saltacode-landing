@@ -18,6 +18,16 @@
       "title": "ChatActivity",
       "type": "object"
     },
+    "ChatPresence": {
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "$ref": "#/$defs/TypingState"
+        }
+      },
+      "title": "ChatPresence",
+      "type": "object"
+    },
     "HistoryMessage": {
       "additionalProperties": false,
       "properties": {
@@ -79,6 +89,31 @@
       ],
       "title": "HistoryMessage",
       "type": "object"
+    },
+    "TypingState": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "typing": {
+          "default": false,
+          "title": "Typing",
+          "type": "boolean"
+        }
+      },
+      "title": "TypingState",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -116,6 +151,9 @@
       },
       "title": "Messages",
       "type": "array"
+    },
+    "presence": {
+      "$ref": "#/$defs/ChatPresence"
     },
     "status": {
       "enum": [

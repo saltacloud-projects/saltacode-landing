@@ -14,6 +14,7 @@ from app.chat_v2.contracts import (
     BrowserCommercialContactAccepted,
     BrowserCommercialContactRequest,
     BrowserMessageRequest,
+    BrowserPresenceRequest,
     BrowserResetRequest,
     ConversationEvent,
     EventsResponse,
@@ -21,17 +22,21 @@ from app.chat_v2.contracts import (
     MessageAccepted,
     PrivateCommercialContactRequest,
     PrivateMessageRequest,
+    PrivatePresenceRequest,
     PrivateResetRequest,
     ResetResponse,
     StreamActivity,
     StreamDone,
     StreamFailure,
+    StreamPresence,
     TranscriptConsent,
+    TypingState,
 )
 from app.chat_v2.ports import (
     WebChatBlockedError,
     WebChatClientError,
     WebChatConflictError,
+    WebChatPresenceLimitedError,
     WebChatSessionNotFoundError,
     WebChatUnprocessableError,
     WebChatV2Client,
@@ -39,6 +44,7 @@ from app.chat_v2.ports import (
 from app.config import Settings
 from app.contracts import ProblemDetails
 from app.dependencies import (
+    get_presence_rate_limiter,
     get_rate_limiter,
     get_session_manager,
     get_settings,
@@ -94,6 +100,7 @@ _EVENT_RESPONSES = {
                         StreamFailure.model_json_schema(),
                         StreamDone.model_json_schema(),
                         StreamActivity.model_json_schema(),
+                        StreamPresence.model_json_schema(),
                     ]
                 },
             }
@@ -123,6 +130,55 @@ _UPGRADE_RESPONSES = {
     429: _problem_response("Rate limit exceeded."),
     503: _problem_response("Rate-limit service unavailable."),
 }
+
+
+@router.post(
+    "/presence",
+    response_model=TypingState,
+    responses={**_HISTORY_RESPONSES, 423: _problem_response("Conversation is closed.")},
+)
+async def update_presence(
+    payload: BrowserPresenceRequest,
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_presence_rate_limiter)],
+    sessions: Annotated[SignedSessionManager, Depends(get_session_manager)],
+    client: Annotated[WebChatV2Client, Depends(get_web_chat_v2_client)],
+) -> TypingState:
+    require_allowed_origin(request, settings)
+    session = sessions.existing(request.cookies.get(settings.session_cookie_v2_name))
+    if session is None:
+        raise _session_not_found()
+    decision = await _check_rate_limit(request, rate_limiter, namespace="presence")
+    try:
+        result = await client.update_presence(
+            PrivatePresenceRequest(
+                **payload.model_dump(),
+                session_id=session.session_id,
+                route_key=settings.agent_route_key or "",
+            ),
+            correlation_id=request.state.correlation_id,
+        )
+    except WebChatPresenceLimitedError as error:
+        raise ApiError(
+            status_code=429,
+            code="presence_rate_limit_exceeded",
+            title="Presence rate limit exceeded",
+            detail="Typing status cannot be updated right now.",
+            headers={"Retry-After": "3"},
+        ) from error
+    except WebChatBlockedError as error:
+        raise ApiError(
+            status_code=423,
+            code="chat_closed",
+            title="Conversation closed",
+            detail="Typing status is unavailable for this conversation.",
+        ) from error
+    except WebChatClientError as error:
+        _raise_public_error(error)
+    _set_response_headers(response, rate_limit=decision)
+    return result
 
 
 @router.post(
@@ -351,6 +407,7 @@ async def _event_stream(
     started_at = time.monotonic()
     heartbeat_at = started_at
     activity_snapshot: str | None = None
+    presence_snapshot: str | None = None
     try:
         while time.monotonic() - started_at < settings.chat_v2_stream_max_seconds:
             if await request.is_disconnected():
@@ -375,6 +432,10 @@ async def _event_stream(
             if current_activity != activity_snapshot:
                 yield f"event: chat.activity\ndata: {current_activity}\n\n"
                 activity_snapshot = current_activity
+            current_presence = StreamPresence(presence=page.presence).model_dump_json()
+            if current_presence != presence_snapshot:
+                yield f"event: chat.presence\ndata: {current_presence}\n\n"
+                presence_snapshot = current_presence
             now = time.monotonic()
             if now - heartbeat_at >= settings.chat_v2_heartbeat_seconds:
                 yield ": heartbeat\n\n"
@@ -394,10 +455,15 @@ async def _event_stream(
 async def _check_rate_limit(
     request: Request,
     rate_limiter: RateLimiter,
+    *,
+    namespace: str | None = None,
 ) -> RateLimitDecision:
     identity = rate_limit_client_identity(request)
+    key = client_rate_limit_key(identity)
+    if namespace:
+        key = f"{namespace}:{key}"
     try:
-        decision = await rate_limiter.check(client_rate_limit_key(identity))
+        decision = await rate_limiter.check(key)
     except RateLimitBackendError:
         raise ApiError(
             status_code=503,

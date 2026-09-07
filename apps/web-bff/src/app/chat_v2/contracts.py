@@ -8,9 +8,11 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     field_validator,
     model_validator,
@@ -66,6 +68,32 @@ class BrowserMessageRequest(StrictContract):
 class BrowserResetRequest(StrictContract):
     transcript_consent: Literal[True]
     privacy_version: PrivacyVersion
+
+
+class BrowserPresenceRequest(StrictContract):
+    client_instance_id: UUID
+    sequence: int = Field(ge=0, le=9_007_199_254_740_991, strict=True)
+    typing: StrictBool
+
+
+class PrivatePresenceRequest(BrowserPresenceRequest):
+    session_id: UUID
+    route_key: str
+
+
+class TypingState(StrictContract):
+    typing: StrictBool = False
+    expires_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_expiry(self) -> TypingState:
+        if self.typing != (self.expires_at is not None):
+            raise ValueError("typing requires an expiry and inactive presence cannot have one")
+        return self
+
+
+class ChatPresence(StrictContract):
+    operator: TypingState = Field(default_factory=TypingState)
 
 
 class BrowserCommercialContactRequest(StrictContract):
@@ -162,6 +190,7 @@ class HistoryResponse(StrictContract):
     latest_event_id: int = Field(ge=0)
     messages: list[HistoryMessage]
     activity: ChatActivity | None = None
+    presence: ChatPresence = Field(default_factory=ChatPresence)
 
 
 class ConversationEvent(StrictContract):
@@ -185,6 +214,7 @@ class EventsResponse(StrictContract):
     has_more: bool
     events: list[ConversationEvent]
     activity: ChatActivity | None = None
+    presence: ChatPresence = Field(default_factory=ChatPresence)
 
 
 class PrivateResetRequest(StrictContract):
@@ -202,6 +232,11 @@ class ResetResponse(StrictContract):
 class StreamActivity(StrictContract):
     schema_version: Literal["2"] = "2"
     activity: ChatActivity | None = None
+
+
+class StreamPresence(StrictContract):
+    schema_version: Literal["2"] = "2"
+    presence: ChatPresence = Field(default_factory=ChatPresence)
 
 
 class StreamFailure(StrictContract):

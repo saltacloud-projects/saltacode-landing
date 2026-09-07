@@ -7,6 +7,7 @@ export interface ChatHistory {
   control_mode: ChatControlMode;
   latest_event_id: number;
   activity?: ChatActivity | null;
+  presence?: unknown;
   messages: Array<{
     message_id: string;
     client_message_id: string;

@@ -67,6 +67,24 @@ test("ephemeral activity frames never consume or replay a durable cursor", async
   assert.deepEqual(received, ["chat.activity"]);
 });
 
+test("human presence snapshots remain ephemeral without replacing automated activity or cursor", async () => {
+  const presence = { operator: { typing: true, expires_at: "2026-09-07T22:00:08Z" } };
+  const frame = `event: chat.presence\ndata: ${JSON.stringify({ schema_version: "2", presence })}\n\n`;
+  let received = false;
+  const cursor = await consumeChatEventStream(streamOf(frame), 7, {
+    isActive: () => true,
+    onEvent: (item) => {
+      received = true;
+      assert.equal(item.event_type, "chat.presence");
+      assert.equal(item.cursor, undefined);
+      assert.equal(item.activity, undefined);
+      assert.deepEqual(item.presence, presence);
+    },
+  });
+  assert.equal(cursor, 7);
+  assert.equal(received, true);
+});
+
 test("even a graceful stream closure clears ephemeral activity before reconnect", async () => {
   let active = true;
   let disconnected = 0;

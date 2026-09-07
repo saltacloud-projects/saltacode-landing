@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     rate_limit_backend: Literal["memory", "redis"] = "memory"
     rate_limit_requests: int = Field(default=20, ge=1, le=10_000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=86_400)
+    presence_rate_limit_requests: int = Field(default=60, ge=1, le=10_000)
+    presence_rate_limit_window_seconds: int = Field(default=60, ge=1, le=86_400)
     redis_url: SecretStr | None = None
     redis_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30)
     redis_response_timeout_seconds: float = Field(default=1.0, gt=0, le=30)

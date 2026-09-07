@@ -14,6 +14,10 @@ def get_rate_limiter(request: Request) -> RateLimiter:
     return request.app.state.rate_limiter
 
 
+def get_presence_rate_limiter(request: Request) -> RateLimiter:
+    return request.app.state.presence_rate_limiter
+
+
 def get_agent_gateway(request: Request) -> AgentGateway:
     return request.app.state.agent_gateway
 

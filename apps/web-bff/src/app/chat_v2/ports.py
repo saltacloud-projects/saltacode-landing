@@ -12,8 +12,10 @@ from app.chat_v2.contracts import (
     PrivateCommercialContactAccepted,
     PrivateCommercialContactRequest,
     PrivateMessageRequest,
+    PrivatePresenceRequest,
     PrivateResetRequest,
     ResetResponse,
+    TypingState,
 )
 
 
@@ -45,7 +47,18 @@ class WebChatProtocolError(WebChatUnavailableError):
     """The private service returned an invalid or inconsistent contract."""
 
 
+class WebChatPresenceLimitedError(WebChatClientError):
+    """The private ephemeral presence budget was exhausted."""
+
+
 class WebChatV2Client(Protocol):
+    async def update_presence(
+        self,
+        request: PrivatePresenceRequest,
+        *,
+        correlation_id: str,
+    ) -> TypingState: ...
+
     async def accept_message(
         self,
         request: PrivateMessageRequest,

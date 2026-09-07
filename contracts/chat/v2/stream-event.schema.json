@@ -18,6 +18,16 @@
       "title": "ChatActivity",
       "type": "object"
     },
+    "ChatPresence": {
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "$ref": "#/$defs/TypingState"
+        }
+      },
+      "title": "ChatPresence",
+      "type": "object"
+    },
     "ConversationEvent": {
       "additionalProperties": false,
       "properties": {
@@ -124,6 +134,47 @@
       },
       "title": "StreamFailure",
       "type": "object"
+    },
+    "StreamPresence": {
+      "additionalProperties": false,
+      "properties": {
+        "presence": {
+          "$ref": "#/$defs/ChatPresence"
+        },
+        "schema_version": {
+          "const": "2",
+          "default": "2",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "title": "StreamPresence",
+      "type": "object"
+    },
+    "TypingState": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "typing": {
+          "default": false,
+          "title": "Typing",
+          "type": "boolean"
+        }
+      },
+      "title": "TypingState",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -133,6 +184,9 @@
     },
     {
       "$ref": "#/$defs/StreamActivity"
+    },
+    {
+      "$ref": "#/$defs/StreamPresence"
     },
     {
       "$ref": "#/$defs/StreamFailure"

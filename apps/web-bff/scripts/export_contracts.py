@@ -8,6 +8,7 @@ from app.chat_v2.contracts import (
     BrowserCommercialContactAccepted,
     BrowserCommercialContactRequest,
     BrowserMessageRequest,
+    BrowserPresenceRequest,
     BrowserResetRequest,
     ConversationEvent,
     HistoryResponse,
@@ -16,6 +17,8 @@ from app.chat_v2.contracts import (
     StreamActivity,
     StreamDone,
     StreamFailure,
+    StreamPresence,
+    TypingState,
 )
 from app.contracts import ChatRequest, ChatStreamEvent, ProblemDetails
 
@@ -30,11 +33,13 @@ CONTRACTS: dict[Path, dict[str, object]] = {
     Path("v2/message-accepted.schema.json"): MessageAccepted.model_json_schema(),
     Path("v2/history.schema.json"): HistoryResponse.model_json_schema(),
     Path("v2/stream-event.schema.json"): TypeAdapter(
-        ConversationEvent | StreamActivity | StreamFailure | StreamDone
+        ConversationEvent | StreamActivity | StreamPresence | StreamFailure | StreamDone
     ).json_schema(),
     Path("v2/session-reset-request.schema.json"): BrowserResetRequest.model_json_schema(),
     Path("v2/session-reset-response.schema.json"): ResetResponse.model_json_schema(),
     Path("v2/problem.schema.json"): ProblemDetails.model_json_schema(),
+    Path("v2/presence-request.schema.json"): BrowserPresenceRequest.model_json_schema(),
+    Path("v2/presence-response.schema.json"): TypingState.model_json_schema(),
     Path("v2/commercial-contact-request.schema.json"): (
         BrowserCommercialContactRequest.model_json_schema()
     ),

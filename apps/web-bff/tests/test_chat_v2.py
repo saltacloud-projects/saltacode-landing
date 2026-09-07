@@ -525,7 +525,7 @@ def test_openapi_describes_v2_sse_and_problem_contracts() -> None:
     event_operation = document["paths"]["/api/v2/chat/events"]["get"]
     success = event_operation["responses"]["200"]["content"]["text/event-stream"]
     assert success["schema"] == {"type": "string"}
-    assert len(success["x-sse-event-schema"]["oneOf"]) == 4
+    assert len(success["x-sse-event-schema"]["oneOf"]) == 5
     for status_code in ("400", "403", "404", "422", "429", "503"):
         assert set(event_operation["responses"][status_code]["content"]) == {
             "application/problem+json"

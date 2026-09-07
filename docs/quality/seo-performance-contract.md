@@ -39,16 +39,18 @@ These are engineering quality gates, not ranking guarantees. Scores can vary bet
 
 ## Performance budgets
 
-Version 9 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, service shortcuts, consent-scoped chat continuity, and the on-demand commercial-contact flow. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, privacy, and commercial-contact assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `apps/landing/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
+Version 10 of the provisional local budgets extends the repeatable 2026-08-24 Astro preview baseline with individual service routes, official brand icons, the deferred privacy center, service shortcuts, consent-scoped chat continuity, the on-demand commercial-contact flow, and ephemeral human typing. Homepage-critical CSS, interior-only CSS, non-chat JavaScript, chat, privacy, and commercial-contact assets are measured separately so an interior route or deferred feature cannot silently consume the initial-page allowance. Initial JavaScript includes static imports of each HTML entry, not only the directly referenced files. Build-only limits are enforced by `apps/landing/scripts/verify-build.mjs`; transfer limits remain browser-lab release gates.
 
-| Resource or scenario | Version 9 limit | Gate |
+| Resource or scenario | Version 10 limit | Gate |
 |---|---:|---|
 | Generated home HTML | <= 29.25 KiB raw | Deterministic build assertion |
 | Homepage core CSS | <= 20 KiB raw | Deterministic build assertion |
 | Additional interior-route CSS | <= 5 KiB raw | Deterministic build assertion |
 | Initial executable JavaScript | <= 5.75 KiB raw | Deterministic build assertion |
 | Non-chat executable JavaScript | <= 7 KiB raw | Deterministic build assertion |
-| Lazy chat chunk | <= 25 KiB raw | Deterministic build assertion |
+| Lazy chat core chunk | <= 26 KiB raw | Deterministic build assertion |
+| On-demand human-presence JavaScript | <= 2 KiB raw | Deterministic build assertion |
+| Chat core plus human-presence JavaScript | <= 28 KiB raw combined | Deterministic build assertion |
 | Deferred chat CSS | <= 10 KiB raw | Deterministic build assertion |
 | On-demand commercial-contact JavaScript | <= 10 KiB raw | Deterministic build assertion |
 | On-demand commercial-contact CSS | <= 2.25 KiB raw | Deterministic build assertion |
@@ -116,3 +118,13 @@ to the dynamically imported chat, not initial rendering. The measured candidate 
 24,731 bytes of lazy JavaScript and 10,140 bytes of lazy CSS (unchanged 10-KiB CSS cap).
 Initial JavaScript remains 5,803 bytes. These build figures do not establish field
 performance or search-ranking changes.
+
+The human-typing iteration adds genuine operator/visitor signals, bounded renewal,
+sequence ordering, expiry and lifecycle cleanup, rather than a cosmetic animation.
+The reviewed candidate measures 26,267 bytes of chat core plus 1,860 bytes of presence:
+28,127 bytes combined, compared with the preceding 24,731-byte chat. Presence is
+requested only after an existing server conversation is confirmed; first opening
+an empty chat does not request it. The separate 28-KiB aggregate cap prevents chunk
+splitting from hiding the full deferred cost. Initial JavaScript stays at 5,803 bytes;
+initial HTML/CSS, non-chat JavaScript and CSS budgets do not increase. This is an
+explicit functional cost allowance, not a performance improvement or field-CWV claim.

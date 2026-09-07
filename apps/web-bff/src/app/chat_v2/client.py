@@ -17,13 +17,16 @@ from app.chat_v2.contracts import (
     PrivateCommercialContactAccepted,
     PrivateCommercialContactRequest,
     PrivateMessageRequest,
+    PrivatePresenceRequest,
     PrivateResetRequest,
     ResetResponse,
     StrictContract,
+    TypingState,
 )
 from app.chat_v2.ports import (
     WebChatBlockedError,
     WebChatConflictError,
+    WebChatPresenceLimitedError,
     WebChatProtocolError,
     WebChatSessionNotFoundError,
     WebChatUnavailableError,
@@ -36,6 +39,9 @@ ResponseContract = TypeVar("ResponseContract", bound=StrictContract)
 
 class UnavailableWebChatV2Client:
     """Fail-closed client used when Agent Platform is not configured."""
+
+    async def update_presence(self, *_args, **_kwargs) -> TypingState:
+        raise WebChatUnavailableError("web chat is not configured")
 
     async def accept_message(self, *_args, **_kwargs) -> MessageAccepted:
         raise WebChatUnavailableError("web chat is not configured")
@@ -88,6 +94,23 @@ class HttpWebChatV2Client:
                 pool=connect_timeout_seconds,
             ),
             limits=httpx2.Limits(max_connections=50, max_keepalive_connections=20),
+        )
+
+    async def update_presence(
+        self,
+        request: PrivatePresenceRequest,
+        *,
+        correlation_id: str,
+    ) -> TypingState:
+        self._require_route(request.route_key)
+        return await self._request(
+            "POST",
+            "/internal/v2/web/presence",
+            response_type=TypingState,
+            expected_status=200,
+            correlation_id=correlation_id,
+            map_presence_limit=True,
+            json=request.model_dump(mode="json"),
         )
 
     async def accept_message(
@@ -202,6 +225,7 @@ class HttpWebChatV2Client:
         expected_status: int,
         correlation_id: str,
         map_unprocessable: bool = False,
+        map_presence_limit: bool = False,
         **kwargs,
     ) -> ResponseContract:
         try:
@@ -219,6 +243,8 @@ class HttpWebChatV2Client:
             raise WebChatUnavailableError("private web chat is unavailable") from error
 
         if response.status_code != expected_status:
+            if response.status_code == 429 and map_presence_limit:
+                raise WebChatPresenceLimitedError("private presence rate limited")
             self._raise_status(
                 response.status_code,
                 map_unprocessable=map_unprocessable,
