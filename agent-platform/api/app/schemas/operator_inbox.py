@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.conversation_control import (
     ConversationControlEventOut,
@@ -23,6 +23,29 @@ class InboxOperatorOut(BaseModel):
 class InboxAgentOut(BaseModel):
     id: UUID
     name: str
+
+
+class InboxAgentActivityOut(BaseModel):
+    status: Literal["queued", "running"]
+    agent_id: UUID
+    name: str
+
+
+class InboxReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message_ids: list[UUID] = Field(min_length=1, max_length=1_000)
+
+
+class InboxReadOut(BaseModel):
+    unread_count: int
+
+
+class InboxLiveSnapshotOut(BaseModel):
+    revision: str
+    unread_conversations: int
+    active_conversations: int
+    historical_conversations: int
 
 
 class InboxConversationOut(BaseModel):
@@ -42,6 +65,9 @@ class InboxConversationOut(BaseModel):
     control_reason: str | None
     message_count: int
     last_activity_at: datetime
+    unread_count: int = 0
+    latest_inbound_message_id: UUID | None = None
+    agent_activity: InboxAgentActivityOut | None = None
 
 
 class InboxConversationPageOut(BaseModel):

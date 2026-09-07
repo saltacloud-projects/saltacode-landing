@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import NoReturn
+from typing import Literal, NoReturn
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,8 @@ from app.schemas.operator_inbox import (
     AutomationAssignmentRequest,
     InboxConversationPageOut,
     InboxOperatorOut,
+    InboxReadOut,
+    InboxReadRequest,
     InboxThreadOut,
 )
 from app.services.admin_agent_access import admin_agent_access_service
@@ -43,6 +45,7 @@ from app.services.conversation_control import (
     ConversationNotFoundError,
     conversation_control_service,
 )
+from app.services.inbox_visibility import mark_inbox_messages_read
 from app.services.operator_inbox import operator_inbox_service
 
 router = APIRouter(
@@ -70,6 +73,10 @@ async def list_inbox_operators(
 @router.get("/", response_model=InboxConversationPageOut)
 async def list_inbox_conversations(
     agent_id: uuid.UUID,
+    lifecycle: Literal["active", "history", "all"] = "all",
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.CONVERSATIONS_READ)
+    ),
     channel: str | None = Query(default=None, min_length=1, max_length=30),
     control_mode: ConversationControlMode | None = None,
     conversation_status: str | None = Query(
@@ -95,6 +102,8 @@ async def list_inbox_conversations(
         page = await operator_inbox_service.list_conversations(
             db,
             agent_id=agent_id,
+            admin_user_id=admin.id,
+            lifecycle=lifecycle,
             channel=channel,
             control_mode=control_mode.value if control_mode else None,
             status=conversation_status,
@@ -120,6 +129,9 @@ async def get_inbox_thread(
     agent_id: uuid.UUID,
     conversation_id: uuid.UUID,
     message_limit: int = Query(default=500, ge=1, le=1_000),
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.CONVERSATIONS_READ)
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> InboxThreadOut:
     try:
@@ -128,9 +140,33 @@ async def get_inbox_thread(
             agent_id=agent_id,
             conversation_id=conversation_id,
             message_limit=message_limit,
+            admin_user_id=admin.id,
         )
     except ConversationControlError as exc:
         _raise_http_error(exc)
+
+
+@router.post("/{conversation_id}/read", response_model=InboxReadOut)
+async def acknowledge_inbox_messages(
+    agent_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    payload: InboxReadRequest,
+    admin: AdminUser = Depends(
+        require_agent_permission(AdminPermission.CONVERSATIONS_READ)
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> InboxReadOut:
+    try:
+        unread_count = await mark_inbox_messages_read(
+            db,
+            admin_user_id=admin.id,
+            agent_id=agent_id,
+            conversation_id=conversation_id,
+            message_ids=payload.message_ids,
+        )
+    except ConversationControlError as exc:
+        _raise_http_error(exc)
+    return InboxReadOut(unread_count=unread_count)
 
 
 @router.get(

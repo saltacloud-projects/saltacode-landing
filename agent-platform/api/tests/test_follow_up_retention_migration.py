@@ -22,7 +22,7 @@ from app.models.opportunity import Opportunity
 from app.models.platform import ChatConversation, Principal
 
 _REVISION = "f11b5f7c9d23"
-_HEAD_REVISION = "f14e8c0f2a56"
+_HEAD_REVISION = "f15f9d1a3b67"
 _DOWN_REVISION = "f10a4e6b8c12"
 
 

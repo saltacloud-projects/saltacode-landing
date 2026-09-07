@@ -50,7 +50,9 @@ from app.models.channel_inbound import (  # noqa: F401
 from app.models.commercial_automation_policy import (  # noqa: F401
     CommercialAutomationPolicy,
 )
-from app.models.commercial_progression_policy import CommercialProgressionPolicy  # noqa: F401
+from app.models.commercial_progression_policy import (
+    CommercialProgressionPolicy,  # noqa: F401
+)
 from app.models.contact import ConsentRecord, Contact, ContactPoint  # noqa: F401
 from app.models.conversation_automation_assignment import (  # noqa: F401
     ConversationAutomationAssignmentEvent,
@@ -63,6 +65,7 @@ from app.models.identity_link_claim import (  # noqa: F401
     IdentityLinkClaim,
     IdentityLinkClaimEvent,
 )
+from app.models.inbox_read_receipt import InboxReadReceipt  # noqa: F401
 from app.models.integration_source import IntegrationSource  # noqa: F401
 from app.models.knowledge_block import KnowledgeBlock  # noqa: F401
 from app.models.meeting import Meeting, MeetingEvent, MeetingSlot  # noqa: F401

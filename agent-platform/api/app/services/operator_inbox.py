@@ -28,7 +28,9 @@ from app.schemas.operator_inbox import (
     InboxThreadOut,
 )
 from app.services.admin_rbac import AdminPermission
+from app.services.chat_execution_activity import open_conversation_predicate
 from app.services.conversation_control import ConversationNotFoundError
+from app.services.inbox_visibility import enrich_inbox_visibility
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,8 @@ class OperatorInboxService:
         db: AsyncSession,
         *,
         agent_id: uuid.UUID | tuple[uuid.UUID, ...],
+        admin_user_id: uuid.UUID | None = None,
+        lifecycle: str = "all",
         channel: str | None = None,
         control_mode: str | None = None,
         status: str | None = None,
@@ -75,6 +79,10 @@ class OperatorInboxService:
             updated_after=updated_after,
             updated_before=updated_before,
         )
+        if lifecycle == "active":
+            statement = statement.where(open_conversation_predicate())
+        elif lifecycle == "history":
+            statement = statement.where(~open_conversation_predicate())
         total = int(
             (
                 await db.execute(select(func.count()).select_from(statement.subquery()))
@@ -87,7 +95,7 @@ class OperatorInboxService:
                 .limit(limit)
             )
         ).all()
-        return InboxPage(
+        page = InboxPage(
             items=[
                 self._conversation_out(
                     conversation,
@@ -110,6 +118,10 @@ class OperatorInboxService:
             ],
             total=total,
         )
+        await enrich_inbox_visibility(
+            db, conversations=page.items, admin_user_id=admin_user_id
+        )
+        return page
 
     async def get_thread(
         self,
@@ -118,6 +130,7 @@ class OperatorInboxService:
         agent_id: uuid.UUID,
         conversation_id: uuid.UUID,
         message_limit: int = 500,
+        admin_user_id: uuid.UUID | None = None,
     ) -> InboxThreadOut:
         statement, _, _ = self._summary_statement(agent_id)
         row = (
@@ -164,7 +177,7 @@ class OperatorInboxService:
             .scalars()
             .all()
         )
-        return InboxThreadOut(
+        thread = InboxThreadOut(
             conversation=self._conversation_out(
                 conversation,
                 principal,
@@ -179,6 +192,10 @@ class OperatorInboxService:
                 ConversationControlEventOut.from_model(event) for event in events
             ],
         )
+        await enrich_inbox_visibility(
+            db, conversations=[thread.conversation], admin_user_id=admin_user_id
+        )
+        return thread
 
     async def list_automation_assignments(
         self,

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TypeVar
+from typing import Literal, TypeVar
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -143,6 +143,8 @@ async def list_crm_agents(
 
 @router.get("/inbox", response_model=CrmPageOut[CrmInboxOut])
 async def list_crm_inbox(
+    lifecycle: Literal["active", "history", "all"] = "all",
+    admin: AdminUser = Depends(require_admin),
     channel: str | None = Query(default=None, min_length=1, max_length=30),
     control_mode: ConversationControlMode | None = None,
     conversation_status: str | None = Query(
@@ -167,6 +169,8 @@ async def list_crm_inbox(
     result = await operator_inbox_service.list_conversations(
         db,
         agent_id=scope.agent_ids,
+        admin_user_id=admin.id,
+        lifecycle=lifecycle,
         channel=channel,
         control_mode=control_mode.value if control_mode else None,
         status=conversation_status,

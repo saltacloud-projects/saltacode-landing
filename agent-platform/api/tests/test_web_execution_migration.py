@@ -19,7 +19,7 @@ from app.models.platform import ChatConversation, ChatExecution, ChatMessage, Pr
 
 _REVISION = "f3b7c9d1e456"
 _DOWN_REVISION = "f2a6b8c0d345"
-_HEAD_REVISION = "f14e8c0f2a56"
+_HEAD_REVISION = "f15f9d1a3b67"
 
 
 def _config() -> Config:

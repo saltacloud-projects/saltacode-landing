@@ -21,7 +21,7 @@ def _config():
 
 def test_progression_revision_is_the_single_additive_head():
     scripts = ScriptDirectory.from_config(_config())
-    assert scripts.get_heads() == ["f14e8c0f2a56"]
+    assert scripts.get_heads() == ["f15f9d1a3b67"]
     assert scripts.get_revision("f14e8c0f2a56").down_revision == "f13d7b9e1f45"
 
 

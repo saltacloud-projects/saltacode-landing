@@ -36,6 +36,7 @@ from app.routers.admin.follow_ups import router as admin_follow_ups_router
 from app.routers.admin.identity_link_claims import (
     router as admin_identity_link_claims_router,
 )
+from app.routers.admin.inbox_live import router as admin_inbox_live_router
 from app.routers.admin.knowledge_blocks import router as admin_kb_router
 from app.routers.admin.meetings import router as admin_meetings_router
 from app.routers.admin.operator_inbox import router as admin_operator_inbox_router
@@ -240,6 +241,7 @@ app.include_router(admin_kb_router, prefix="/api/admin/knowledge-blocks")
 app.include_router(admin_tools_router, prefix="/api/admin/tools")
 app.include_router(admin_users_router, prefix="/api/admin/users")
 app.include_router(admin_audit_router, prefix="/api/admin/audit")
+app.include_router(admin_inbox_live_router, prefix="/api/admin/crm")
 app.include_router(admin_crm_router, prefix="/api/admin/crm")
 app.include_router(admin_conversations_router, prefix="/api/admin/conversations")
 app.include_router(

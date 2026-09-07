@@ -21,7 +21,7 @@ from app.models.agent_runtime import ChannelAgentRoute, ChannelConnection
 from app.models.channel_inbound import ChannelInboundEvent, ChannelInboundJob
 
 _REVISION = "f12c6a8d0e34"
-_HEAD_REVISION = "f14e8c0f2a56"
+_HEAD_REVISION = "f15f9d1a3b67"
 _DOWN_REVISION = "f11b5f7c9d23"
 
 

@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # retain ownership longer than that maximum or valid results become stale.
     web_execution_lease_seconds: int = Field(default=1200, gt=900, le=86_400)
 
+    inbox_live_poll_seconds: float = Field(default=2.0, ge=1, le=30)
+    inbox_live_heartbeat_seconds: float = Field(default=15.0, ge=5, le=60)
+    inbox_live_max_seconds: float = Field(default=300.0, ge=30, le=900)
+
     # ---------------------------------------------------------------------------
     # OpenAI
     # ---------------------------------------------------------------------------
