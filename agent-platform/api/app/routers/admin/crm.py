@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db
 from app.models.admin_user import AdminUser
 from app.routers.admin.auth import require_admin, require_permission
+from app.routers.admin.inbox_filters import inbox_message_filters
 from app.schemas.channel_inbound import ChannelInboundStatusValue
 from app.schemas.conversation_control import ConversationControlMode
 from app.schemas.crm import (
@@ -27,6 +28,7 @@ from app.schemas.crm import (
     CrmResource,
 )
 from app.schemas.deliveries import DeliveryStatus
+from app.schemas.operator_inbox import InboxMessageFilters
 from app.services.admin_agent_access import (
     AgentOperationAccess,
     admin_agent_access_service,
@@ -143,6 +145,7 @@ async def list_crm_agents(
 
 @router.get("/inbox", response_model=CrmPageOut[CrmInboxOut])
 async def list_crm_inbox(
+    message_filters: InboxMessageFilters = Depends(inbox_message_filters),
     lifecycle: Literal["active", "history", "all"] = "all",
     admin: AdminUser = Depends(require_admin),
     channel: str | None = Query(default=None, min_length=1, max_length=30),
@@ -171,6 +174,7 @@ async def list_crm_inbox(
         agent_id=scope.agent_ids,
         admin_user_id=admin.id,
         lifecycle=lifecycle,
+        message_filters=message_filters,
         channel=channel,
         control_mode=control_mode.value if control_mode else None,
         status=conversation_status,

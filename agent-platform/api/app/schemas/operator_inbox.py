@@ -6,12 +6,45 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.schemas.conversation_control import (
     ConversationControlEventOut,
     ConversationControlMode,
 )
+
+
+class InboxMessageFilters(BaseModel):
+    """Message-time range is half-open and independent of control activity."""
+
+    last_message_from: AwareDatetime | None = None
+    last_message_before: AwareDatetime | None = None
+    unread_only: bool = False
+    search: str | None = Field(default=None, max_length=120)
+
+    @field_validator("search")
+    @classmethod
+    def normalize_search(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "InboxMessageFilters":
+        if (
+            self.last_message_from is not None
+            and self.last_message_before is not None
+            and self.last_message_from >= self.last_message_before
+        ):
+            raise ValueError("last_message_from must precede last_message_before")
+        return self
 
 
 class InboxOperatorOut(BaseModel):
@@ -65,6 +98,11 @@ class InboxConversationOut(BaseModel):
     control_reason: str | None
     message_count: int
     last_activity_at: datetime
+    last_message_at: datetime | None = None
+    last_message_preview: str | None = Field(default=None, max_length=140)
+    last_message_author_type: (
+        Literal["visitor", "agent", "operator", "system", "unknown"] | None
+    ) = None
     unread_count: int = 0
     latest_inbound_message_id: UUID | None = None
     agent_activity: InboxAgentActivityOut | None = None
@@ -78,6 +116,9 @@ class InboxConversationPageOut(BaseModel):
 
 
 class InboxMessageOut(BaseModel):
+    author_type: Literal["visitor", "agent", "operator", "system", "unknown"] = (
+        "unknown"
+    )
     id: UUID
     role: str
     content: str

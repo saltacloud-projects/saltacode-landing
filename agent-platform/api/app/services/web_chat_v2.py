@@ -42,6 +42,7 @@ from app.services.conversation_events import (
     ConversationEventService,
     ConversationEventVisibility,
 )
+from app.services.message_authorship import message_author_type
 from app.services.web_execution_queue import (
     InvalidWebExecutionCommandError,
     WebExecutionAutomationBlockedError,
@@ -377,11 +378,9 @@ class WebChatV2Service:
 
     @staticmethod
     def _author_type(message: ChatMessage, has_execution: bool) -> str:
-        if message.role == "user":
-            return "visitor"
-        if (message.metadata_json or {}).get("origin") == "operator":
-            return "operator"
-        return "agent" if has_execution else "unknown"
+        return message_author_type(
+            message.role, (message.metadata_json or {}).get("origin"), has_execution
+        )
 
     @staticmethod
     async def _activity(

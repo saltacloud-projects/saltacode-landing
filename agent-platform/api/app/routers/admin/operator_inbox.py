@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db
 from app.models.admin_user import AdminUser
 from app.routers.admin.auth import require_agent_permission
+from app.routers.admin.inbox_filters import inbox_message_filters
 from app.schemas.conversation_control import (
     ConversationControlMode,
     ConversationControlSnapshotOut,
@@ -24,6 +25,7 @@ from app.schemas.operator_inbox import (
     AutomationAssignmentReceiptOut,
     AutomationAssignmentRequest,
     InboxConversationPageOut,
+    InboxMessageFilters,
     InboxOperatorOut,
     InboxReadOut,
     InboxReadRequest,
@@ -73,6 +75,7 @@ async def list_inbox_operators(
 @router.get("/", response_model=InboxConversationPageOut)
 async def list_inbox_conversations(
     agent_id: uuid.UUID,
+    message_filters: InboxMessageFilters = Depends(inbox_message_filters),
     lifecycle: Literal["active", "history", "all"] = "all",
     admin: AdminUser = Depends(
         require_agent_permission(AdminPermission.CONVERSATIONS_READ)
@@ -104,6 +107,7 @@ async def list_inbox_conversations(
             agent_id=agent_id,
             admin_user_id=admin.id,
             lifecycle=lifecycle,
+            message_filters=message_filters,
             channel=channel,
             control_mode=control_mode.value if control_mode else None,
             status=conversation_status,

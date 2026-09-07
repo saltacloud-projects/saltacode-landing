@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, String, cast, exists, false, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -17,12 +17,13 @@ from app.models.conversation_automation_assignment import (
     ConversationAutomationAssignmentEvent,
 )
 from app.models.conversation_control import ConversationControlEvent
-from app.models.platform import ChatConversation, ChatMessage, Principal
+from app.models.platform import ChatConversation, ChatExecution, ChatMessage, Principal
 from app.schemas.conversation_control import ConversationControlEventOut
 from app.schemas.operator_inbox import (
     AutomationAssignmentEventOut,
     InboxAgentOut,
     InboxConversationOut,
+    InboxMessageFilters,
     InboxMessageOut,
     InboxOperatorOut,
     InboxThreadOut,
@@ -30,7 +31,11 @@ from app.schemas.operator_inbox import (
 from app.services.admin_rbac import AdminPermission
 from app.services.chat_execution_activity import open_conversation_predicate
 from app.services.conversation_control import ConversationNotFoundError
-from app.services.inbox_visibility import enrich_inbox_visibility
+from app.services.inbox_visibility import (
+    enrich_inbox_visibility,
+    unread_message_predicate,
+)
+from app.services.message_authorship import message_author_type
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,7 @@ class OperatorInboxService:
         agent_id: uuid.UUID | tuple[uuid.UUID, ...],
         admin_user_id: uuid.UUID | None = None,
         lifecycle: str = "all",
+        message_filters: InboxMessageFilters | None = None,
         channel: str | None = None,
         control_mode: str | None = None,
         status: str | None = None,
@@ -67,7 +73,9 @@ class OperatorInboxService:
     ) -> InboxPage:
         if isinstance(agent_id, uuid.UUID):
             await self._assert_agent_exists(db, agent_id)
-        statement, message_count, last_activity = self._summary_statement(agent_id)
+        statement, message_count, last_activity, last_message_at = (
+            self._summary_statement(agent_id)
+        )
         statement = self._apply_filters(
             statement,
             last_activity=last_activity,
@@ -79,6 +87,34 @@ class OperatorInboxService:
             updated_after=updated_after,
             updated_before=updated_before,
         )
+        filters = message_filters or InboxMessageFilters()
+        if filters.last_message_from is not None:
+            statement = statement.where(last_message_at >= filters.last_message_from)
+        if filters.last_message_before is not None:
+            statement = statement.where(last_message_at < filters.last_message_before)
+        if filters.search:
+            visible_label = func.coalesce(
+                func.nullif(Principal.display_name, ""),
+                func.concat(
+                    "Visitante ", func.substr(cast(Principal.id, String), 1, 8)
+                ),
+            )
+            statement = statement.where(
+                visible_label.icontains(filters.search, autoescape=True)
+            )
+        if filters.unread_only:
+            if admin_user_id is None:
+                statement = statement.where(false())
+            else:
+                statement = statement.where(
+                    exists(
+                        select(ChatMessage.id).where(
+                            ChatMessage.conversation_id == ChatConversation.id,
+                            ChatMessage.role == "user",
+                            unread_message_predicate(admin_user_id),
+                        )
+                    )
+                )
         if lifecycle == "active":
             statement = statement.where(open_conversation_predicate())
         elif lifecycle == "history":
@@ -105,6 +141,11 @@ class OperatorInboxService:
                     automation_agent,
                     int(count or 0),
                     activity,
+                    last_message_at,
+                    preview,
+                    message_role,
+                    message_origin,
+                    has_execution,
                 )
                 for (
                     conversation,
@@ -114,6 +155,11 @@ class OperatorInboxService:
                     automation_agent,
                     count,
                     activity,
+                    last_message_at,
+                    preview,
+                    message_role,
+                    message_origin,
+                    has_execution,
                 ) in rows
             ],
             total=total,
@@ -132,7 +178,7 @@ class OperatorInboxService:
         message_limit: int = 500,
         admin_user_id: uuid.UUID | None = None,
     ) -> InboxThreadOut:
-        statement, _, _ = self._summary_statement(agent_id)
+        statement, _, _, _ = self._summary_statement(agent_id)
         row = (
             await db.execute(statement.where(ChatConversation.id == conversation_id))
         ).one_or_none()
@@ -146,6 +192,11 @@ class OperatorInboxService:
             automation_agent,
             count,
             activity,
+            last_message_at,
+            preview,
+            message_role,
+            message_origin,
+            has_execution,
         ) = row
         messages = list(
             (
@@ -160,6 +211,18 @@ class OperatorInboxService:
             .all()
         )
         messages.reverse()
+        execution_outputs = set(
+            (
+                await db.execute(
+                    select(ChatExecution.output_message_id).where(
+                        ChatExecution.conversation_id == conversation_id,
+                        ChatExecution.output_message_id.in_(
+                            [message.id for message in messages]
+                        ),
+                    )
+                )
+            ).scalars()
+        )
         events = list(
             (
                 await db.execute(
@@ -186,8 +249,18 @@ class OperatorInboxService:
                 automation_agent,
                 int(count or 0),
                 activity,
+                last_message_at,
+                preview,
+                message_role,
+                message_origin,
+                has_execution,
             ),
-            messages=[self._message_out(message) for message in messages],
+            messages=[
+                self._message_out(
+                    message, has_execution=message.id in execution_outputs
+                )
+                for message in messages
+            ],
             control_events=[
                 ConversationControlEventOut.from_model(event) for event in events
             ],
@@ -293,7 +366,7 @@ class OperatorInboxService:
     @staticmethod
     def _summary_statement(
         agent_id: uuid.UUID | tuple[uuid.UUID, ...],
-    ) -> tuple[Select, object, object]:
+    ) -> tuple[Select, object, object, object]:
         message_stats = (
             select(
                 ChatMessage.conversation_id.label("conversation_id"),
@@ -302,6 +375,32 @@ class OperatorInboxService:
             )
             .group_by(ChatMessage.conversation_id)
             .subquery()
+        )
+        output_proof = exists(
+            select(ChatExecution.id).where(
+                ChatExecution.output_message_id == ChatMessage.id,
+                ChatExecution.conversation_id == ChatMessage.conversation_id,
+            )
+        )
+        latest_message = (
+            select(
+                ChatMessage.created_at.label("last_message_at"),
+                func.substr(
+                    func.btrim(
+                        func.regexp_replace(ChatMessage.content, r"\s+", " ", "g")
+                    ),
+                    1,
+                    140,
+                ).label("preview"),
+                ChatMessage.role.label("message_role"),
+                ChatMessage.metadata_json["origin"].astext.label("message_origin"),
+                output_proof.label("has_execution"),
+            )
+            .where(ChatMessage.conversation_id == ChatConversation.id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+            .limit(1)
+            .correlate(ChatConversation)
+            .lateral("latest_inbox_message")
         )
         message_count = func.coalesce(message_stats.c.message_count, 0)
         last_activity = func.coalesce(
@@ -320,6 +419,11 @@ class OperatorInboxService:
                 automation_agent,
                 message_count,
                 last_activity,
+                latest_message.c.last_message_at,
+                latest_message.c.preview,
+                latest_message.c.message_role,
+                latest_message.c.message_origin,
+                latest_message.c.has_execution,
             )
             .join(Principal, Principal.id == ChatConversation.principal_id)
             .join(routing_agent, routing_agent.id == ChatConversation.agent_id)
@@ -331,6 +435,7 @@ class OperatorInboxService:
                 message_stats,
                 message_stats.c.conversation_id == ChatConversation.id,
             )
+            .outerjoin(latest_message, true())
             .outerjoin(
                 assigned_operator,
                 assigned_operator.id == ChatConversation.assigned_admin_id,
@@ -341,7 +446,7 @@ class OperatorInboxService:
                 )
             )
         )
-        return statement, message_count, last_activity
+        return statement, message_count, last_activity, message_stats.c.last_message_at
 
     @staticmethod
     def _apply_filters(
@@ -412,6 +517,11 @@ class OperatorInboxService:
         automation_agent: AgentProfile,
         message_count: int,
         last_activity: datetime,
+        last_message_at: datetime | None = None,
+        last_message_preview: str | None = None,
+        last_message_role: str | None = None,
+        last_message_origin: str | None = None,
+        has_execution: bool = False,
     ) -> InboxConversationOut:
         operator = None
         if assigned_operator is not None:
@@ -443,10 +553,21 @@ class OperatorInboxService:
             control_reason=conversation.control_reason,
             message_count=message_count,
             last_activity_at=last_activity,
+            last_message_at=last_message_at,
+            last_message_preview=last_message_preview,
+            last_message_author_type=(
+                _inbox_author_type(
+                    last_message_role, last_message_origin, bool(has_execution)
+                )
+                if last_message_at is not None
+                else None
+            ),
         )
 
     @staticmethod
-    def _message_out(message: ChatMessage) -> InboxMessageOut:
+    def _message_out(
+        message: ChatMessage, *, has_execution: bool = False
+    ) -> InboxMessageOut:
         metadata = message.metadata_json or {}
         actor_value = metadata.get("actor_admin_id")
         try:
@@ -455,6 +576,7 @@ class OperatorInboxService:
             actor_admin_id = None
         origin = metadata.get("origin")
         return InboxMessageOut(
+            author_type=_inbox_author_type(message.role, origin, has_execution),
             id=message.id,
             role=message.role,
             content=message.content,
@@ -488,6 +610,15 @@ class OperatorInboxService:
             reason=event.reason,
             created_at=event.created_at,
         )
+
+
+def _inbox_author_type(
+    role: str | None, origin: str | None, has_execution: bool
+) -> str:
+    author = message_author_type(role or "", origin, has_execution)
+    if author == "unknown" and role in {"system", "tool"}:
+        return "system"
+    return author
 
 
 operator_inbox_service = OperatorInboxService()
