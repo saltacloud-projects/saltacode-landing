@@ -14,7 +14,7 @@ export function InboxFiltersForm({ filters, operators, onChange }: InboxFiltersP
   return (
     <section
       aria-label="Filtros del inbox"
-      className="mb-4 grid gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3 sm:grid-cols-2 xl:grid-cols-5"
+      className="mb-4 grid gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] p-3 sm:grid-cols-2 xl:grid-cols-4"
     >
       <FilterSelect
         label="Canal"
@@ -52,16 +52,6 @@ export function InboxFiltersForm({ filters, operators, onChange }: InboxFiltersP
           ...operators.map(
             (operator) => [`operator:${operator.id}`, operator.name] satisfies [string, string],
           ),
-        ]}
-      />
-      <FilterSelect
-        label="Estado"
-        value={filters.status}
-        onChange={(value) => update("status", value)}
-        options={[
-          ["", "Todos"],
-          ["active", "Activas"],
-          ["closed", "Cerradas"],
         ]}
       />
       <FilterSelect

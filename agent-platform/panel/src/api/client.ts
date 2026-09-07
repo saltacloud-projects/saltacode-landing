@@ -18,7 +18,18 @@ function clearTokens() {
   localStorage.removeItem("tokens");
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+let pendingTokenRefresh: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+  if (!pendingTokenRefresh) {
+    pendingTokenRefresh = requestAccessToken().finally(() => {
+      pendingTokenRefresh = null;
+    });
+  }
+  return pendingTokenRefresh;
+}
+
+async function requestAccessToken(): Promise<string | null> {
   const tokens = getTokens();
   if (!tokens?.refresh_token) return null;
 
@@ -29,16 +40,18 @@ async function refreshAccessToken(): Promise<string | null> {
   });
 
   if (!res.ok) {
-    clearTokens();
+    if (getTokens()?.refresh_token === tokens.refresh_token) clearTokens();
     return null;
   }
 
   const data: TokenPair = await res.json();
+  // Do not resurrect a logged-out session or replace a different user's credentials.
+  if (getTokens()?.refresh_token !== tokens.refresh_token) return null;
   setTokens(data);
   return data.access_token;
 }
 
-export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiResponse(path: string, options: RequestInit = {}): Promise<Response> {
   const tokens = getTokens();
 
   const headers: Record<string, string> = {
@@ -69,6 +82,11 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
     throw new ApiError(res.status, detail || "Error desconocido");
   }
 
+  return res;
+}
+
+export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await apiResponse(path, options);
   if (res.status === 204) return undefined as T;
   return res.json();
 }

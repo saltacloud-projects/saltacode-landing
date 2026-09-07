@@ -9,9 +9,11 @@ import {
   listInboxAutomationAssignments,
   listInboxConversations,
   listInboxOperators,
+  markInboxMessagesRead,
   sendInboxOperatorMessage,
   transitionInboxConversation,
 } from "../../inbox/api";
+import { useInboxLive } from "../../inbox/InboxLiveContext";
 import type {
   AutomationAssignmentEvent,
   ControlTransition,
@@ -26,7 +28,8 @@ const ASSIGNMENT_HISTORY_PAGE_SIZE = 10;
 const EMPTY_FILTERS: InboxFilters = {
   channel: "",
   controlMode: "",
-  status: "active",
+  status: "",
+  lifecycle: "active",
   owner: "",
   updatedWithinHours: "",
 };
@@ -58,7 +61,12 @@ export function useInboxState({
   global = false,
   offset = 0,
 }: UseInboxStateOptions) {
+  const { revision, connected } = useInboxLive();
+  const liveRevision = useRef(revision);
+  liveRevision.current = revision;
   const ownerAgentId = useRef(agentId);
+  const threadGeneration = useRef(0);
+  const readPending = useRef(false);
   const [total, setTotal] = useState(0);
   const listGeneration = useRef(0);
   const [items, setItems] = useState<InboxConversation[]>([]);
@@ -89,6 +97,7 @@ export function useInboxState({
     async (requestedAgentId: string, activeFilters: InboxFilters, silent = false) => {
       if (!user) return;
       const generation = ++listGeneration.current;
+      const requestedLiveRevision = liveRevision.current;
       if (!silent) setLoadingList(true);
       try {
         const page = await listInboxConversations(requestedAgentId, activeFilters, user.id, {
@@ -96,55 +105,71 @@ export function useInboxState({
           offset,
         });
         if (generation === listGeneration.current && activeAgentId.current === requestedAgentId) {
-          setItems(page.items);
+          setItems(
+            page.items.map((item) => ({ ...item, observedLiveRevision: requestedLiveRevision })),
+          );
           setTotal(page.total);
         }
       } catch (value) {
         if (generation === listGeneration.current && activeAgentId.current === requestedAgentId) {
+          if (value instanceof ApiError && (value.status === 401 || value.status === 403)) {
+            setItems([]);
+            setTotal(0);
+            setThread(null);
+            setDraft("");
+          }
           setError(errorMessage(value, "No se pudo cargar el inbox."));
         }
       } finally {
-        if (
-          !silent &&
-          generation === listGeneration.current &&
-          activeAgentId.current === requestedAgentId
-        )
+        if (generation === listGeneration.current && activeAgentId.current === requestedAgentId)
           setLoadingList(false);
       }
     },
     [user, global, offset],
   );
 
-  const loadThread = useCallback(async (requestedAgentId: string, conversationId: string) => {
-    setLoadingThread(true);
-    try {
-      const nextThread = await getInboxThread(requestedAgentId, conversationId);
-      if (
-        ownerAgentId.current === requestedAgentId &&
-        selectedConversationId.current === conversationId
-      ) {
-        setThread((current) => ({
-          ...nextThread,
-          conversation: { ...current?.conversation, ...nextThread.conversation },
-        }));
-        setReassignTo(nextThread.conversation.assigned_operator?.id ?? "");
-        if (!automationSelectionDirty.current) {
-          setAutomationAgentTo(nextThread.conversation.automation_agent.id);
+  const loadThread = useCallback(
+    async (requestedAgentId: string, conversationId: string, silent = false) => {
+      const generation = ++threadGeneration.current;
+      const requestedLiveRevision = liveRevision.current;
+      if (!silent) setLoadingThread(true);
+      try {
+        const nextThread = await getInboxThread(requestedAgentId, conversationId);
+        if (
+          generation === threadGeneration.current &&
+          ownerAgentId.current === requestedAgentId &&
+          selectedConversationId.current === conversationId
+        ) {
+          setThread((current) => ({
+            ...nextThread,
+            conversation: {
+              ...current?.conversation,
+              ...nextThread.conversation,
+              observedLiveRevision: requestedLiveRevision,
+            },
+          }));
+          setReassignTo(nextThread.conversation.assigned_operator?.id ?? "");
+          if (!automationSelectionDirty.current) {
+            setAutomationAgentTo(nextThread.conversation.automation_agent.id);
+          }
         }
+      } catch (value) {
+        if (
+          generation === threadGeneration.current &&
+          ownerAgentId.current === requestedAgentId &&
+          selectedConversationId.current === conversationId
+        ) {
+          if (value instanceof ApiError && (value.status === 403 || value.status === 404))
+            setThread(null);
+          setError(errorMessage(value, "No se pudo cargar la conversación."));
+        }
+      } finally {
+        if (generation === threadGeneration.current && ownerAgentId.current === requestedAgentId)
+          setLoadingThread(false);
       }
-    } catch (value) {
-      if (
-        ownerAgentId.current === requestedAgentId &&
-        selectedConversationId.current === conversationId
-      ) {
-        if (value instanceof ApiError && (value.status === 403 || value.status === 404))
-          setThread(null);
-        setError(errorMessage(value, "No se pudo cargar la conversación."));
-      }
-    } finally {
-      if (ownerAgentId.current === requestedAgentId) setLoadingThread(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     setItems([]);
@@ -177,14 +202,22 @@ export function useInboxState({
   }, [agentId, filters, canManage, loadList, global]);
 
   useEffect(() => {
-    if (!agentId && !global) return;
+    if ((!agentId && !global) || !revision || document.visibilityState !== "visible") return;
+    void loadList(agentId, filters, true);
+    const conversationId = selectedConversationId.current;
+    if (conversationId) void loadThread(ownerAgentId.current, conversationId, true);
+  }, [agentId, filters, loadList, loadThread, global, revision]);
+
+  useEffect(() => {
+    if ((!agentId && !global) || connected) return;
     const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void loadList(agentId, filters, true);
       const conversationId = selectedConversationId.current;
-      if (conversationId) void loadThread(ownerAgentId.current, conversationId);
-    }, 10_000);
+      if (conversationId) void loadThread(ownerAgentId.current, conversationId, true);
+    }, 15_000);
     return () => window.clearInterval(timer);
-  }, [agentId, filters, loadList, loadThread, global]);
+  }, [agentId, filters, loadList, loadThread, global, connected]);
 
   const openConversation = (conversation: InboxConversation) => {
     const owner = conversation.owner_agent_id ?? (global ? "" : agentId);
@@ -199,6 +232,7 @@ export function useInboxState({
         .catch(() => setOperators([]));
     }
     setError("");
+    setDraft("");
     setThread({ conversation, messages: [], control_events: [] });
     setAutomationAgentTo(conversation.automation_agent.id);
     setAutomationAssignmentNotice("");
@@ -215,7 +249,7 @@ export function useInboxState({
     if ((!agentId && !global) || !conversationId) return;
     await Promise.all([
       loadList(agentId, filters, true),
-      loadThread(ownerAgentId.current, conversationId),
+      loadThread(ownerAgentId.current, conversationId, true),
     ]);
   }, [agentId, filters, loadList, loadThread, global]);
 
@@ -371,6 +405,52 @@ export function useInboxState({
     }
   };
 
+  const markVisibleMessagesRead = useCallback(
+    async (conversationId: string, messageIds: string[]) => {
+      if (
+        document.visibilityState !== "visible" ||
+        readPending.current ||
+        !messageIds.length ||
+        selectedConversationId.current !== conversationId
+      )
+        return false;
+      const owner = ownerAgentId.current;
+      readPending.current = true;
+      try {
+        const result = await markInboxMessagesRead(owner, conversationId, messageIds);
+        if (ownerAgentId.current === owner && selectedConversationId.current === conversationId) {
+          setThread((current) =>
+            current &&
+            current.conversation.id === conversationId &&
+            (!current.conversation.latest_inbound_message_id ||
+              messageIds.includes(current.conversation.latest_inbound_message_id))
+              ? {
+                  ...current,
+                  conversation: { ...current.conversation, unread_count: result.unread_count },
+                }
+              : current,
+          );
+          setItems((current) =>
+            current.map((item) =>
+              item.id === conversationId &&
+              (!item.latest_inbound_message_id ||
+                messageIds.includes(item.latest_inbound_message_id))
+                ? { ...item, unread_count: result.unread_count }
+                : item,
+            ),
+          );
+        }
+        return true;
+      } catch {
+        // A read acknowledgement never blocks the operator's draft or changes message delivery.
+        return false;
+      } finally {
+        readPending.current = false;
+      }
+    },
+    [],
+  );
+
   const ownsConversation = useMemo(
     () =>
       Boolean(
@@ -408,6 +488,7 @@ export function useInboxState({
     setReassignTo,
     selectAutomationAgent,
     openConversation,
+    markVisibleMessagesRead,
     closeThread: () => setThread(null),
     refreshList: () => (agentId || global ? loadList(agentId, filters) : Promise.resolve()),
     runTransition,

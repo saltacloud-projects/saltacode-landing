@@ -24,6 +24,7 @@ export async function listInboxConversations(
   const query = new URLSearchParams();
   if (filters.channel) query.set("channel", filters.channel);
   if (filters.controlMode) query.set("control_mode", filters.controlMode);
+  if (filters.lifecycle) query.set("lifecycle", filters.lifecycle);
   if (filters.status) query.set("status", filters.status);
   if (filters.owner === "me") query.set("assigned_admin_id", currentAdminId);
   if (filters.owner === "unassigned") query.set("unassigned_only", "true");
@@ -104,4 +105,15 @@ export async function listInboxAutomationAssignments(
   return api<AutomationAssignmentHistoryPage>(
     `${inboxRoot(agentId)}/${encodeURIComponent(conversationId)}/automation-assignments?${query}`,
   );
+}
+
+export async function markInboxMessagesRead(
+  agentId: string,
+  conversationId: string,
+  messageIds: string[],
+): Promise<{ unread_count: number }> {
+  return api(`${inboxRoot(agentId)}/${encodeURIComponent(conversationId)}/read`, {
+    method: "POST",
+    body: JSON.stringify({ message_ids: messageIds }),
+  });
 }

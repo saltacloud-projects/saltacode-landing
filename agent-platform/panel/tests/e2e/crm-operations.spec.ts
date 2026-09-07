@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, type Page, type Route, test } from "@playwright/test";
 
 const A = "00000000-0000-0000-0000-0000000000a1";
 const B = "00000000-0000-0000-0000-0000000000b2";
@@ -211,6 +211,11 @@ for (const [resource, title] of [
     await page.route("**/api/admin/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/auth/me")) return json(route, admin);
+      if (path.endsWith("/crm/inbox/live"))
+        return route.fulfill({
+          contentType: "text/event-stream",
+          body: 'event: inbox.snapshot\ndata: {"revision":"empty","unread_conversations":0,"active_conversations":0,"historical_conversations":0}\n\n',
+        });
       if (path.endsWith(`/crm/${resource}/agents`)) return json(route, catalog);
       if (path.endsWith(`/crm/${resource}`))
         return json(route, { items: [], total: 0, limit: 50, offset: 0 });

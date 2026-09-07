@@ -1,4 +1,5 @@
 import { LoaderCircle } from "lucide-react";
+import { useInboxLive } from "../../inbox/InboxLiveContext";
 import type { InboxConversation } from "../../inbox/types";
 import { CONTROL_LABELS, controlTone, formatDate } from "./presentation";
 
@@ -17,6 +18,7 @@ export function ConversationList({
   hiddenOnMobile,
   onSelect,
 }: ConversationListProps) {
+  const { connected, revision } = useInboxLive();
   return (
     <section
       aria-label="Conversaciones"
@@ -40,6 +42,15 @@ export function ConversationList({
                 <strong className="min-w-0 flex-1 truncate text-sm">
                   {item.display_name || `Visitante ${item.principal_id.slice(0, 8)}`}
                 </strong>
+                {Boolean(item.unread_count) && (
+                  <span
+                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-semibold text-white"
+                    role="status"
+                    aria-label={`${item.unread_count} mensajes del visitante sin leer`}
+                  >
+                    {item.unread_count}
+                  </span>
+                )}
                 <span className="rounded bg-[var(--accent)]/15 px-2 py-0.5 text-[10px] uppercase text-[var(--accent)]">
                   {item.channel}
                 </span>
@@ -73,6 +84,17 @@ export function ConversationList({
                   </dd>
                 </div>
               </dl>
+              {connected &&
+                item.observedLiveRevision === revision &&
+                document.visibilityState === "visible" &&
+                item.control_mode === "automated" &&
+                item.agent_activity && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    {item.agent_activity.status === "queued"
+                      ? "Respuesta en cola…"
+                      : "Agente preparando respuesta…"}
+                  </p>
+                )}
               <p className="mt-2 text-xs text-[var(--text-muted)]">
                 {item.message_count} mensajes · {formatDate(item.last_activity_at)}
               </p>

@@ -29,6 +29,7 @@ interface InboxShellProps {
   assignmentHistoryLoading: boolean;
   assignmentHistoryItems: AutomationAssignmentEvent[];
   assignmentHistoryTotal: number;
+  onMessagesRead: (conversationId: string, messageIds: string[]) => Promise<boolean>;
   onSelect: (conversation: InboxConversation) => void;
   onDraftChange: (value: string) => void;
   onReassignChange: (value: string) => void;
@@ -61,6 +62,7 @@ export function InboxShell({
   assignmentHistoryLoading,
   assignmentHistoryItems,
   assignmentHistoryTotal,
+  onMessagesRead,
   onSelect,
   onDraftChange,
   onReassignChange,
@@ -99,6 +101,7 @@ export function InboxShell({
         assignmentHistoryLoading={assignmentHistoryLoading}
         assignmentHistoryItems={assignmentHistoryItems}
         assignmentHistoryTotal={assignmentHistoryTotal}
+        onMessagesRead={onMessagesRead}
         onDraftChange={onDraftChange}
         onReassignChange={onReassignChange}
         onAutomationAgentChange={onAutomationAgentChange}

@@ -3,12 +3,14 @@ import { useAgentWorkspace } from "../../agents/AgentWorkspaceContext";
 import { useAuth } from "../../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../../auth/permissions";
 import { CrmPagination, CrmScopeFilter, canOperateItem, useCrmScope } from "../../crm/operations";
+import { useInboxLive } from "../../inbox/InboxLiveContext";
 import { InboxFiltersForm } from "./InboxFilters";
 import { InboxShell } from "./InboxShell";
 import { useInboxState } from "./useInboxState";
 
 export default function InboxPage() {
   const scope = useCrmScope("inbox");
+  const { snapshot, connected } = useInboxLive();
   const { selectedAgent } = scope;
   const { profiles } = useAgentWorkspace();
   const { user } = useAuth();
@@ -50,6 +52,41 @@ export default function InboxPage() {
           <RefreshCw size={16} /> Actualizar
         </button>
       </header>
+      <p role="status" className="mb-3 text-xs text-[var(--text-muted)]">
+        {connected
+          ? "Actualización en tiempo real"
+          : "Reconectando actualización en vivo; revisión automática de respaldo activa."}
+      </p>
+      <fieldset aria-label="Vista de conversaciones" className="mb-2 flex flex-wrap gap-2">
+        {(
+          [
+            ["active", "Activas"],
+            ["history", "Históricas"],
+            ["all", "Todas"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={inbox.filters.lifecycle === value}
+            onClick={() => {
+              scope.setOffset(0);
+              inbox.setFilters({ ...inbox.filters, lifecycle: value, status: "", controlMode: "" });
+            }}
+            className={`min-h-11 rounded-lg border px-4 text-sm ${inbox.filters.lifecycle === value ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border-color)]"}`}
+          >
+            {label}
+            {!scope.agentId && snapshot && value !== "all"
+              ? ` (${value === "active" ? snapshot.active_conversations : snapshot.historical_conversations})`
+              : ""}
+          </button>
+        ))}
+      </fieldset>
+      <p className="mb-4 max-w-3xl text-xs text-[var(--text-muted)]">
+        Activas: conversaciones abiertas, incluso pausadas o en atención manual. Históricas:
+        conversaciones cerradas. El indicador cuenta conversaciones activas con mensajes del
+        visitante sin leer por vos; no personas conectadas.
+      </p>
       <CrmScopeFilter scope={scope} label="Agente de ingreso" />
 
       <CrmPagination
@@ -104,6 +141,7 @@ export default function InboxPage() {
         assignmentHistoryLoading={inbox.assignmentHistoryLoading}
         assignmentHistoryItems={inbox.assignmentHistoryItems}
         assignmentHistoryTotal={inbox.assignmentHistoryTotal}
+        onMessagesRead={inbox.markVisibleMessagesRead}
         onSelect={inbox.openConversation}
         onDraftChange={inbox.setDraft}
         onReassignChange={inbox.setReassignTo}

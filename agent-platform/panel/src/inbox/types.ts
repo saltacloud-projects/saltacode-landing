@@ -13,6 +13,8 @@ export interface InboxAgent {
 }
 
 export interface InboxConversation extends CrmOwnership {
+  /** Client-only freshness marker; never sent in API commands. */
+  observedLiveRevision?: number;
   id: string;
   principal_id: string;
   display_name: string | null;
@@ -28,6 +30,9 @@ export interface InboxConversation extends CrmOwnership {
   control_changed_at: string;
   control_reason: string | null;
   message_count: number;
+  unread_count?: number;
+  latest_inbound_message_id?: string | null;
+  agent_activity?: { status: "queued" | "running"; agent_id: string; name: string } | null;
   last_activity_at: string;
 }
 
@@ -69,6 +74,7 @@ export interface InboxThread {
 
 export interface InboxFilters {
   channel: string;
+  lifecycle?: "active" | "history" | "all";
   controlMode: string;
   status: string;
   owner: string;

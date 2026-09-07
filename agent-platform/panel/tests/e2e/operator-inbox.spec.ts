@@ -408,7 +408,9 @@ test("operator prepares a different acting agent without resuming a paused conve
   expect(assignments[0].idempotencyKey).toMatch(/^automation-assignment-/);
   expect(assignments[0].correlationId).toMatch(/^inbox-correlation-/);
   expect(assignments[0].idempotencyKey).not.toBe(assignments[0].correlationId);
-  await expect(page.getByRole("status")).toContainText("la automatización sigue detenida");
+  await expect(
+    page.getByRole("status").filter({ hasText: "la automatización sigue detenida" }),
+  ).toContainText("la automatización sigue detenida");
   await expect(
     page.getByLabel("Detalle de conversación").getByText("Pausado", { exact: true }),
   ).toBeVisible();

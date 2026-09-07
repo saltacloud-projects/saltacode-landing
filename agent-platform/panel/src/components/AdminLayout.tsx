@@ -31,6 +31,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAgentWorkspace } from "../agents/AgentWorkspaceContext";
 import { useAuth } from "../auth/AuthContext";
 import { hasPermission, PERMISSIONS } from "../auth/permissions";
+import { InboxLiveProvider, useInboxLive } from "../inbox/InboxLiveContext";
 import RouteLoading from "./RouteLoading";
 
 interface NavigationItem {
@@ -262,6 +263,8 @@ function NavigationLink({
   onNavigate: () => void;
 }) {
   const Icon = item.icon;
+  const { snapshot, connected } = useInboxLive();
+  const unread = item.to === "/inbox" ? (snapshot?.unread_conversations ?? 0) : 0;
   return (
     <NavLink
       to={item.to}
@@ -269,16 +272,34 @@ function NavigationLink({
       title={collapsed ? item.label : undefined}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `flex min-h-10 items-center gap-3 border-l-2 px-4 py-2 text-sm transition-colors ${collapsed ? "md:justify-center" : ""} ${isActive ? "border-[var(--accent)] bg-[var(--bg-hover)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"}`
+        `relative flex min-h-10 items-center gap-3 border-l-2 px-4 py-2 text-sm transition-colors ${collapsed ? "md:justify-center" : ""} ${isActive ? "border-[var(--accent)] bg-[var(--bg-hover)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"}`
       }
     >
       <Icon size={18} className="shrink-0" />
       <span className={`${collapsed ? "md:hidden" : ""} truncate`}>{item.label}</span>
+      {unread > 0 && (
+        <span
+          role="status"
+          aria-label={`${unread} conversaciones activas sin leer${connected ? "" : ", última actualización"}`}
+          title="Conversaciones activas con mensajes del visitante sin leer por vos"
+          className="absolute right-2 top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-bold text-white"
+        >
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
     </NavLink>
   );
 }
 
 export default function AdminLayout() {
+  return (
+    <InboxLiveProvider>
+      <AdminLayoutContent />
+    </InboxLiveProvider>
+  );
+}
+
+function AdminLayoutContent() {
   const { user, logout } = useAuth();
   const { profiles, selectedAgent, loading: loadingAgents } = useAgentWorkspace();
   const navigate = useNavigate();
