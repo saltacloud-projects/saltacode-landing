@@ -1,6 +1,6 @@
 # Human typing and Inbox pagination
 
-Status: implementation and local scope gates complete; production acceptance pending.
+Status: deployed and verified on 2026-09-07 (America/Argentina/Salta).
 This document does not activate an external channel.
 
 ## Behavior
@@ -50,7 +50,7 @@ should explicitly communicate that all matching conversations are already shown.
   snapshot rejection, retained AI suppression and backward-compatible defaults.
 - [x] Pagination: more than 50 results, previous/next, filter changes, live shrink,
   empty results and preserved thread/draft.
-- [ ] Complete scope gates and served-runtime verification.
+- [x] Complete scope gates and served-runtime verification.
 
 Scope gates passed: 530 API unit/contract tests, 174 PostgreSQL integration tests
 (including nine using disposable real Redis), 128 BFF tests, 122 panel E2E cases,
@@ -58,6 +58,49 @@ and 40 landing unit tests. API/BFF Ruff, panel Biome/build, Astro/build/server,
 generated contracts and agentic validation passed. A local Chromium mobile harness
 also exercises deferred presence imports after close/reset with mocked transport.
 These figures are local evidence, not proof of provider setup or field performance.
+
+## Production acceptance
+
+Release `git-c67db349c7e8-20260908T000308Z` passed the complete `pnpm verify`
+gate on clean source `c67db349c7e8` before promotion. The site was deployed first,
+then the platform. Both canonical environment files were updated only for their
+release variable; credentials and other settings were preserved.
+
+- Independent verification matched all eight application image IDs to their
+  immutable receipts and confirmed healthy services with loopback-only exposure.
+  The other 38 running containers retained their IDs, including both Redis stores
+  and PostgreSQL. No DNS, Tunnel or provider configuration was changed.
+- Schema `f15f9d1a3b67` was unchanged. All 205 baseline messages, their immutable
+  transcript fields, and all 38 conversations remained intact.
+- Public panel checks passed in Chromium at 1440 and 320 pixels and Firefox at
+  390 pixels: single-page controls, date filtering, an existing closed synthetic
+  thread, author labels, distinct message bubbles, keyboard back navigation on
+  mobile and no overflow or JavaScript errors.
+- Authenticated Inbox SSE returned its five-field snapshot in 0.145 seconds,
+  a heartbeat in 16.196 seconds and `presence_degraded=false`. Unauthenticated
+  access returned 401; the stream remained `no-store`.
+- The public BFF returned existing closed-chat history with inactive presence
+  and an ephemeral `chat.presence` event without advancing the message cursor.
+  Presence writes returned 423 for the closed thread, 404 for an unknown session
+  and 403 for an invalid origin, without creating cookies. Exact canary Redis
+  state and persisted message/execution/event counts were unchanged.
+- Eleven public route checks passed. A fresh mobile browser loaded neither chat
+  nor presence initially; opening an empty chat caused no API or presence request.
+  Served chat assets matched the tested build hashes.
+
+Production verification deliberately did not reopen a conversation, send a new
+message or publish live human typing. Positive typing, ownership transitions,
+expiry and multi-page navigation are covered by local integration/browser tests;
+the public checks above prove deployed compatibility and safe negative paths, not
+a new end-to-end human conversation or external-provider delivery.
+
+Protected evidence and the pre-release database backup are under
+`/var/lib/saltacode-agent-platform/backups/20260908T000308Z-pre-human-presence/`.
+The site receipt is
+`/var/lib/saltacode/20260908T000338Z-site-git-c67db349c7e8-20260908T000308Z.receipt`;
+the platform receipt is
+`/var/lib/saltacode-agent-platform/receipts/git-c67db349c7e8-20260908T000308Z.receipt`.
+The backup is host-local; this release did not rehearse disaster recovery.
 
 Cross-channel history continuity and channel onboarding are separate work units.
 Do not remove the current WhatsApp transfer limitation until a verified linking
@@ -75,3 +118,9 @@ The old BFF strictly rejects unexpected fields in history/event responses. There
 the new API must not be promoted first. Roll back the API before restoring an older
 BFF, or retain the tolerant new BFF when reverting only the platform. Independent
 release units do not imply arbitrary rollback order across a strict wire contract.
+
+Recorded rollback targets are platform
+`git-d1cf80957b18-20260907T223358Z`, followed by site
+`git-ef53c51c5195-20260907T203713Z`. No schema downgrade or history restoration is
+needed for this release. Source and acceptance documentation are committed locally;
+no Git push was performed.
